@@ -1,10 +1,10 @@
 # Guardian video consent for a minor in a group (SCRUM-313)
 
 SCRUM-313 is four PRs:
-- PR 1 (merged) made consent per child;
-- PR 2, this one, is the consent flow;
+- PR 1 made consent per child;
+- PR 2 is the consent flow;
 - PR 3 (SCRUM-329) lets a guardian choose "watch only" or "speak";
-- PR 4 adds reminders and the final QA.
+- PR 4 reminds guardians about upcoming group sessions.
 
 ## What was built
 Before this, a minor could never join a group's video: a blanket block, waiting for this feature. Now:
@@ -20,6 +20,8 @@ Before this, a minor could never join a group's video: a blanket block, waiting 
   - "withdraw" for a consent already given;
 - withdrawing takes the child out of a call straight away, and the rest of the group carries on;
 - leaving the group cancels its consent, so coming back needs new consent;
+- **reminders** (PR 4): a day before and within the hour of an online group session, each guardian of a minor member
+  without consent gets a notification and email naming their child and the group, linking to their therapies page;
 - **what it allows** (SCRUM-329, PR 3): the guardian chooses "watch and listen only" (microphone and camera off) or
   "also speak when given the floor", and can switch with **watch only** / **allow speaking**. With consent to speak, a
   member can raise a hand and a counsellor can give them the floor, and a minor creator joins with microphone and
@@ -49,6 +51,11 @@ All from the normal seed (password `password`).
    with consent to speak they can raise a hand, otherwise the panel says a guardian's consent to speak is needed.
 5. As the guardian, press **withdraw**, then **confirm withdraw**: the minor is back to needing consent, and if they
    were in the call they're taken out of it.
+
+6. Reminders: give "Group Video Call Demo" an online session starting in under an hour (status pending), and run the
+   sweep (`SendGuardianVideoConsentRemindersAction::new()->execute(VideoConsentReminderWindowEnum::hour_before)` in
+   tinker, or wait for the scheduler). Mailpit (http://localhost:8027) has "Video Consent Needed for a Group Session"
+   for `group_video_call_demo_guardian`, naming GroupVideoCall DemoMinorMember; running it again sends nothing new.
 
 ## Deployment notes
 - Migrations: `MEMBERSHIP_ENDED` on `video_consents.revocation_reason` (PR 2); `GUARDIAN_CONSENT` on

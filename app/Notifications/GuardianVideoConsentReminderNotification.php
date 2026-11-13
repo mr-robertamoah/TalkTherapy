@@ -5,6 +5,7 @@ namespace App\Notifications;
 use App\Contracts\ShownInNotificationCenter;
 use App\Enums\VideoConsentReminderWindowEnum;
 use App\Models\Session;
+use App\Models\User;
 use App\Support\NotificationEntry;
 use App\Support\TherapyLink;
 use Illuminate\Bus\Queueable;
@@ -21,8 +22,15 @@ class GuardianVideoConsentReminderNotification extends Notification implements S
 {
     use Queueable;
 
-    public function __construct(public Session $session, public string $window)
+    // SCRUM-313: $ward for a group session -- which of the guardian's wards it's about. A guardian of a group member
+    // can't open the group, so a group reminder names it and links to their list of their ward's groups instead.
+    // A plain property with a default, not a promoted one: a notification queued before it existed is unserialized
+    // without it, and must read null rather than throw.
+    public ?User $ward = null;
+
+    public function __construct(public Session $session, public string $window, ?User $ward = null)
     {
+        $this->ward = $ward;
         $this->afterCommit();
     }
 
@@ -53,6 +61,16 @@ class GuardianVideoConsentReminderNotification extends Notification implements S
         // regardless of how close start_time actually is when this fires.
         $timing = $this->session->start_time->diffForHumans();
 
+        if ($this->ward) {
+            return (new MailMessage)
+                ->subject('Video Consent Needed for a Group Session')
+                ->greeting("Hello {$notifiable->name}!")
+                ->line("A session of the group therapy '{$this->session->for->name}' that {$this->ward->name} is in starts {$timing}, and video consent has not yet been given.")
+                ->line('Without your consent, they will not be able to join its video call. You can give it, for the whole group or this session, from the Ward Section of your therapies page.')
+                ->action('Give Video Consent', route('therapies'))
+                ->line("Thank you for choosing to 'TalkTherapy'.");
+        }
+
         return (new MailMessage)
             ->subject("Video Consent Needed for '{$this->session->name}'")
             ->greeting("Hello {$notifiable->name}!")
@@ -71,14 +89,22 @@ class GuardianVideoConsentReminderNotification extends Notification implements S
     {
         return [
             'session_id' => $this->session->id,
-            // SCRUM-39: the therapy or group, so the notification center can link it (old rows have none).
-            ...($this->session->for ? TherapyLink::ids($this->session->for) : []),
+            // SCRUM-39: the therapy, so the notification center can link it (old rows have none). SCRUM-313: never a
+            // group's -- its member's guardian can't open it; they answer from their ward list.
+            ...($this->session->for && ! $this->ward ? TherapyLink::ids($this->session->for) : []),
             'window' => $this->window,
+            // Their own ward's name, so two wards in one group read apart in the notification centre.
+            ...($this->ward ? ['group' => true, 'wardName' => $this->ward->name] : []),
         ];
     }
 
     public function toBroadcast(object $notifiable): BroadcastMessage
     {
+        // SCRUM-313: nothing about a group's sessions to a guardian who can't open it.
+        if ($this->ward) {
+            return new BroadcastMessage(['window' => $this->window, 'group' => true]);
+        }
+
         return new BroadcastMessage([
             'session' => [
                 'id' => $this->session->id,
@@ -97,6 +123,7 @@ class GuardianVideoConsentReminderNotification extends Notification implements S
     public static function present(array $data): NotificationEntry
     {
         return new NotificationEntry('Video consent needed', (($data['window'] ?? null) === VideoConsentReminderWindowEnum::hour_before->value ? 'A session starting within the hour' : 'An upcoming session')
-            .' needs your video consent, or the client cannot join its video call.', TherapyLink::fromIds($data));
+            .' needs your video consent, or '.(! empty($data['group']) ? NotificationEntry::text($data, 'wardName', 'your ward') : 'the client').' cannot join its video call.',
+            ! empty($data['group']) ? NotificationEntry::link('therapies', []) : TherapyLink::fromIds($data));
     }
 }

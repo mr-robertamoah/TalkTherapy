@@ -12084,3 +12084,24 @@ watch only. Four PRs; this first one is groundwork with no behaviour change.
     valid to the session's end; someone deliberately reusing it outside the app could rejoin with them after a change
     to watch only. The app's own rejoin goes through the server. The same gap exists for ejections today; shorter
     tokens are a follow-up.
+
+## SCRUM-313 PR 4 — reminders for a group session's consent (2026-11-13)
+
+- **Who's reminded**: for an upcoming online group session, each minor member (its user creator or a current member,
+  never a counsellor) with no consent of their own guardians' covering it -- at either level, as for joining. Their
+  guardians are told once per window (a day before, within the hour), per ward: a reminder row is one session and one
+  ward, so a member who joins later is still reminded, and one already reminded isn't again.
+- **What it says**: to a guardian, their ward's name and the group's, never another member; it links to their own
+  therapies page (Ward Section), as a member's guardian can't open the group. The one-to-one reminder is unchanged.
+- **The sweep**: a one-to-one session is still skipped once its reminder for the window has gone; a group session is
+  checked per ward. Who needs reminding is worked out before any lock (most sessions need nobody), and each ward is
+  then locked, re-checked and sent on its own, so one member's failure doesn't stop the others' (reviewer).
+- **Only guardians who count** (security review, Medium): reminders -- one-to-one ones too -- go to the ward's active
+  guardians (SCRUM-288: adult, not suspended), as asking and answering already did; a suspended guardian isn't told
+  about the ward's sessions. The one-to-one "is consent outstanding" check likewise counts only active guardians'
+  grants now, matching the join gate. Group broadcasts carry no session name; the notification centre names the ward.
+- **Follow-up (security, Low)**: user-written names (a group's) go into email lines, where Markdown could make a
+  link; worth escaping across the app's notifications.
+- **Two-browser QA of a live call** isn't possible in this environment (no real Daily/Chime credentials -- joins stop
+  at minting, as documented for SCRUM-27); the in-call behaviour is covered by tests, and the consent flow was walked
+  in the browser in PRs 2 and 3. The reminder was checked end to end: the real sweep sent the guardian's email (Mailpit).

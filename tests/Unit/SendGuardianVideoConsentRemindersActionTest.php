@@ -27,8 +27,9 @@ function minorTherapyWithGuardiansAndSessionForReminders(array $sessionOverrides
         'addedby_id' => $minor->id,
         'counsellor_id' => $counsellor->id,
     ]);
-    $guardianOne = User::factory()->create();
-    $guardianTwo = User::factory()->create();
+    // Adults: only guardians who count (SCRUM-288) are reminded (SCRUM-313).
+    $guardianOne = User::factory()->adult()->create();
+    $guardianTwo = User::factory()->adult()->create();
     Guardianship::query()->create(['guardian_id' => $guardianOne->id, 'ward_id' => $minor->id]);
     Guardianship::query()->create(['guardian_id' => $guardianTwo->id, 'ward_id' => $minor->id]);
     $session = Session::factory()->create(array_merge([
