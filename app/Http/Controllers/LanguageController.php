@@ -10,13 +10,11 @@ use Illuminate\Http\Request;
 
 class LanguageController extends Controller
 {
-    public function getLanguages(Request $request)
-    {
+    public function getLanguages(Request $request) {
         return LanguageService::new()->getLanguages($request->name ?? '');
     }
 
-    public function createLanguage(Request $request)
-    {
+    public function createLanguage(Request $request) {
         $request->validate([
             'name' => ['required', 'string', 'unique:languages,name'],
             'about' => ['nullable', 'string'],
@@ -32,13 +30,13 @@ class LanguageController extends Controller
                 'addedby' => GetModelWithModelNameAndIdAction::new()->execute(
                     $request->addedbyType,
                     $request->addedbyId,
-                ),
+                )
             ])
         );
 
         return response()->json([
             'status' => true,
-            'language' => new LanguageResource($language),
+            'language' => new LanguageResource($language)
         ]);
     }
 }

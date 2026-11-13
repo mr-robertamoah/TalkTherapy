@@ -2,8 +2,9 @@
 
 namespace App\Http\Requests;
 
-use Illuminate\Contracts\Validation\ValidationRule;
+use App\Models\TherapyTopic;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateTherapyTopicRequest extends FormRequest
 {
@@ -18,14 +19,14 @@ class UpdateTherapyTopicRequest extends FormRequest
     /**
      * Get the validation rules that apply to the request.
      *
-     * @return array<string, ValidationRule|array<mixed>|string>
+     * @return array<string, \Illuminate\Contracts\Validation\ValidationRule|array<mixed>|string>
      */
     public function rules(): array
     {
         return [
             'name' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'sessions' => ['nullable', 'array'],
+            'sessions' => ['nullable', 'array']
         ];
     }
 }
