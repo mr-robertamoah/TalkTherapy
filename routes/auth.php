@@ -33,7 +33,9 @@ Route::middleware('guest')->group(function () {
         ->name('password.reset');
 
     Route::post('reset-password', [NewPasswordController::class, 'store'])
-        ->name('password.store');
+        ->name('password.store')
+        // SCRUM-35: validating a new password can ask Have I Been Pwned, before the reset token is checked.
+        ->middleware('throttle:10,1,password.store');
 });
 
 Route::middleware('auth')->group(function () {
@@ -53,7 +55,9 @@ Route::middleware('auth')->group(function () {
 
     Route::post('confirm-password', [ConfirmablePasswordController::class, 'store']);
 
-    Route::put('password', [PasswordController::class, 'update'])->name('password.update');
+    Route::put('password', [PasswordController::class, 'update'])->name('password.update')
+        // SCRUM-35: a new password can ask Have I Been Pwned (and this checks the current password).
+        ->middleware('throttle:10,1,password.update');
 
     Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])
         ->name('logout');

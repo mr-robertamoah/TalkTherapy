@@ -66,7 +66,7 @@ defineProps({
                 <section id="what-we-collect" class="space-y-2">
                     <h2 class="text-lg font-semibold text-gray-900">What we collect</h2>
                     <ul class="list-disc pl-5 space-y-1">
-                        <li><strong>Your account:</strong> your name, username, email address, password (stored only in scrambled form), country, gender and date of birth.</li>
+                        <li><strong>Your account:</strong> your name, username, email address, password (stored only in scrambled form), country, gender and date of birth. When you set a new password, we check it isn't one known from data breaches by sending the first 5 characters of a scrambled version of it to the Have I Been Pwned service; the password itself never leaves TalkTherapy.</li>
                         <li><strong>Your preferences:</strong> the languages, religions and concerns you choose, so we can suggest counsellors and therapies. Concerns and religion can say something about your health and beliefs, so please only share what you are comfortable with.</li>
                         <li><strong>Your therapy:</strong> the therapies and groups you start or join, their sessions and topics, your messages and the files you attach, and the notes a counsellor keeps about sessions and messages.</li>
                         <li><strong>Counsellors:</strong> your profile, and the licence and national ID documents you upload to be verified.</li>
@@ -104,6 +104,7 @@ defineProps({
                             only use your information to provide that service to us.
                         </li>
                         <li><strong>Bunny Fonts</strong>, which serves the typeface our pages use, receives your network address when a page loads.</li>
+                        <li><strong>Have I Been Pwned</strong>, when you set a new password: it receives only the first 5 characters of a scrambled version of the password, never the password or who you are. If it doesn't answer, your password is accepted without the check.</li>
                         <li><strong>Authorities</strong>, only where the law requires it.</li>
                     </ul>
                 </section>

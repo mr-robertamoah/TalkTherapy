@@ -3,13 +3,15 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Rules\PasswordDoesNotContainIdentity;
+use App\Support\PasswordRules;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
-use Illuminate\Validation\Rules;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -30,14 +32,16 @@ class NewPasswordController extends Controller
     /**
      * Handle an incoming new password request.
      *
-     * @throws \Illuminate\Validation\ValidationException
+     * @throws ValidationException
      */
     public function store(Request $request): RedirectResponse
     {
         $request->validate([
             'token' => 'required',
             'email' => 'required|email',
-            'password' => ['required', 'confirmed', Rules\Password::defaults()],
+            // Only what was typed (the email): checking the account the email belongs to would tell anyone without a
+            // valid reset token whether a guessed username is that account's.
+            'password' => PasswordRules::for(),
         ]);
 
         // Here we will attempt to reset the user's password. If it is successful we
@@ -46,6 +50,10 @@ class NewPasswordController extends Controller
         $status = Password::reset(
             $request->only('email', 'password', 'password_confirmation', 'token'),
             function ($user) use ($request) {
+                // SCRUM-35: the token is good, so the account can be checked too (its username) -- the reset token
+                // stays usable if this refuses.
+                Validator::make($request->only('password'), ['password' => [new PasswordDoesNotContainIdentity($user)]])->validate();
+
                 $user->forceFill([
                     'password' => Hash::make($request->password),
                     'remember_token' => Str::random(60),

@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use App\Http\Resources\UserResource;
 use App\Support\AdminNavigation;
 use App\Support\InertiaHistory;
+use App\Support\PasswordRules;
 use Closure;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -81,6 +82,8 @@ class HandleInertiaRequestsV2 extends Middleware
             'videoProvider' => config('video.provider'),
             // SCRUM-32: features switched on or off by the deployment (the safety flag waits for a legal read).
             'features' => ['safetyFlags' => (bool) config('safety.enabled')],
+            // SCRUM-35: what the password forms say before anyone types, from the same policy the server checks.
+            'passwordPolicy' => PasswordRules::hints(),
             // SCRUM-371: a failed page visit's message (Controller::failureResponse), shown by the layout.
             // Pulled: shown on the first page that renders, then gone (FailureResponse puts it).
             'failureAlert' => fn () => $request->hasSession() ? $request->session()->pull('failureAlert') : null,

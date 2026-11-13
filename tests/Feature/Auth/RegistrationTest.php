@@ -1,7 +1,5 @@
 <?php
 
-use App\Providers\RouteServiceProvider;
-
 test('registration screen can be rendered', function () {
     $response = $this->get('/register');
 
@@ -12,8 +10,8 @@ test('new users can register', function () {
     $response = $this->post('/register', [
         'username' => 'testuser',
         'email' => 'test@example.com',
-        'password' => 'password',
-        'password_confirmation' => 'password',
+        'password' => 'quiet-harbour-2026',
+        'password_confirmation' => 'quiet-harbour-2026',
     ]);
 
     $response->assertRedirect('/preferences');

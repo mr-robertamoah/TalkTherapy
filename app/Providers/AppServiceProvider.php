@@ -7,9 +7,12 @@ use App\Listeners\FailHealthCheckOnPendingMigrations;
 use App\Services\AppService;
 use App\Support\AppHost;
 use App\Support\MinishlinkPushSender;
+use App\Support\PwnedPasswordVerifier;
 use App\Support\TrustedProxies;
+use Illuminate\Contracts\Validation\UncompromisedVerifier;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Foundation\Events\DiagnosingHealth;
+use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Http\Request;
 use Illuminate\Mail\Markdown;
@@ -18,6 +21,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Validation\Rules\Password;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -28,6 +32,14 @@ class AppServiceProvider extends ServiceProvider
     {
         // SCRUM-399: web push for urgent help rings (tests bind a fake).
         $this->app->bind(PushSender::class, MinishlinkPushSender::class);
+
+        // SCRUM-35: Have I Been Pwned answers within a few seconds or the password is allowed (the verifier already fails
+        // open; its default timeout is 30s). extend(), not singleton(): ValidationServiceProvider is deferred and would
+        // re-register its own binding over ours when it loads.
+        $this->app->extend(UncompromisedVerifier::class, fn ($verifier, $app) => new PwnedPasswordVerifier(
+            $app[HttpFactory::class],
+            config('auth.password_policy.uncompromised_timeout'),
+        ));
     }
 
     /**
@@ -35,6 +47,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // SCRUM-35: the policy every new password meets (PasswordRules adds "not your username or email").
+        Password::defaults(function () {
+            $policy = Password::min(config('auth.password_policy.min'))->letters()->numbers();
+
+            return config('auth.password_policy.uncompromised') ? $policy->uncompromised() : $policy;
+        });
+
         // SCRUM-397: absolute links on APP_URL once deployed, never on the request's Host header.
         AppHost::enforceLinks($this->app);
 
