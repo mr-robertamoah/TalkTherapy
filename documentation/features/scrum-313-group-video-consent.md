@@ -20,8 +20,11 @@ Before this, a minor could never join a group's video: a blanket block, waiting 
   - "withdraw" for a consent already given;
 - withdrawing takes the child out of a call straight away, and the rest of the group carries on;
 - leaving the group cancels its consent, so coming back needs new consent;
-- for now an under-18 let in by consent watches and listens only (microphone and camera off), a minor creator
-  included, and can't be given the floor; PR 3 lets a guardian choose "speak".
+- **what it allows** (SCRUM-329, PR 3): the guardian chooses "watch and listen only" (microphone and camera off) or
+  "also speak when given the floor", and can switch with **watch only** / **allow speaking**. With consent to speak, a
+  member can raise a hand and a counsellor can give them the floor, and a minor creator joins with microphone and
+  camera. An under-18 who is anonymous in the group only ever watches. Switching to watch only takes the floor away
+  at once.
 
 ## Test data
 | Account | What to look at |
@@ -38,13 +41,17 @@ All from the normal seed (password `password`).
    or guardian has been asked."
 2. Log in as `group_video_call_demo_guardian`. The bell shows "Video consent requested". Go to `/therapies`, Ward
    Section → Group Therapies, and press **video consent** under "Group Video Call Demo".
-3. The panel lists "GroupVideoCall DemoMinorMember", with "Whole group: not given". Press **approve for the group**:
-   it reads "approved by … on …", and the current session says "covered by the group consent".
-4. Log back in as the minor and open the chat page again: **join video** is offered.
+3. The panel lists "GroupVideoCall DemoMinorMember", with "Whole group: not given" and a choice of "watch and listen
+   only" or "also speak when given the floor". Choose one and press **approve for the group**: it reads, for example,
+   "can speak when given the floor, approved by … on …", and the current session says "covered by the group
+   consent". **watch only** / **allow speaking** switch it.
+4. Log back in as the minor and open the chat page again: **join video** is offered. In the call they're watching;
+   with consent to speak they can raise a hand, otherwise the panel says a guardian's consent to speak is needed.
 5. As the guardian, press **withdraw**, then **confirm withdraw**: the minor is back to needing consent, and if they
    were in the call they're taken out of it.
 
 ## Deployment notes
-- One migration adds `MEMBERSHIP_ENDED` to `video_consents.revocation_reason`.
+- Migrations: `MEMBERSHIP_ENDED` on `video_consents.revocation_reason` (PR 2); `GUARDIAN_CONSENT` on
+  `video_session_speaking_grants.revocation_reason` (PR 3).
 - To roll back, revert the code. Old code brings back the blanket block, which fails closed. Keep the column: the
   migration's `down()` fails once a row has the new reason.

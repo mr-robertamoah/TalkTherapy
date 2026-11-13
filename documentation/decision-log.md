@@ -12045,3 +12045,42 @@ watch only. Four PRs; this first one is groundwork with no behaviour change.
     "check again" or a reload, not live. The group's name is in the guardian's email, as in other ward notices.
     An old provider token used after leaving the call themselves is an existing gap shared with suspension and
     leaving.
+
+## SCRUM-329 — consent to speak for a minor in a group (2026-11-13)
+
+- **Two levels** (the user's decision in planning): a guardian chooses "watch and listen only" or "also speak when a
+  counsellor gives them the floor", for the group or one session, and can change it. A change closes the grant and
+  opens a new one at the new level (grants are a history, never edited).
+- **Who may speak**: an under-18 may raise a hand, be given the floor or -- as a group's creator -- join with
+  microphone and camera only with a valid consent to speak from a guardian they still have. This replaces the
+  interim block (TT-3.2f-g) that stopped every minor.
+- **Anonymous means watching** (the user's decision): an under-18 who is anonymous in the group only ever watches and
+  listens, whatever the consent says -- they would be heard.
+- **Today's age, as for joining** (my call): the old interim block used the was-a-minor-at-join snapshot; the speaking
+  rule now uses the same rule as joining (`groupVideoNeedsGuardianConsent`: today's dob, the requirement ending at 18,
+  as one-to-one -- SCRUM-288 Q6). Safe because a dob change across 18 needs approval (SCRUM-292). Two pinned tests were
+  rewritten to match.
+- **Going down takes effect at once**: changing to watch only, withdrawing a speak consent while a watch one still
+  covers them, or the consenting guardian's suspension takes the floor away under the minor's join lock (their
+  speaking grants close with a new `GUARDIAN_CONSENT` reason, and the provider mutes them -- a minor creator too); if
+  the provider can't, they're taken out of the call and may rejoin to watch. Going up applies from their next join.
+- **Existing group consents become watch only** (devops review): PR 2 stored every group consent as SPEAK while the
+  panel told guardians "watch and listen only"; a data migration makes them WATCH, so none starts letting a child
+  speak. A request without a level is WATCH too (a page opened before levels existed).
+- **Reviews.**
+  - **No floor given just after "watch only"** (security High, reviewer): giving the floor asks again under the
+    participant row lock, and taking it away waits for that lock first, so a grant can't land between the two.
+  - **One provider call, eject only if it fails** (reviewer): closing the live floor already mutes and tells the call;
+    a creator (who speaks by joining, not by a grant) is muted directly; either failing takes them out.
+  - **The call isn't told why** (security): the reason is broadcast to everyone in the call, so a guardian's consent
+    ending someone's floor goes out as a plain revoke -- naming it would tell the group they're under 18. The minor's
+    own panel says "You can now watch and listen only."
+  - **`SUPERSEDED`** (reviewer): a level change closes the old grant as superseded, not as a withdrawal; and a fresh
+    grant replaces an open one left by a guardian who no longer counts, rather than sitting beside it (it would count
+    again, at its own level, if that guardian did).
+  - **The more permissive scope wins** (reviewer): a session's "speak" lets a child speak in that session even under
+    a group-wide "watch only" -- the guardian chose it for that session; the panel shows both.
+  - **Accepted (security Medium)**: a minor creator's Daily meeting token, minted with microphone and camera, stays
+    valid to the session's end; someone deliberately reusing it outside the app could rejoin with them after a change
+    to watch only. The app's own rejoin goes through the server. The same gap exists for ejections today; shorter
+    tokens are a follow-up.
