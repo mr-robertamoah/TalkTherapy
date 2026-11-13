@@ -52,16 +52,6 @@ Check every item before going live.
     `php artisan queue:restart` -- the running worker keeps the config it started with.
   - Rotating `APP_KEY` goes through `APP_PREVIOUS_KEYS`: devices are stored encrypted, and without the old key every
     push job fails to decrypt them.
-  - SCRUM-34: the same goes for two-factor sign-in -- each account's authenticator secret is encrypted with `APP_KEY`
-    and its recovery codes are hashed with it. Keep the old key in `APP_PREVIOUS_KEYS` for good (nothing re-encrypts
-    them); losing it means every account with two-factor on needs it reset. The host PHP needs `iconv` too
-    (bacon/bacon-qr-code; built into the usual packages).
-  - SCRUM-34b: changing `APP_KEY` also signs everyone out (each session's check is keyed with it, as Laravel's own is).
-  - SCRUM-34b: two-factor setup is shown by default. Check the production `.env` doesn't still say
-    `TWO_FACTOR_ENABLED=false` (the earlier example suggested it) unless it should stay hidden; after changing it,
-    `php artisan config:clear`. Off hides setting it up only: accounts that have it are still asked for the code and
-    can still manage it. A code rollback past SCRUM-34b would let those accounts in with the password alone -- roll
-    back with the switch instead, and count them first (`users.two_factor_confirmed_at` not null).
   - nginx serves `/sw.js` with `Cache-Control: no-cache` and `/manifest.webmanifest` as `application/manifest+json`
     (docker/nginx/default.conf).
   - Outbound HTTPS from the queue workers to the push services (Google FCM, Mozilla, Apple, Microsoft) is allowed, and
@@ -70,6 +60,20 @@ Check every item before going live.
   - With queue workers on more than one host, the cache store is shared (redis or database, not `file`): who was pushed
     for each request is kept there, so the withdrawal reaches them all. A `cache:clear` loses it -- rings already sent
     then stay on devices until they expire or are tapped.
+- [ ] **Two-factor sign-in (SCRUM-34):**
+  - Each account's authenticator secret is encrypted with `APP_KEY`, and its recovery codes are hashed with it. Keep
+    the old key in `APP_PREVIOUS_KEYS` for good (nothing re-encrypts them); losing it means every account with
+    two-factor on needs it reset. Changing `APP_KEY` also signs everyone out (each session's check is keyed with it).
+  - The host PHP has `iconv` (bacon/bacon-qr-code; built into the usual packages).
+  - Setup is shown by default. Check the production `.env` doesn't still say `TWO_FACTOR_ENABLED=false` (an earlier
+    example suggested it) unless it should stay hidden; after changing it, `php artisan config:clear`. Off hides
+    setting it up only: accounts that have it are still asked for the code and can still manage it.
+  - A code rollback past SCRUM-34b would let accounts with two-factor in with the password alone -- roll back with
+    the switch instead, and count them first (`users.two_factor_confirmed_at` not null).
+  - `LOG_LEVEL` is `notice` or lower (`info`, `debug`): the line a super administrator's reset writes
+    (`Two-factor sign-in reset by an administrator`, monitoring.md) is the record of it, and a higher level drops it.
+  - Queue workers restart on deploy (`deploy.sh` does): the security notices are queued, and an old worker doesn't know
+    the newer kinds.
 
 ## The proxy
 

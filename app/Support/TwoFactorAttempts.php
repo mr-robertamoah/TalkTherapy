@@ -26,7 +26,7 @@ final class TwoFactorAttempts
      */
     public static function attempt(User $user, Closure $check): mixed
     {
-        $key = 'two-factor:'.$user->id;
+        $key = self::key($user);
 
         if (RateLimiter::increment($key, self::DECAY_SECONDS) > self::MAX) {
             $minutes = (int) ceil(max(1, RateLimiter::availableIn($key)) / 60);
@@ -41,5 +41,16 @@ final class TwoFactorAttempts
         }
 
         return $result;
+    }
+
+    // SCRUM-34c: a fresh start (a super admin reset the account's two-factor).
+    public static function forget(User $user): void
+    {
+        RateLimiter::clear(self::key($user));
+    }
+
+    private static function key(User $user): string
+    {
+        return 'two-factor:'.$user->id;
     }
 }

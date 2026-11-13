@@ -342,6 +342,12 @@ signing in the profile shows "Your password could be stronger" -- expected. Chan
 | `unverified_email_demo` | `password` | Adult with an email (`unverified.email.demo@example.com`) that isn't verified: every page shows "Please verify … / send the link"; the link arrives in Mailpit. |
 | `no_email_demo` | `password` | Adult with no email at all (how every account starts): every page shows "Add an email … / add an email", linking to the profile. |
 
+## Two-factor sign-in (SCRUM-34)
+
+| Username | Password | Purpose |
+|---|---|---|
+| `two_factor_demo` | `password` | Two-factor sign-in on, with the fixed key `TALKTHERAPYDEMOTWOFACTORSEEDKEYA` (add it to an authenticator app, or see `documentation/features/scrum-34-two-factor-sign-in.md` for a one-line command that prints the current code) and single-use recovery codes `demo1-aaaaa`, `demo2-bbbbb` … `demo8-hhhhh`. Sign in → the code page. As the super admin: Administrator → Users → search for this account → *show actions* → *reset two-factor* → your password → *reset*. Seed inside Docker (`docker compose exec php php artisan migrate:fresh --seed`): the key is encrypted with the seeding environment's `APP_KEY`, and the host's `.env` has a different one. |
+
 ## Testing the registration/verification flow
 
 The other seeded accounts all skip email verification. To test registration or the

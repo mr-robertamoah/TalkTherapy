@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable implements MustVerifyEmailContract
@@ -176,6 +177,19 @@ class User extends Authenticatable implements MustVerifyEmailContract
     public function hasTwoFactorEnabled(): bool
     {
         return $this->two_factor_confirmed_at !== null && $this->getRawOriginal('two_factor_secret') !== null;
+    }
+
+    // SCRUM-34: two-factor sign-in fully off -- the one place that does it (the person, or a super admin's reset). A
+    // new remember-me token too, and the session fingerprint changes (EndStaleSessions): signed out elsewhere.
+    public function turnOffTwoFactor(): void
+    {
+        $this->forceFill([
+            'two_factor_secret' => null,
+            'two_factor_recovery_codes' => null,
+            'two_factor_confirmed_at' => null,
+            'two_factor_last_used_step' => null,
+            'remember_token' => Str::random(60),
+        ])->save();
     }
 
     public function isAdult()

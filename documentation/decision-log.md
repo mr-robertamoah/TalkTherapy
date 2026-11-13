@@ -12230,3 +12230,29 @@ SCRUM-41:
   show failures instead of going to sign-in (both existing behaviour).
 - **Remember me** still skips the code for its lifetime, as intended; cookies from before two-factor was turned on
   stop working. To say so in the feature doc (34c).
+
+## SCRUM-34c — super-administrator reset (2026-11-13)
+
+- **Who**: super administrators only (an ordinary administrator can't), never on their own account (they turn it off
+  from their profile with a code), only for an account with two-factor on. Their own password again first, and
+  their own code when they have two-factor on (security review).
+- **Never an administrator's account** (security review: one taken-over super admin mustn't be able to strip every
+  other administrator's second factor). Those are reset on the server -- the `user:two-factor-reset` command in 34d.
+- **Identity is checked outside the app**: the app can't tell a real lost phone from an attacker who knows the
+  password, so the dialog says to reset only once the team is sure it's the person. No in-app identity flow (none
+  asked for).
+- **What it does**: the same as the person turning it off (columns cleared, remember-me token changed, other sessions
+  end), plus the wrong-code count cleared, a "reset by the team" notice, and a line in the application log with both
+  account ids. No new audit table: the log line and the person's notice are the trail (the admin read log, SCRUM-360,
+  is about reading content, not changing accounts).
+- **Who sees whether it's on**: the admin users list shows it to super administrators only (they're the ones who can
+  act on it); everyone else still learns it only about themselves.
+- **Not behind the feature switch**: it can only turn two-factor off, and accounts that have it must stay manageable.
+- **The log line** carries the two account ids and the address (no names or email); production needs `LOG_LEVEL`
+  at `notice` or lower to keep it (production checklist; monitoring.md says to review each one).
+- **Follow-up SCRUM-424** (security review, Low-Medium): a waiting period the person can cancel from their verified
+  email (and/or a password reset alongside), and a written identity-check procedure for support -- until then a
+  reset leaves the account behind its password alone, with the notice and log line as the safeguards.
+- **One place turns two-factor off** (`User::turnOffTwoFactor()`), for the person and for the reset.
+- **Demo data**: `two_factor_demo` with a fixed key and recovery codes, documented. Fixed values only ever for a non-administrator demo account. Like every seeded password, demo
+  data only (the seeder has no production guard -- an accepted, already-logged risk).
