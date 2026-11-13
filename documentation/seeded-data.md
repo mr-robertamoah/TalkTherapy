@@ -331,9 +331,16 @@ building a user via `tinker` first.
 |---|---|---|
 | `age_verification_demo_user` | `password` | Adult (`dob` set to 25 years ago) with an already-PENDING `ageVerification` request (self-attestation only, no document). Log in as the super admin (`mr_robertamoah`) and open Requests to see and act on it. To try the document-upload path, log in as this account instead, go to Profile → Age Verification → submit another statement, and attach any small image/PDF. |
 
+## Email verification notice (SCRUM-41)
+
+| Username | Password | Purpose |
+|---|---|---|
+| `unverified_email_demo` | `password` | Adult with an email (`unverified.email.demo@example.com`) that isn't verified: every page shows "Please verify … / send the link"; the link arrives in Mailpit. |
+| `no_email_demo` | `password` | Adult with no email at all (how every account starts): every page shows "Add an email … / add an email", linking to the profile. |
+
 ## Testing the registration/verification flow
 
-The 11 seeded accounts above all skip email verification. To test registration or the
+The other seeded accounts all skip email verification. To test registration or the
 verification email itself, register a new account through the UI with any email address — the
 app sends real emails through **Mailpit** in this dev environment, not out to the internet.
 View them at **http://localhost:8027**.

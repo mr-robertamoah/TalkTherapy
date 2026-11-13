@@ -12105,3 +12105,30 @@ watch only. Four PRs; this first one is groundwork with no behaviour change.
 - **Two-browser QA of a live call** isn't possible in this environment (no real Daily/Chime credentials -- joins stop
   at minting, as documented for SCRUM-27); the in-call behaviour is covered by tests, and the consent flow was walked
   in the browser in PRs 2 and 3. The reminder was checked end to end: the real sweep sent the guardian's email (Mailpit).
+
+## SCRUM-34/35/41 planning, and SCRUM-41 — email verification you can't miss (2026-11-13)
+
+Planned together (product-owner, project-manager, architect); the user approved. Order: the login lockout bugfix
+(#330, found while planning), SCRUM-41, SCRUM-35 (a, b), SCRUM-34 (a, b, c, d). The user's decisions: two-factor login
+is required for platform admins from a start date set in configuration (a reminder before, sent to setup after, never
+locked out); new and changed passwords are checked against Have I Been Pwned (failing open); accounts with no email
+see the notice too ("add an email"). Architect: `pragmarx/google2fa`, not Fortify (a second login stack); SCRUM-34's
+real size is ~13 points, not 5.
+
+SCRUM-41:
+- **One notice, everywhere it helps**: in the authenticated layout, in the page's flow (never covering the help
+  button or a chat), for a signed-in user whose email isn't verified -- "add an email" or "verify <email>" with a
+  resend. Not on the profile (its own section says it) or the verify page, nor on help or chat pages. Nothing is
+  newly blocked: no `verified` middleware.
+- **"Not now" lasts the browser session** (sessionStorage, per account) -- it comes back next time; most accounts
+  have no email, so a permanent dismissal would hide it from the people it's for.
+- **A flash, not `?verified=1`**: nothing read the query string, and an intended URL dropped it. The verification
+  outcome (sent, too many, no email, verified) is a shared prop of its own, `verificationStatus` -- a shared `status`
+  would collide with the pages that pass one.
+- **Too many resends** (6 a minute) are answered on the page ("please wait a minute"), not with an error page.
+- **Reviews.** Security: the help chat's route is `help.chat` -- the notice now stays off it (it has video, and the
+  notice shows the email). Reviewer: only the "sent" / "wait a minute" outcome is a live region (the banner itself is
+  on every page); a bigger "not now"; tests as the page really sends the request (Inertia), and a script still gets a
+  429. Accepted: the notice and the profile section each have their own few-line "send the link" -- two call sites.
+  Follow-ups (security, Low): `back()` trusts the Referer (already true of the controller; CSRF blocks abuse); the
+  seeder has no production guard.
