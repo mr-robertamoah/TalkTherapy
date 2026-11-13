@@ -281,10 +281,10 @@ counsellor-only "remove participant" control, and raise-hand / let-speak moderat
 | `group_video_call_demo_counsellor` | `password` | The group's assigned counsellor. Sees "join video" and, once in the call, a "remove" control on every other participant's tile. |
 | `group_video_call_demo_creator` | `password` | The group's own creator (an adult client). Sees "join video" too (per TT-3.2's own v1 scope: counsellors, plus the creator, optionally). |
 | `group_video_call_demo_member` | `password` | An ordinary adult member. Sees "join video" and joins receive-only (watching); can raise a hand and, once a counsellor lets them speak, unmute (with a one-time "you'll be heard and seen" warning) and turn the camera on (SCRUM-327). |
-| `group_video_call_demo_minor_member` | `password` | An ordinary member who is a minor. Joins receive-only like any member, but is never offered "raise hand" (minors can't be granted speaking yet, SCRUM-324/329). |
+| `group_video_call_demo_minor_member` | `password` | An ordinary member who is a minor. Needs a guardian's video consent (SCRUM-313): on the group's chat page they see "ask a parent or guardian" instead of "join video" until `group_video_call_demo_guardian` approves it; then they join receive-only like any member, and are never offered "raise hand" (minors can't be granted speaking yet, SCRUM-329). |
 | `group_video_call_demo_anonymous_member` | `password` | An ordinary member who joined anonymously. Shown as "Anonymous" in the call; if let speak, gets audio only — no camera button. |
-| `group_video_call_demo_minor_creator` | `password` | Creator of a SEPARATE group ("Group Video Call Demo (Minor Creator)"), created while a minor. "Join video" is still visible (intentional — see the feature doc), but clicking it is cleanly blocked with a 422. |
-| `group_video_call_demo_guardian` | `password` | Guardian of both minors above (SCRUM-288): without an active guardian their therapies would be paused. |
+| `group_video_call_demo_minor_creator` | `password` | Creator of a SEPARATE group ("Group Video Call Demo (Minor Creator)"), created while a minor. Needs a guardian's video consent the same way (SCRUM-313). |
+| `group_video_call_demo_guardian` | `password` | Guardian of both minors above (SCRUM-288): without an active guardian their therapies would be paused. Answers their group video consent from `/therapies` → Ward Section → Group Therapies → **video consent** under each group (SCRUM-313). |
 
 "Group Video Call Demo" already has an immediately in-progress, online session. Same known
 limitation as the 1:1 video call fixture above (no real Daily/Chime credentials in this dev
