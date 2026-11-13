@@ -331,6 +331,10 @@ building a user via `tinker` first.
 |---|---|---|
 | `age_verification_demo_user` | `password` | Adult (`dob` set to 25 years ago) with an already-PENDING `ageVerification` request (self-attestation only, no document). Log in as the super admin (`mr_robertamoah`) and open Requests to see and act on it. To try the document-upload path, log in as this account instead, go to Profile → Age Verification → submit another statement, and attach any small image/PDF. |
 
+**Passwords (SCRUM-35)**: every seeded account's password, `password`, is shorter than the password rules, so after
+signing in the profile shows "Your password could be stronger" -- expected. Changing it (e.g. to `quiet harbour
+2026`) clears it.
+
 ## Email verification notice (SCRUM-41)
 
 | Username | Password | Purpose |

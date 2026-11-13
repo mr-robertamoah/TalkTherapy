@@ -12147,3 +12147,31 @@ SCRUM-41:
   429. Accepted: the notice and the profile section each have their own few-line "send the link" -- two call sites.
   Follow-ups (security, Low): `back()` trusts the Referer (already true of the controller; CSRF blocks abuse); the
   seeder has no production guard.
+
+## SCRUM-35b — weak passwords flagged at sign-in (2026-11-13)
+
+- **Only at sign-in**: the plain password exists nowhere else, so that's when it's checked against today's policy.
+  Only a reason is kept (`password_weak_reason`: too short or simple, contains the username or email, breached), never
+  the password; nobody is forced to change it, and sign-in never waits or fails because of it.
+- **The breached-list check runs after the response** (Laravel's `defer()`: the password stays in that request's
+  memory -- never queued, where it would be written to the jobs table) and once per password (`password_checked_at`,
+  set when a password is changed or reset, since those already passed the check). A breach found earlier stands
+  until the password changes; the quick rules are asked afresh at each sign-in, so a changed policy shows next time.
+- **Seen only by the person**: the reason is `$hidden` on the model and in `UserResource` only about the viewer; a
+  closed account forgets it. The notice is on the profile's password section only -- no app-wide banner (the email
+  notice is already there).
+- **Accepted**: if Have I Been Pwned doesn't answer, the password counts as checked and isn't tried again until it
+  changes (the verifier fails open).
+- **Reviews.** Reviewer: a breached-list outage no longer counts as "checked" (the verifier's strict lookup says
+  "didn't answer" apart from "clean"; the next sign-in tries again); the quick rules come from one definition shared
+  with `Password::defaults()` (`PasswordRules::basics()`); an earlier breach outranks the quick rules; the late write
+  is a single update keyed on the password it checked (so a password changed meanwhile isn't touched); a new
+  account's password counts as checked. The password parameters are `#[SensitiveParameter]`. Devops: no blockers.
+- **For SCRUM-34**: this check must stay at the password step -- the plain password must never be carried to the
+  second-factor step (session or otherwise). It runs for someone who then fails the second factor; harmless.
+- **Security review.** Medium, fixed: sign-in looked the account up again with `$request->get()`, which prefers the
+  query string -- signing in as yourself with `?username=<someone>` ran the check (and visit logging) on them, and
+  could mark their password checked with yours. It now uses the account that signed in (`Auth::user()`). Also: `POST
+  /login` is throttled (30 a minute); a password set while the breach check is off isn't marked checked; the quick
+  write is keyed on the password too. Accepted: a password set while the service is down still counts as checked
+  (sign-up, change and reset can't tell).

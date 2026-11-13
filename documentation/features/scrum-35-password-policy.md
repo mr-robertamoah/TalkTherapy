@@ -1,7 +1,7 @@
 # Password rules (SCRUM-35)
 
-SCRUM-35 is two PRs. This first one (TT-4.6a) sets the rules for every new password; the second flags weak existing
-passwords at login.
+SCRUM-35 is two PRs: the rules for every new password (TT-4.6a), and flagging weak existing passwords at sign-in
+(TT-4.6b).
 
 ## What was built
 Every new password (sign-up, "forgot password" reset, changing it on the profile) must:
@@ -13,8 +13,12 @@ Every new password (sign-up, "forgot password" reset, changing it on the profile
 The rules are listed under the password field on all three forms before you type. Existing passwords still work, and
 nobody is made to change theirs.
 
+**Weak existing passwords** (TT-4.6b): when you sign in, your password is checked against these rules -- only the
+result is kept, never the password. If it falls short, the profile's "Update Password" section says why ("Your
+password could be stronger. …") until you change it. Sign-in is never slowed or stopped by it.
+
 ## Test data
-Any seeded account (password `password`): change the password from the profile. The seeded passwords still sign in.
+Any seeded account (password `password`, which is too short for the rules): sign in, then open the profile.
 
 ## Try it
 1. Log in, open the profile, press **Update** under "Update Password". The three rules are listed under "New
@@ -25,9 +29,11 @@ Any seeded account (password `password`): change the password from the profile. 
    allowed).
 5. Try `quiet harbour 2026`: saved.
 6. Sign up with a username and a password containing it: refused.
+7. Sign in as any seeded account (password `password`) and open the profile: "Your password could be stronger. It is
+   shorter than the rules ask…" above "Update Password". Change it to `quiet harbour 2026`: the notice is gone.
 
 ## Deployment notes
-- No migrations. New optional settings (defaults shown): `PASSWORD_MIN_LENGTH=10`, `PASSWORD_CHECK_BREACHES=true`,
+- One migration (TT-4.6b): `users.password_weak_reason` and `users.password_checked_at`, both nullable. New optional settings (defaults shown): `PASSWORD_MIN_LENGTH=10`, `PASSWORD_CHECK_BREACHES=true`,
   `PASSWORD_BREACH_CHECK_TIMEOUT=3` -- `PASSWORD_CHECK_BREACHES=false` turns the outbound check off.
 - The app now calls `https://api.pwnedpasswords.com` on those three forms; if egress is restricted, allow it (or the
   check is just skipped after 3s).
