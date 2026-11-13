@@ -133,19 +133,19 @@ class JoinVideoSessionAction extends Action
     {
         $isGroup = $session->for instanceof GroupTherapy;
         $canModerate = $isGroup && $session->for->isCounsellorUser($user);
-        // Only ever asked of a receive-only member, i.e. a GroupTherapy member.
-        $isMinorMember = $receiveOnly && $session->for->memberIsMinor($user);
+        // SCRUM-329: why a receive-only participant can't ask to speak (an under-18 without consent to speak, or
+        // anonymous) -- for the call panel's copy; only about the joiner themselves.
+        $speakingNote = $receiveOnly ? $this->speakingNote($session, $user) : null;
 
         return [
             'receiveOnly' => $receiveOnly,
             'canSendAudio' => ! $receiveOnly,
             'canSendVideo' => ! $receiveOnly && ! $withholdsCamera,
             'isAnonymous' => $withholdsCamera,
-            // Mirrors RaiseHandAction's own refusal for a minor (SCRUM-324) -- a hand that could
-            // never be granted is never offered. isMinorMember is the reason, for the UI's copy;
-            // it describes only the joiner themselves.
-            'canRaiseHand' => $receiveOnly && ! $isMinorMember,
-            'isMinorMember' => $isMinorMember,
+            // Mirrors RaiseHandAction's own refusal (SCRUM-324/329) -- a hand that couldn't be granted
+            // is never offered; speakingNote says why.
+            'canRaiseHand' => $receiveOnly && ! $speakingNote,
+            'speakingNote' => $speakingNote,
             'canModerate' => $canModerate,
             'speakingGrantIdleTimeout' => (int) config('video.speaking_grant_idle_timeout'),
             // SCRUM-357: participant keys, never user ids -- the same identity the provider and the
@@ -181,16 +181,30 @@ class JoinVideoSessionAction extends Action
     // decided, computed independently of that action rather than returned from it. Always false
     // for 1:1 Therapy (no receive-only concept there) and false for a GroupTherapy's own
     // counsellor/creator (full access, unchanged from TT-3.2's own v1 shape).
+    // EnsureMemberMayBeGrantedSpeakingAction::reason(), asked once per join (a creator's join asks it twice otherwise).
+    private array $speakingNotes = [];
+
+    private function speakingNote(Session $session, User $user): ?string
+    {
+        $key = $session->id.':'.$user->id;
+
+        if (! array_key_exists($key, $this->speakingNotes)) {
+            $this->speakingNotes[$key] = EnsureMemberMayBeGrantedSpeakingAction::new()->reason($session, $user);
+        }
+
+        return $this->speakingNotes[$key];
+    }
+
     private function isReceiveOnly(Session $session, User $user): bool
     {
         if (! $session->for instanceof GroupTherapy) {
             return false;
         }
 
-        // SCRUM-313 (security review): a minor creator, let in by their guardians' consent, watches and listens only until
-        // SCRUM-329 lets a guardian choose "speak" -- consent so far never said they'd be seen and heard.
+        // SCRUM-313/329: a minor creator, let in by their guardians' consent, takes part (microphone, and camera unless
+        // anonymous) only with consent to speak; with consent to watch only -- or anonymous -- they watch and listen.
         return $session->for->isReceiveOnlyVideoParticipant($user)
-            || ($session->for->isUser($user) && EnsureVideoIsAvailableForSessionAction::new()->groupVideoNeedsGuardianConsent($session->for, $user));
+            || ($session->for->isUser($user) && $this->speakingNote($session, $user) !== null);
     }
 
     // A VideoSession that hasn't ended yet is the current epoch to join -- there is at most one

@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\Video\EnsureMemberMayBeGrantedSpeakingAction;
 use App\Actions\Video\GrantSpeakingPermissionAction;
 use App\Contracts\VideoProviderInterface;
 use App\Events\HandLoweredEvent;
@@ -356,37 +357,31 @@ test('a group loaded before it turned anonymous never grants video', function ()
         ->and($calls)->toBe([[$data['member']->id, true, false]]);
 });
 
-// TT-3.2f-g/SCRUM-324: interim hard-block until group-scoped guardian consent (SCRUM-313) exists.
-test('a minor member cannot be granted speaking permission', function () {
+// SCRUM-329 (replacing SCRUM-324's interim block): an under-18 needs their guardians' consent to speak.
+test('a minor member without consent to speak cannot be granted speaking permission', function () {
     Event::fake();
     $data = groupVideoCallForGrantSpeakingAction();
-    $data['groupTherapy']->users()->updateExistingPivot($data['member']->id, ['was_minor_at_join' => true]);
+    $data['member']->update(['dob' => now()->subYears(15)]);
     $calls = [];
     app()->instance(VideoProviderInterface::class, fakeVideoProviderRecordingGrantCapabilities($calls));
 
     expect(fn () => GrantSpeakingPermissionAction::new()->execute($data['session'], $data['counsellorUser'], $data['member']->id))
-        ->toThrow(VideoException::class, 'Speaking permission is not yet available to a minor member in group therapy video.');
+        ->toThrow(VideoException::class, EnsureMemberMayBeGrantedSpeakingAction::NEEDS_SPEAK_CONSENT);
 
     expect($calls)->toBe([])
         ->and($data['memberParticipant']->speakingGrants()->count())->toBe(0);
     Event::assertNotDispatched(SpeakingPermissionChangedEvent::class);
 });
 
-// The join-time snapshot wins over today's age (the plain minor test above already covers an adult
-// who joined as a minor staying blocked); a member with no snapshot (a row predating the column)
-// falls back to a live age check.
-test('the minor check uses the join-time snapshot, falling back to live age when there is none', function () {
+// SCRUM-329: the same rule as joining (EnsureVideoIsAvailableForSessionAction::groupVideoNeedsGuardianConsent) --
+// today's dob, not the join-time snapshot: a dob change across 18 needs approval (SCRUM-292), and the requirement
+// drops at 18, as one-to-one (SCRUM-288 Q6).
+test('the under-18 check is today\'s age, as for joining', function () {
     $data = groupVideoCallForGrantSpeakingAction();
     $calls = [];
     app()->instance(VideoProviderInterface::class, fakeVideoProviderRecordingGrantCapabilities($calls));
-
-    $data['groupTherapy']->users()->updateExistingPivot($data['member']->id, ['was_minor_at_join' => null]);
-    $data['member']->update(['dob' => now()->subYears(15)]);
-
-    expect(fn () => GrantSpeakingPermissionAction::new()->execute($data['session'], $data['counsellorUser'], $data['member']->id))
-        ->toThrow(VideoException::class, 'Speaking permission is not yet available to a minor member in group therapy video.');
-
-    $data['groupTherapy']->users()->updateExistingPivot($data['member']->id, ['was_minor_at_join' => false]);
+    $data['groupTherapy']->users()->updateExistingPivot($data['member']->id, ['was_minor_at_join' => true]);
+    $data['member']->update(['dob' => now()->subYears(19)]);
     Event::fake();
 
     GrantSpeakingPermissionAction::new()->execute($data['session'], $data['counsellorUser'], $data['member']->id);

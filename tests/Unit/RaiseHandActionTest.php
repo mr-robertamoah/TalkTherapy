@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\Video\EnsureMemberMayBeGrantedSpeakingAction;
 use App\Actions\Video\RaiseHandAction;
 use App\Events\HandRaisedEvent;
 use App\Exceptions\VideoException;
@@ -116,15 +117,17 @@ test('raising a hand is not available for a 1:1 Therapy video session', function
         ->toThrow(VideoException::class, 'Raising a hand is only available in group therapy video calls.');
 });
 
-// TT-3.2f-g/SCRUM-324: a minor can never be granted yet, so their hand-raise is refused up front
-// rather than left as a dead-end entry in the counsellors' queue.
-test('a minor member cannot raise their hand', function () {
+// TT-3.2f-g/SCRUM-324, SCRUM-329: a minor who couldn't be granted (no consent to speak) has their hand-raise refused
+// up front rather than left as a dead-end entry in the counsellors' queue.
+test('a minor member without consent to speak cannot raise their hand', function () {
     Event::fake();
     $data = groupVideoCallForRaiseHandAction();
-    $data['groupTherapy']->users()->updateExistingPivot($data['member']->id, ['was_minor_at_join' => true]);
+    $data['member']->update(['dob' => now()->subYears(15)]);
+    $data['groupTherapy']->update(['anonymous' => false]);
+    $data['groupTherapy']->users()->updateExistingPivot($data['member']->id, ['anonymous' => false]);
 
     expect(fn () => RaiseHandAction::new()->execute($data['session'], $data['member']))
-        ->toThrow(VideoException::class, 'Speaking permission is not yet available to a minor member in group therapy video.');
+        ->toThrow(VideoException::class, EnsureMemberMayBeGrantedSpeakingAction::NEEDS_SPEAK_CONSENT);
 
     expect($data['memberParticipant']->currentHandRaise())->toBeNull();
     Event::assertNotDispatched(HandRaisedEvent::class);

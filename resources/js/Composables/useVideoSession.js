@@ -132,7 +132,7 @@ export default function useVideoSession(session) {
             canSendVideo: true,
             isAnonymous: false,
             canRaiseHand: false,
-            isMinorMember: false,
+            speakingNote: null,
             canModerate: false,
             speakingGrantIdleTimeout: 300,
         }
@@ -581,6 +581,18 @@ export default function useVideoSession(session) {
     }
 
     function applyOwnSpeakingPermission({ canSendAudio, canSendVideo, reason }) {
+        // SCRUM-329: a creator (who joined able to speak, never by a grant) is only ever muted when their guardian's
+        // consent now lets them watch only -- the call is told it as a plain revoke (it mustn't learn they're under 18),
+        // so the panel becomes the watching one here.
+        if (!capabilities.value.receiveOnly && !canSendAudio) {
+            Promise.resolve(client?.disableLocalMedia()).catch(() => {})
+            capabilities.value = { ...capabilities.value, receiveOnly: true, canSendAudio: false, canSendVideo: false, canRaiseHand: false }
+            isMuted.value = true
+            isCameraOn.value = false
+            speakingNotice.value = 'You can now watch and listen only.'
+            return
+        }
+
         if (!capabilities.value.receiveOnly) return
 
         const wasGranted = holdsSpeakingGrant.value
@@ -606,7 +618,7 @@ export default function useVideoSession(session) {
         stopIdleTracking()
         speakingNotice.value = reason === 'IDLE_AUTO_EXPIRY'
             ? 'Your permission to speak ended because you stayed muted for a while. Raise your hand to ask again.'
-            : 'A counsellor ended your permission to speak.'
+            : 'Your permission to speak ended.'
     }
 
     async function teardownClient() {

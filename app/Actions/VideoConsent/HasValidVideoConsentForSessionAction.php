@@ -3,6 +3,7 @@
 namespace App\Actions\VideoConsent;
 
 use App\Actions\Action;
+use App\Enums\VideoConsentLevelEnum;
 use App\Models\GroupTherapy;
 use App\Models\Session;
 use App\Models\Therapy;
@@ -74,13 +75,26 @@ class HasValidVideoConsentForSessionAction extends Action
             return false;
         }
 
+        return $this->groupGrants($session, $ward)->exists();
+    }
+
+    // SCRUM-329: whether $ward's guardians have consented to them speaking, not just watching, in this group session --
+    // a valid SPEAK-level grant for the group or the session, from a guardian they still have.
+    public function speakingAllowedFor(Session $session, User $ward): bool
+    {
+        return $session->for instanceof GroupTherapy && $this->groupGrants($session, $ward)
+            ->where('level', VideoConsentLevelEnum::speak->value)
+            ->exists();
+    }
+
+    private function groupGrants(Session $session, User $ward)
+    {
         return VideoConsent::query()
-            ->whereIn('guardian_id', $ward->activeGuardianships()->select('guardianship.guardian_id'))
+            ->fromActiveGuardianOf($ward)
             ->where(function ($query) use ($session, $ward) {
                 $query
                     ->where(fn ($q) => $q->whereValidFor($ward->id, GroupTherapy::class, $session->for_id))
                     ->orWhere(fn ($q) => $q->whereValidFor($ward->id, Session::class, $session->id));
-            })
-            ->exists();
+            });
     }
 }

@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\VideoConsent\ChangeGroupVideoConsentLevelAction;
 use App\Actions\VideoConsent\GetGroupVideoConsentForGuardianAction;
 use App\Actions\VideoConsent\GetGroupVideoConsentSessionAction;
 use App\Actions\VideoConsent\GrantGroupVideoConsentAction;
 use App\Actions\VideoConsent\RequestGroupVideoConsentAction;
 use App\Actions\VideoConsent\RevokeVideoConsentAction;
 use App\Enums\SessionStatusEnum;
+use App\Enums\VideoConsentLevelEnum;
 use App\Exceptions\VideoConsentException;
 use App\Http\Resources\VideoConsentResource;
 use App\Models\GroupTherapy;
@@ -38,6 +40,8 @@ class GroupVideoConsentController extends Controller
         $request->validate([
             'wardId' => ['required', 'integer'],
             'scope' => ['required', Rule::in(['group', 'session'])],
+            // Watch and listen unless the guardian chose otherwise (a page opened before levels existed sends none).
+            'level' => ['nullable', Rule::in(VideoConsentLevelEnum::values())],
         ]);
 
         try {
@@ -51,7 +55,22 @@ class GroupVideoConsentController extends Controller
                 : (GetGroupVideoConsentSessionAction::new()->execute($group)
                     ?? throw new VideoConsentException('This group has no session coming up to give consent for.', 422));
 
-            GrantGroupVideoConsentAction::new()->execute($request->user(), $ward, $consentable);
+            GrantGroupVideoConsentAction::new()->execute($request->user(), $ward, $consentable, VideoConsentLevelEnum::from($request->input('level') ?? VideoConsentLevelEnum::watch->value));
+
+            return response()->json(['data' => $this->state($request->user(), $group)]);
+        } catch (Throwable $th) {
+            return FailureResponse::json($th);
+        }
+    }
+
+    public function changeLevel(Request $request)
+    {
+        $request->validate(['level' => ['required', Rule::in(VideoConsentLevelEnum::values())]]);
+
+        try {
+            $group = $this->group($request);
+
+            ChangeGroupVideoConsentLevelAction::new()->execute($request->user(), $this->ownConsent($request, $group), $group, VideoConsentLevelEnum::from($request->input('level')));
 
             return response()->json(['data' => $this->state($request->user(), $group)]);
         } catch (Throwable $th) {
@@ -63,23 +82,29 @@ class GroupVideoConsentController extends Controller
     {
         try {
             $group = $this->group($request);
-            // The caller's own wards in the group first (refused if none), then only their grants for this group: one
-            // answer for every other consent id, so this can't be used to learn about anyone else's.
-            $wardIds = collect(GetGroupVideoConsentForGuardianAction::new()->execute($request->user(), $group)['wards'])
-                ->map(fn (array $entry) => $entry['ward']->id);
-            $consent = VideoConsent::query()
-                ->whereKey($request->route('consentId'))
-                ->whereIn('ward_id', $wardIds)
-                ->whereForGroup($group)
-                ->first()
-                ?? throw new VideoConsentException('There is no such video consent to withdraw.', 422);
 
-            RevokeVideoConsentAction::new()->execute($request->user(), $consent);
+            RevokeVideoConsentAction::new()->execute($request->user(), $this->ownConsent($request, $group));
 
             return response()->json(['data' => $this->state($request->user(), $group)]);
         } catch (Throwable $th) {
             return FailureResponse::json($th);
         }
+    }
+
+    // The caller's own wards in the group first (refused if none), then only their grants for this group: one answer
+    // for every other consent id, so this can't be used to learn about anyone else's.
+    private function ownConsent(Request $request, GroupTherapy $group): VideoConsent
+    {
+        $wardIds = collect(GetGroupVideoConsentForGuardianAction::new()->execute($request->user(), $group)['wards'])
+            ->map(fn (array $entry) => $entry['ward']->id);
+
+        return VideoConsent::query()
+            ->whereKey($request->route('consentId'))
+            ->whereIn('ward_id', $wardIds)
+            ->whereNull('revoked_at')
+            ->whereForGroup($group)
+            ->first()
+            ?? throw new VideoConsentException('There is no such video consent.', 422);
     }
 
     // The ward's own: ask their guardians.

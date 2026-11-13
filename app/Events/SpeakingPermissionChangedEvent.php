@@ -2,6 +2,7 @@
 
 namespace App\Events;
 
+use App\Enums\SpeakingPermissionRevocationReasonEnum;
 use App\Models\VideoSession;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
@@ -54,7 +55,11 @@ class SpeakingPermissionChangedEvent implements ShouldBroadcast
             'participantKey' => $this->videoSession->participantKeyFor($this->userId),
             'canSendAudio' => $this->canSendAudio,
             'canSendVideo' => $this->canSendVideo,
-            'reason' => $this->reason,
+            // SCRUM-329 (security review): everyone in the call gets this, so a guardian's consent ending someone's floor is
+            // told as a plain revoke -- naming it would tell the group that participant is under 18.
+            'reason' => $this->reason === SpeakingPermissionRevocationReasonEnum::guardian_consent->value
+                ? SpeakingPermissionRevocationReasonEnum::manual->value
+                : $this->reason,
         ];
     }
 }
