@@ -243,6 +243,7 @@ onBeforeUnmount(() => {
     <VideoConsentRequiredBanner
       v-else-if="status === 'consent_required'"
       :message="lastError"
+      :is-group="session?.forType === 'group'"
     />
 
     <div v-else-if="status === 'error'" class="text-center py-6">

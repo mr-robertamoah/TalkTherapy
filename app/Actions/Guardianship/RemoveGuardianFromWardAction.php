@@ -3,6 +3,7 @@
 namespace App\Actions\Guardianship;
 
 use App\Actions\Action;
+use App\Actions\Video\RemovePersonFromLiveCallsAction;
 use App\Actions\VideoConsent\InvalidateVideoConsentAction;
 use App\Enums\VideoConsentRevocationReasonEnum;
 use App\Models\Guardianship;
@@ -48,6 +49,11 @@ class RemoveGuardianFromWardAction extends Action
             if ($trigger !== self::GUARDIAN_SUSPENDED) {
                 // Best effort, so a failure can't skip the pause scheduled after it.
                 DB::afterCommit(fn () => rescue(fn () => $this->lapseVideoConsents($guardian, $locked), report: true));
+            } else {
+                // SCRUM-313 (security review): a suspended guardian's grants stay (they count again if it's lifted) but
+                // don't count meanwhile, so a minor in a group call on that guardian's grant alone is taken out
+                // (re-checked under their join lock: another guardian's grant keeps them in). A 1:1 call follows the pause.
+                DB::afterCommit(fn () => rescue(fn () => RemovePersonFromLiveCallsAction::new()->execute($locked, RemovePersonFromLiveCallsAction::VIDEO_CONSENT_WITHDRAWN), report: true));
             }
 
             if (! $wasPaused && $willBePaused) {

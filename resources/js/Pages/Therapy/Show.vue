@@ -1,5 +1,6 @@
 <script setup>
 import MiniGroupTherapyComponent from '@/Components/MiniGroupTherapyComponent.vue';
+import GroupVideoConsentModal from '@/Components/GroupVideoConsentModal.vue';
 import MiniTherapyComponent from '@/Components/MiniTherapyComponent.vue';
 import useLoader from '@/Composables/useLoader';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
@@ -19,6 +20,7 @@ const props = defineProps({
 
 const newTherapy = ref(null)
 const newGroupTherapy = ref(null)
+const videoConsentGroup = ref(null)
 const wardTherapies = ref({
     individual: { data: [], page: 1 },
     group: { data: [], page: 1 }
@@ -334,12 +336,21 @@ function updatePage(res, items, type = 'individual') {
                         <div class="text-gray-900 px-4">Group Therapies</div>
                         <div class="m-2 px-3 pb-6 overflow-hidden overflow-x-auto space-x-5 flex justify-start items-center">
                             <template v-if="wardTherapies.group.data?.length">
-                                <MiniGroupTherapyComponent
+                                <!-- SCRUM-313: a guardian answers their ward's group video consent here. -->
+                                <div
                                     v-for="therapy in wardTherapies.group.data"
                                     :key="therapy.id"
-                                    :groupTherapy="therapy"
                                     class="w-[320px] shrink-0"
-                                />
+                                >
+                                    <MiniGroupTherapyComponent :groupTherapy="therapy" />
+                                    <div class="mt-2 text-center">
+                                        <button
+                                            type="button"
+                                            class="text-sm font-medium text-orange-700 hover:underline"
+                                            @click="videoConsentGroup = therapy"
+                                        >video consent</button>
+                                    </div>
+                                </div>
 
                                 <div
                                     title="get more therapies"
@@ -410,5 +421,10 @@ function updatePage(res, items, type = 'individual') {
                 </div>
             </div>
         </div>
+        <GroupVideoConsentModal
+            :show="!!videoConsentGroup"
+            :group-therapy="videoConsentGroup"
+            @close="videoConsentGroup = null"
+        />
     </AuthenticatedLayout>
 </template>

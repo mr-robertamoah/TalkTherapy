@@ -78,6 +78,21 @@ class VideoConsent extends Model
             ->whereNull('revoked_at');
     }
 
+    // SCRUM-313: grants for a group -- the whole group's, or one of its sessions' (soft-deleted ones too).
+    public function scopeWhereForGroup($query, GroupTherapy $group)
+    {
+        return $query->where(fn ($query) => $query
+            ->where(fn ($q) => $q->where('consentable_type', GroupTherapy::class)->where('consentable_id', $group->id))
+            ->orWhere(fn ($q) => $q->where('consentable_type', Session::class)
+                ->whereIn('consentable_id', Session::withTrashed()->where('for_type', GroupTherapy::class)->where('for_id', $group->id)->select('id'))));
+    }
+
+    // SCRUM-313: from a guardian the ward still has -- the only grants the join gate counts.
+    public function scopeFromActiveGuardianOf($query, User $ward)
+    {
+        return $query->whereIn('guardian_id', $ward->activeGuardianships()->select('guardianship.guardian_id'));
+    }
+
     public function allowsSpeaking(): bool
     {
         return $this->level === VideoConsentLevelEnum::speak->value;

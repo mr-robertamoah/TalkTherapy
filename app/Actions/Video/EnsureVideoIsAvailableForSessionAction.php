@@ -50,7 +50,7 @@ class EnsureVideoIsAvailableForSessionAction extends Action
         }
 
         if ($session->for instanceof GroupTherapy) {
-            $this->ensureGroupTherapyVideoIsAllowed($session->for, $user);
+            $this->ensureGroupTherapyVideoIsAllowed($session, $user);
         } elseif ($session->for instanceof Therapy) {
             $this->ensureTherapyVideoIsAllowed($session, $user);
         } else {
@@ -111,14 +111,16 @@ class EnsureVideoIsAvailableForSessionAction extends Action
     //
     // The user's decision (2026-11-05, replacing the 2026-09-14 one that let a minor member join
     // receive-only unconditionally): group video follows the same rule as 1:1 -- a minor needs a
-    // guardian's video consent before joining, and a safeguarding exception (SCRUM-381) doesn't
-    // stand in for it. Group-scoped consent doesn't exist yet (SCRUM-313), so until it does this
-    // fails closed for EVERY minor in the group -- the creator and ordinary members alike,
-    // receive-only included. SCRUM-313 adds the consent path here.
-    private function ensureGroupTherapyVideoIsAllowed(GroupTherapy $groupTherapy, User $user): void
+    // guardian's video consent before joining (the creator and ordinary members alike, receive-only
+    // included), and a safeguarding exception (SCRUM-381) doesn't stand in for it.
+    // SCRUM-313: was a blanket block on every minor (the interim of 2026-11-05). Now a minor needs a valid consent of
+    // their own guardians' -- for the whole group or this session (HasValidVideoConsentForSessionAction::forGroupMember).
+    // A VideoConsentRequiredException, as one-to-one, so the call panel shows why and how to ask. JoinVideoSessionAction
+    // asks again under the join lock, as withdrawing consent removes them under it.
+    public function ensureGroupTherapyVideoIsAllowed(Session $session, User $user): void
     {
-        if ($this->groupVideoNeedsGuardianConsent($groupTherapy, $user)) {
-            throw new VideoException(self::GROUP_NEEDS_GUARDIAN_CONSENT, 422);
+        if ($this->groupVideoNeedsGuardianConsent($session->for, $user) && ! HasValidVideoConsentForSessionAction::new()->forGroupMember($session, $user)) {
+            throw new VideoConsentRequiredException(self::GROUP_NEEDS_GUARDIAN_CONSENT, 422);
         }
     }
 

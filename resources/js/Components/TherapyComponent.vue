@@ -39,6 +39,15 @@
             <span
                 v-if="computedGroupVideoNeedsConsent"
                 class="min-w-0 shrink whitespace-normal text-sm text-gray-600">Video calls in a group need a parent or guardian's consent first.</span>
+            <PrimaryButton
+                v-if="computedGroupVideoNeedsConsent"
+                :disabled="askingForVideoConsent"
+                @click="askForGroupVideoConsent" class="shrink-0">ask a parent or guardian</PrimaryButton>
+            <button
+                v-if="computedGroupVideoNeedsConsent"
+                type="button"
+                class="shrink-0 text-sm text-gray-700 underline"
+                @click="() => router.reload()">check again</button>
     </div>
     <VideoCallPanel
         v-if="computedCanJoinVideo && videoActive"
@@ -374,7 +383,7 @@ import Alert from './Alert.vue';
 import useAlert from '@/Composables/useAlert';
 import FilePreview from './FilePreview.vue';
 import MediaCapture from './MediaCapture.vue';
-import { usePage } from '@inertiajs/vue3';
+import { router, usePage } from '@inertiajs/vue3';
 import MiniModal from './MiniModal.vue';
 import useConnectionStatus from '@/Composables/useConnectionStatus';
 import SessionNotesPanel from './SessionNotesPanel.vue';
@@ -722,8 +731,20 @@ const computedCanAbandon = computed(() => {
 // -- GroupTherapy video's own backend allow-list (counsellor, or the group's own creator) has been
 // live since SCRUM-308.
 // The user's decision (2026-11-05): a minor in a group (creator or member) needs a guardian's
-// video consent first, and group consent doesn't exist yet (SCRUM-313) -- so instead of a button
-// that can only refuse, they see a short note (the server's viewerNeedsGuardianVideoConsent).
+// video consent first. SCRUM-313: while they have none for the live session (the server's
+// viewerNeedsGuardianVideoConsent), they see a short note and can ask their guardians instead of a
+// button that can only refuse.
+// SCRUM-313: group consent exists now -- a guardian answers from their own account; the minor can ask them here.
+const askingForVideoConsent = ref(false)
+async function askForGroupVideoConsent() {
+    if (askingForVideoConsent.value) return
+    askingForVideoConsent.value = true
+    await axios
+        .post(route('group.therapies.video_consent.request', { groupTherapyId: props.therapy.id }))
+        .then((res) => setSuccessAlertData({ message: res.data.message }))
+        .catch((err) => setFailedAlertData({ message: err.response?.data?.message || 'Could not ask your parent or guardian right now. Please try again.' }))
+        .finally(() => { askingForVideoConsent.value = false })
+}
 const computedVideoIsLive = computed(() => {
     if (computedAccessPaused.value || !props.isParticipant) return false
 

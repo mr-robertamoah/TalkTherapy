@@ -74,6 +74,11 @@ class JoinVideoSessionAction extends Action
         // call under the same lock, so a join can't slip in between a guardian's removal and that.
         EnsureMinorHasActiveGuardianAction::new()->execute($user, $session->for, fresh: true);
 
+        // SCRUM-313: and a minor's group consent, which a guardian withdrawing removes them under the same lock.
+        if ($session->for instanceof GroupTherapy) {
+            EnsureVideoIsAvailableForSessionAction::new()->ensureGroupTherapyVideoIsAllowed($session, $user);
+        }
+
         [$videoSession, $participantRow] = $this->currentOrNewVideoSessionAndJoin($session, $user, $provider);
 
         // SCRUM-331/380: no one is ever a provider-side owner -- a Daily owner's browser can change
@@ -182,7 +187,10 @@ class JoinVideoSessionAction extends Action
             return false;
         }
 
-        return $session->for->isReceiveOnlyVideoParticipant($user);
+        // SCRUM-313 (security review): a minor creator, let in by their guardians' consent, watches and listens only until
+        // SCRUM-329 lets a guardian choose "speak" -- consent so far never said they'd be seen and heard.
+        return $session->for->isReceiveOnlyVideoParticipant($user)
+            || ($session->for->isUser($user) && EnsureVideoIsAvailableForSessionAction::new()->groupVideoNeedsGuardianConsent($session->for, $user));
     }
 
     // A VideoSession that hasn't ended yet is the current epoch to join -- there is at most one

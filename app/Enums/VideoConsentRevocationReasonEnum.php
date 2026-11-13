@@ -13,4 +13,6 @@ enum VideoConsentRevocationReasonEnum: string
 
     case guardian_action = 'GUARDIAN_ACTION';
     case guardianship_removed = 'GUARDIANSHIP_REMOVED';
+    // SCRUM-313: the ward left the group the grant was for.
+    case membership_ended = 'MEMBERSHIP_ENDED';
 }

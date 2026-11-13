@@ -12005,3 +12005,43 @@ watch only. Four PRs; this first one is groundwork with no behaviour change.
     Revisit with alerting if it shows up in the logs.
   - **For PR 4**: the reminder sweep still skips a session once any ward has been reminded; it must be per ward when
     group sessions get reminders (noted in the code).
+
+## SCRUM-313 PR 2 — consent for a minor in a group (2026-11-13)
+
+- **Where a guardian answers** (the user's decision): from their list of their ward's groups (`/therapies`, Ward
+  Section), not the group page. A guardian of an ordinary member can't open the group -- that would show them the
+  other members' conversation -- so a small panel there shows only their own wards in it and what's been given.
+- **Scope**: the whole group, or "this session only" -- the live session, or else the next one to come, worked out by
+  the server (never taken from the request). Any one active guardian's grant suffices, as one-to-one; any of the
+  ward's guardians can withdraw it.
+- **The join gate** replaces the 2026-11-05 blanket block: a minor (not one of the group's counsellors) joins with a
+  valid grant of their own active guardians for the group or that session, re-checked under the join lock (which
+  withdrawing also takes). The refusal is a VideoConsentRequiredException, so the call panel explains it.
+- **SPEAK level for now**: consent to take part, as one-to-one consent has always meant. Members still join
+  receive-only and minors still can't be given the floor (their own interim check) until SCRUM-329 lets the guardian
+  choose watch only and lifts that check.
+- **Asking**: the minor's "ask a parent or guardian" tells every active guardian (mail and notification centre),
+  naming the ward and the group, never other members; once per group every 6 hours (asking again says so).
+- **Leaving lapses consent** (architect): a ward's grants for a group and its sessions are revoked when they leave
+  (`MEMBERSHIP_ENDED`), so coming back needs new consent.
+- **Reviews.**
+  - **A minor creator watches and listens only for now** (security, High): a group's creator normally joins with
+    microphone and camera, so a guardian's consent -- which never said their child would be seen and heard -- would
+    have put a minor creator on camera. Until SCRUM-329 lets the guardian choose "speak", a minor creator joins
+    receive-only, like a member; the guardian's panel says so.
+  - **Only grants from a guardian the ward still has count everywhere** (reviewer): granting and the guardian's panel
+    now ignore a grant from a suspended or no-longer-adult guardian, as the join gate does -- it no longer stops
+    another guardian granting or shows as "approved".
+  - **A suspended guardian's grant stops covering a live call** (security): the minor is taken out of a group call
+    their consent no longer covers (re-checked: another guardian's grant keeps them in). The grants themselves stay,
+    counting again if the suspension is lifted.
+  - **No oracle in withdraw or grant** (security, reviewer): withdrawing looks a consent up only among the caller's own
+    wards in the group, with one answer otherwise; granting checks the guardian before saying anything about the
+    group's sessions.
+  - **A grant can't land just after leaving** (security): granting locks the ward's row (as leaving does) and checks
+    again inside.
+  - **Accepted**: the minor can ask only while a session is live (the guardian can still approve the next session
+    ahead from their panel; PR 4's reminders cover ahead of time). After a grant, the minor's page updates on
+    "check again" or a reload, not live. The group's name is in the guardian's email, as in other ward notices.
+    An old provider token used after leaving the call themselves is an existing gap shared with suspension and
+    leaving.
