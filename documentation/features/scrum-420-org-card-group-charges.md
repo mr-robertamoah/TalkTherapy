@@ -1,9 +1,8 @@
 # The organisation's card pays for group places (SCRUM-420, part 2)
 
-SCRUM-420 has three parts. Part 1 made a retainer pay for held group sessions. This is part 2: **an organisation's
-saved card now pays for a pay-per-use member's place in a group**, as it already did for a one-to-one therapy.
-Part 3 removes the old label-only leftovers, adds the "Sponsored" badge for group charges, refund tests, and the
-rest of the docs.
+SCRUM-420 has three parts. Part 1 made a retainer pay for held group sessions. Parts 2 and 3: **an organisation's
+saved card now pays for a pay-per-use member's place in a group**, as it already did for a one-to-one therapy, the
+member sees it as "Sponsored", and a refund reverses every counsellor's earning.
 
 ## What was built
 Before, a group "my organisation pays" charged the **member's own card** at the group's price, with the organisation
@@ -20,7 +19,11 @@ recorded only as a label, and nobody earned anything from it. Now:
 - one member's charge (paid, still being confirmed, or in progress) never blocks another member's;
 - each charge records how it splits between the counsellors, and their earnings (one each) are made from that;
 - on the organisation's reconciliation page, a group row lists every counsellor it paid with the totals, and a payout
-  status of "mixed" when only some have been paid out.
+  status of "mixed" when only some have been paid out;
+- the member who paid (only them) sees the group as **Sponsored** ("Paid by <org>" on hover), on its card and on its
+  page's details tab (part 3);
+- refunding a member's place reverses every counsellor's pending earning from it, flags one already paid out, and
+  tells the organisation's admins (part 3).
 
 There's no "my organisation pays" button in the app yet (the API takes an `organizationId`), so no member screen
 changes.
@@ -29,7 +32,7 @@ changes.
 | Account | What to look at |
 |---|---|
 | `org_demo_admin` | `/organizations/1/reconciliation`, **Financed Sessions (Pay-Per-Use)**: a "Group therapy (started <date>)" row, USD 5.00, with Dr. Org DemoCounsellor, share USD 2.00 and fee USD 3.00, payout "not yet earned". |
-| `org_demo_payperuse_member` | Started "Org Pay-Per-Use Demo Group" (PAID, per therapy, USD 30), run by `org_demo_counsellor`. |
+| `org_demo_payperuse_member` | Started "Org Pay-Per-Use Demo Group" (PAID, per therapy, USD 30), run by `org_demo_counsellor`; it shows them "Sponsored". |
 
 These come from the normal seed. A database seeded before this change doesn't have them: re-seed, or create the group,
 the success transaction (reference starting `org_charge_`, with `breakdown`) and its earning in tinker, as the seeder
@@ -42,7 +45,10 @@ does.
    - amount USD 5.00, share USD 2.00 and fee USD 3.00 (the counsellor's fixed USD 20 for the group over its 10
      places, plus 10% of USD 30);
    - payout "not yet earned" (its earning has not been paid out yet).
-3. The charge itself runs against Paystack, so it's covered by tests (`tests/Unit/ChargeOrganizationForGroupTest.php`)
+3. Log in as `org_demo_payperuse_member`, open "Org Pay-Per-Use Demo Group" and its **details** tab: a "Sponsored"
+   badge, "Paid by Org Demo Wellness Collective" on hover. Its card on their home page has it too. Log in as
+   `org_demo_counsellor` and the same group shows no badge.
+4. The charge itself runs against Paystack, so it's covered by tests (`tests/Unit/ChargeOrganizationForGroupTest.php`, refunds in `tests/Unit/GroupOrgChargeRefundTest.php`)
    rather than a screen.
 
 ## Deployment notes
