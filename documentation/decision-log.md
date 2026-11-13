@@ -12106,6 +12106,21 @@ watch only. Four PRs; this first one is groundwork with no behaviour change.
   at minting, as documented for SCRUM-27); the in-call behaviour is covered by tests, and the consent flow was walked
   in the browser in PRs 2 and 3. The reminder was checked end to end: the real sweep sent the guardian's email (Mailpit).
 
+## SCRUM-35a — one password policy (2026-11-13)
+
+- **The policy** (the user's decision on the breach check): at least 10 characters with letters and numbers, not
+  containing the username, the email or the part before the @ (pieces under 4 characters ignored, so a short username
+  doesn't rule out ordinary words), and not in Have I Been Pwned's breached list. In `config('auth.password_policy')`;
+  `Password::defaults()` and the forms' hints read the same values. No forced change and no expiry; existing
+  passwords still sign in (35b flags weak ones).
+- **The breach check fails open within 3 seconds** (Laravel's default is 30), and -- security review, High -- a failure
+  is logged as one line without the exception: Laravel's `report()` writes the stack trace, which in this image carried
+  the password being checked. `zend.exception_ignore_args` is now On in the PHP image as well (php.ini-production's
+  default; confirm it in production).
+- **Reset checks the account only once its token is proven** (security review): before that, the typed email alone --
+  otherwise anyone could confirm a guessed username for an email. Reset and change are now throttled: each can call
+  the breach service.
+- **Tests never call the service**: TestCase binds a never-breached verifier; tests that need the real one fake HTTP.
 ## SCRUM-34/35/41 planning, and SCRUM-41 — email verification you can't miss (2026-11-13)
 
 Planned together (product-owner, project-manager, architect); the user approved. Order: the login lockout bugfix

@@ -1,6 +1,7 @@
 <script setup>
 import GuestLayout from '@/Layouts/GuestLayout.vue';
 import InputError from '@/Components/InputError.vue';
+import PasswordHints from '@/Components/PasswordHints.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
@@ -57,6 +58,7 @@ const submit = () => {
 
                 <TextInput
                     id="password"
+                    aria-describedby="password-hints"
                     type="password"
                     class="mt-1 block w-full"
                     v-model="form.password"
@@ -65,6 +67,7 @@ const submit = () => {
                 />
 
                 <InputError class="mt-2" :message="form.errors.password" />
+                <PasswordHints />
             </div>
 
             <div class="mt-4">

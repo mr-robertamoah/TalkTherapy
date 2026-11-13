@@ -1,5 +1,6 @@
 <script setup>
 import InputError from '@/Components/InputError.vue';
+import PasswordHints from '@/Components/PasswordHints.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
@@ -79,6 +80,7 @@ function clickedUpdate() {
 
                 <TextInput
                     id="password"
+                    aria-describedby="password-hints"
                     ref="passwordInput"
                     v-model="form.password"
                     type="password"
@@ -87,6 +89,7 @@ function clickedUpdate() {
                 />
 
                 <InputError :message="form.errors.password" class="mt-2" />
+                <PasswordHints />
             </div>
 
             <div>

@@ -1,5 +1,7 @@
 <?php
 
+use App\Models\User;
+
 return [
 
     /*
@@ -62,7 +64,7 @@ return [
     'providers' => [
         'users' => [
             'driver' => 'eloquent',
-            'model' => env('AUTH_MODEL', App\Models\User::class),
+            'model' => env('AUTH_MODEL', User::class),
         ],
 
         // 'users' => [
@@ -111,5 +113,18 @@ return [
     */
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
+
+    /*
+    | SCRUM-35: the password policy for every new password (sign-up, reset, change) -- at least `min` characters, with
+    | letters and numbers, not containing the username or email, and (`uncompromised`) not in Have I Been Pwned's list
+    | of breached passwords (only the first 5 characters of its SHA-1 hash are sent; if the service doesn't answer
+    | within `uncompromised_timeout` seconds, the password is allowed).
+    */
+    'password_policy' => [
+        'min' => (int) env('PASSWORD_MIN_LENGTH', 10),
+        'uncompromised' => (bool) env('PASSWORD_CHECK_BREACHES', true),
+        // At least 1: 0 would mean "wait for ever". To turn the check off, PASSWORD_CHECK_BREACHES=false.
+        'uncompromised_timeout' => max(1, (int) env('PASSWORD_BREACH_CHECK_TIMEOUT', 3)),
+    ],
 
 ];

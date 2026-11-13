@@ -2,6 +2,7 @@
 
 namespace Tests;
 
+use Illuminate\Contracts\Validation\UncompromisedVerifier;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -15,6 +16,16 @@ abstract class TestCase extends BaseTestCase
         parent::setUp();
 
         $this->ensureIsolatedTestDatabase();
+
+        // SCRUM-35: no test ever reaches Have I Been Pwned -- every password counts as not breached unless a test binds
+        // the real verifier (with Http::fake) itself.
+        $this->app->instance(UncompromisedVerifier::class, new class implements UncompromisedVerifier
+        {
+            public function verify($data)
+            {
+                return true;
+            }
+        });
 
         // Same class of mechanism-agnostic safety net as the database check: a shared,
         // non-isolated cache store caused real cross-process corruption of rate-limiter counters

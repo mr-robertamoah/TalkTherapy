@@ -16,6 +16,7 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # The base image has no active php.ini, so memory_limit otherwise falls back to PHP's compiled
 # 128M default -- too low to run the full Pest suite without --parallel.
 COPY docker/php/conf.d/memory-limit.ini /usr/local/etc/php/conf.d/memory-limit.ini
+COPY docker/php/conf.d/exceptions.ini /usr/local/etc/php/conf.d/exceptions.ini
 
 # Set working directory
 WORKDIR /var/www/html
