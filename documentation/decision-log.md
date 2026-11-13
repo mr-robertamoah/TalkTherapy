@@ -12198,7 +12198,7 @@ SCRUM-41:
   page; a changed app key mustn't break every page for them). Closing an account wipes all four columns.
 - **Deferred to 34b** (security review, Low): one failure counter per person shared by confirm, turn-off, new codes and
   the sign-in challenge (today each route has its own 6-a-minute ceiling); ending the person's other open sessions when
-  two-factor changes. **Follow-up ticket** (existing, not new here): an email address can be changed without the
+  two-factor changes. **Follow-up ticket SCRUM-422** (an existing issue, not new here): an email address can be changed without the
   password, which also stops the security emails until the new one is verified.
 - **Operations**: keep the old `APP_KEY` in `APP_PREVIOUS_KEYS` for good (production checklist). A rollback of the
   migration deletes everyone's two-factor setup -- harmless now, but after 34b it would turn it off for them.
