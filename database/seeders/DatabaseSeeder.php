@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Actions\Help\CloseHelpRequestAction;
 use App\Actions\Help\CreateHelpChatAction;
 use App\Actions\Help\SendHelpMessageAction;
+use App\Actions\Organization\RecordOrganizationInvoiceLineForSessionAction;
 use App\Actions\Transaction\ChargeOrganizationForModelAction;
 use App\Enums\AdministratorTypeEnum;
 use App\Enums\CounsellorEarningStatusEnum;
@@ -3286,6 +3287,7 @@ class DatabaseSeeder extends Seeder
         ]);
         $settledInvoiceLine = $settledInvoice->lines()->create([
             'session_id' => $orgRetainerDemoSession->id,
+            'user_id' => $activeMember->id,
             'counsellor_id' => $affiliatedCounsellor->id,
             'net_amount' => 4000,
             'fee_amount' => 500,
@@ -3330,11 +3332,41 @@ class DatabaseSeeder extends Seeder
         ]);
         $openInvoice->lines()->create([
             'session_id' => $openInvoiceSession->id,
+            'user_id' => $activeMember->id,
             'counsellor_id' => $affiliatedCounsellor->id,
             'net_amount' => 3500,
             'fee_amount' => 400,
             'currency' => 'USD',
         ]);
+
+        // SCRUM-420: a group the retainer covers org_demo_member in. Its session yesterday was held, so it
+        // is on this month's open invoice -- recorded by the same hook as a real held session, one line for
+        // the member (the group's only counsellor), shown as "Group session on ...".
+        $orgRetainerGroup = $affiliatedCounsellor->addedGroupTherapies()->create([
+            'name' => 'Org Retainer Demo Group',
+            'about' => 'Seeded PAID, PER_SESSION group; the demo org\'s retainer covers org_demo_member (SCRUM-420).',
+            'session_type' => 'Periodic',
+            'payment_type' => 'PAID',
+            'max_users' => 10,
+            'allow_anyone' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => 'in_session',
+            'payment_data' => ['amount' => 30, 'currency' => 'USD', 'per' => 'PER_SESSION'],
+        ]);
+        $orgRetainerGroup->counsellors()->attach($affiliatedCounsellor->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
+        // Joined before yesterday's session, or it isn't theirs to be billed for.
+        $orgRetainerGroup->users()->attach($activeMember->id, ['anonymous' => false, 'background_story' => 'Seeded (SCRUM-420)', 'was_minor_at_join' => false, 'created_at' => now()->subDays(3)]);
+        $orgRetainerGroupSession = $this->seedSession($affiliatedCounsellor, $orgRetainerGroup, [
+            'name' => 'Org Retainer Demo Group Session',
+            'about' => 'Seeded held group session, billed to the demo org\'s retainer (SCRUM-420).',
+            'start_time' => now()->subDay()->addHours(2),
+            'end_time' => now()->subDay()->addHours(3),
+            'type' => 'online',
+            'status' => 'held',
+            'payment_type' => 'PAID',
+        ]);
+        RecordOrganizationInvoiceLineForSessionAction::new()->execute($orgRetainerGroupSession);
 
         $applicantMember = User::factory()->create([
             'firstName' => 'Org',

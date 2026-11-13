@@ -55,6 +55,12 @@ class ChangeSessionStatusAction extends Action
             $endedAt = now();
         }
 
+        // SCRUM-420 (security review): billing below runs only the first time the session ends, as held -- ending it
+        // again, or reopening and ending it, must not bill it (again, or for the first time) with who is in it
+        // today. ended_at is set once (above), so a session that has ended before never qualifies.
+        $endsForTheFirstTime = ! $createSessionDTO->session->ended_at
+            && $createSessionDTO->session->status !== SessionStatusEnum::held->value;
+
         $createSessionDTO->session->update([
             'status' => $status,
             'ended_at' => $endedAt,
@@ -85,7 +91,7 @@ class ChangeSessionStatusAction extends Action
         // of its own either: billing accrual is a side effect that must degrade to a logged
         // warning on failure, never block or undo the session's own status transition, which is
         // the primary clinical fact being recorded here.
-        if ($status === SessionStatusEnum::held->value) {
+        if ($status === SessionStatusEnum::held->value && $endsForTheFirstTime) {
             RecordOrganizationInvoiceLineForSessionAction::new()->execute($session);
         }
 

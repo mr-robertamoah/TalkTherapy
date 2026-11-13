@@ -11877,3 +11877,39 @@ organisations start therapies for members).
   unavoidable while their page must know it's covered; don't add organisation-specific copy to counsellor views.
   The covered line now reads "...an organization's plan -- no payment needed" when there's no name.
 - **Seed.** The demo pay-per-use charge now uses the real `org_charge_` prefix, so the badge shows for it.
+
+---
+
+## SCRUM-420 part 1 — retainer billing for group sessions (2026-11-12)
+
+- **The bug.** `RecordOrganizationInvoiceLineForSessionAction` read `Session::therapy()`, which is null for a group
+  session, so a held group session the retainer covered was never invoiced: the member paid nothing (the payment gate
+  waives it), the organisation was never billed, and its counsellors earned nothing. Fixed **from now on only**; past
+  group sessions stay unbilled (the user's decision).
+- **Per member, per counsellor** (the user's decisions): one line for each covered member and each counsellor running
+  the group. The price is split equally between the active counsellors (any remainder to the first), and each is
+  billed their own terms with the member's organisation on their part.
+- **A fixed or negotiated rate is the counsellor's pay for the whole session** (the user's decision, asked after the
+  code review): each member's line carries an equal share of it across everyone in the session, the first taking any
+  remainder, so all organisations together pay it no more than once. A percentage of the price already works on each
+  member's part.
+- **A counsellor the organisation has no terms with is skipped** (my call): the retainer covers a group through any one
+  of its counsellors (the payment gate's rule), so the others aren't the organisation's to pay. The platform fee is on
+  the parts actually billed (security review), so the organisation doesn't pay a fee on a share it isn't paying.
+- **Billed once, for who was there** (security review, High): ending a held session again re-ran the hook, and the
+  group's members and counsellors may have changed since. Billing now runs only the first time a session ends, as
+  held (`ChangeSessionStatusAction`: `ended_at` not yet set), so neither re-ending one nor reopening and ending it
+  again can bill it later -- including group sessions held before this change -- and the action also does nothing
+  once a session has any line. The cost: a session first ended as failed or abandoned and later corrected to held
+  isn't billed. Members billed are those who joined
+  before the session ended and haven't left: a seat, not attendance, which isn't recorded (the same as a one-to-one
+  client); counsellors likewise, those who had joined before it ended. A free group is never billed. A first run
+  that bills only some members (one organisation's lookup failing) isn't completed later: under-billing, logged.
+- **What the organisation sees** (accepted): a group line reads "Group session on <date>" with the counsellor, never
+  the member. The number of lines per session tells an admin how many of their own covered members were in it; that
+  can't be hidden from a bill, and one-to-one lines already showed each client session. Keep any `user` relation off
+  what org admins are shown.
+- **`organization_invoice_lines.user_id`** is nullable and `nullOnDelete` (users are soft-deleted, so it stays for
+  billing history). Rolling back needs the code and the migration together: the old code with the new key loses its
+  duplicate-line guard.
+
