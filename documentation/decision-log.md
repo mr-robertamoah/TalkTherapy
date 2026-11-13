@@ -11972,3 +11972,36 @@ organisations start therapies for members).
 - **No "my organisation pays" button.** There's none in the app yet for therapies or groups (the API takes
   `organizationId`), so no member-facing messages were added; a future ticket adding the button should show the
   refusals part 2 returns.
+
+## SCRUM-313 PR 1 — video consent per ward (2026-11-13)
+
+Planned with SCRUM-420 (product-owner, project-manager, architect); the user's decisions then: every minor in a group
+needs their own guardian's consent, with a watch-only or speak level (SCRUM-329), and an anonymous minor drops to
+watch only. Four PRs; this first one is groundwork with no behaviour change.
+
+- **Per ward** (architect): one-to-one consent assumed one ward per therapy or session, so a lookup by scope alone
+  found "the" grant. A group has several minors with grants on the same group or session, so `whereValidFor` now
+  takes the ward first and every lookup passes it; a reminder is per (session, ward). Existing reminders are filled in
+  with the therapy's client (they were only ever sent for one-to-one).
+- **`level`**, WATCH or SPEAK, is added now so the schema changes once; every existing grant is SPEAK, which is what
+  one-to-one consent has always meant. Nothing reads it until SCRUM-329.
+- **Withdrawing a group grant** (architect): ending the call, as one-to-one does, would cut off the whole group for
+  one minor. It takes only that minor out, through the one live-call removal action (`VIDEO_CONSENT_WITHDRAWN`): under
+  their join lock, re-checked (no other valid grant of theirs covers that session -- a group-wide one, or that
+  session's, from a guardian they still have), retried from the queue if it can't be done now.
+- **Reviews.**
+  - **One rule for leaving as for joining** (reviewer): the withdrawal re-check uses the join gate's own
+    `groupVideoNeedsGuardianConsent`, so someone who has turned 18, or is one of the group's counsellors, isn't taken
+    out when a grant from when they were a minor lapses.
+  - **A soft-deleted session's live call** (security, Medium): the live-call lookup now loads the session with
+    trashed rows, so a removal can't quietly leave someone in the call. This fixes the other removal policies too.
+  - **A grant must say its level** (security, Medium): the column's SPEAK default is only for grants made before
+    levels existed; creating one without a level throws. A one-to-one grant is SPEAK.
+  - **The one-to-one check fails closed for a group session** (security, Low): it used to return true (no ward), so a
+    group gate calling the wrong method would have let every minor in.
+  - **Accepted: removal in a group can lag** (security, Medium): it waits on the join lock and, if that is still busy or
+    a step fails, is retried from the queue (10s, then 30s and 90s), with a logged error if every retry fails --
+    the same as guardian loss and suspension in a group. Ending the whole group call for one minor would be worse.
+    Revisit with alerting if it shows up in the logs.
+  - **For PR 4**: the reminder sweep still skips a session once any ward has been reminded; it must be per ward when
+    group sessions get reminders (noted in the code).
