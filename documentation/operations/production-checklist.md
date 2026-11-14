@@ -68,10 +68,26 @@ Check every item before going live.
   - Setup is shown by default. Check the production `.env` doesn't still say `TWO_FACTOR_ENABLED=false` (an earlier
     example suggested it) unless it should stay hidden; after changing it, `php artisan config:clear`. Off hides
     setting it up only: accounts that have it are still asked for the code and can still manage it.
+  - Requiring it for administrators (SCRUM-34d) is off until `TWO_FACTOR_ADMINS_REQUIRED_FROM` is set to a date --
+    `YYYY-MM-DD` only, starting at 00:00 in `APP_TIMEZONE` (UTC by default); anything else (including `false`) is off.
+    Order:
+    1. Deploy with it unset and `TWO_FACTOR_ENABLED` on.
+    2. Set a date some weeks out; `php artisan config:clear`. Administrators without it now see a reminder.
+    3. Before the date, count who's left and chase them:
+       `php artisan tinker --execute='echo App\Models\User::whereHas("administrator")->whereNull("two_factor_confirmed_at")->count();'`.
+       Every super administrator should have it on and have kept their recovery codes.
+    4. From the date, administrators without it are sent to their profile to set it up (they stay signed in; admin
+       pages, actions and admin powers wait). To stop requiring it: unset it (or move the date) and `config:clear`.
+  - The way back for an administrator (a super administrator too) who lost their phone and recovery codes is the
+    server: `sudo -u www-data php artisan user:two-factor-reset <username|email>` (or `<id> --id`; asks first; `--force` for a
+    non-interactive run such as SSM Run Command). The admin users list refuses administrators' accounts. Confirm who
+    the person is outside the app first, and make sure more than one person has shell/SSM access before setting the
+    date. A code rollback past SCRUM-34d removes this command -- keep another way to reset an administrator's.
   - A code rollback past SCRUM-34b would let accounts with two-factor in with the password alone -- roll back with
     the switch instead, and count them first (`users.two_factor_confirmed_at` not null).
-  - `LOG_LEVEL` is `notice` or lower (`info`, `debug`): the line a super administrator's reset writes
-    (`Two-factor sign-in reset by an administrator`, monitoring.md) is the record of it, and a higher level drops it.
+  - `LOG_LEVEL` is `notice` or lower (`info`, `debug`): the lines a reset writes (`Two-factor sign-in reset by an
+    administrator`, `Two-factor sign-in reset on the server`; monitoring.md) are the record of it, and a higher level
+    drops them.
   - Queue workers restart on deploy (`deploy.sh` does): the security notices are queued, and an old worker doesn't know
     the newer kinds.
 

@@ -6,6 +6,7 @@ use App\Http\Resources\UserResource;
 use App\Support\AdminNavigation;
 use App\Support\InertiaHistory;
 use App\Support\PasswordRules;
+use App\Support\TwoFactorRequirement;
 use Closure;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -92,6 +93,9 @@ class HandleInertiaRequestsV2 extends Middleware
             'verificationStatus' => fn () => $request->hasSession() && in_array($request->session()->get('status'), ['verification-link-sent', 'verification-throttled', 'email-verified'], true)
                 ? $request->session()->get('status')
                 : null,
+            // SCRUM-34d: for an administrator who still has to set up two-factor sign-in -- when it's required from, and
+            // whether that's already passed (the layout's reminder, or the profile's "required now").
+            'twoFactorRequirement' => fn () => TwoFactorRequirement::for($request->user()),
             ...$this->adminArea($request),
         ];
     }

@@ -12256,3 +12256,37 @@ SCRUM-41:
 - **One place turns two-factor off** (`User::turnOffTwoFactor()`), for the person and for the reset.
 - **Demo data**: `two_factor_demo` with a fixed key and recovery codes, documented. Fixed values only ever for a non-administrator demo account. Like every seeded password, demo
   data only (the seeder has no production guard -- an accepted, already-logged risk).
+
+## SCRUM-34d — required for platform administrators; reset on the server (2026-11-14)
+
+- **Who**: every account with an administrator row (normal and super) -- "platform admins" in the approved plan.
+  Organisation admins aren't platform administrators and aren't affected.
+- **When**: from `TWO_FACTOR_ADMINS_REQUIRED_FROM` (a date, the start of that day in the app's timezone); unset by
+  default, so nothing changes until the deployment picks a day. Before it, a reminder banner (dismissible for the
+  browser session); no reminder emails (none asked for -- the banner is on every page they open).
+- **"Never a lockout", concretely**: from the date they can reach only their own account -- a short list of routes
+  (profile and what its page loads, two-factor setup, email, password, their notices, signing out); everything else
+  is refused (JSON 403, otherwise a redirect to the profile). They stay signed in. Refused by default rather than by
+  the `admin` middleware (security review, High: admin powers also live on shared routes whose controllers check
+  `isAdmin()` -- reading therapy content and identity documents, verifying counsellors, answering requests, changing
+  therapies, the admin help-request channel). Their own ordinary features wait too, until it's set up: minutes, and
+  the only way the requirement can't be walked around.
+- **Off while setup is switched off** (`TWO_FACTOR_ENABLED=false`): otherwise administrators would be sent to a setup
+  that isn't there -- the lockout the plan rules out. An unreadable date also requires nothing, with a warning in the
+  log, rather than breaking every request.
+- **Turning it off stays allowed** after the date (password and code, as before): it's how someone moves to a new
+  phone, and the redirect sends them straight back to set it up.
+- **`user:two-factor-reset {user} {--id} {--force}`**: by username, then email (separate lookups); a number is an id
+  only with `--id` (security review: a username may be all digits). Shows who it found -- even with `--force` -- and
+  whether they're an administrator, and asks first. Logs who ran it (sudo user, else process owner), host and
+  `forced` (ops/security reviews; SSM history is the fuller record). The same reset as the admin list's (extracted to `ResetTwoFactorAction`); logged at
+  `notice` as `Two-factor sign-in reset on the server`. The way back for an administrator who lost their phone and
+  codes, including the last super administrator.
+- **No new seed data**: the seeded administrators have no two-factor, which is what the requirement needs to be tried.
+- **The date is `YYYY-MM-DD` only** (ops review, blocker): a loose parse read `false` as today (required at once) and
+  `tomorrow` as a day that never comes. Anything else -- `false` quietly, the rest with one warning per request -- is
+  off.
+- **Reviews, also applied**: the API group resolves a token caller too, as the suspension check does (reviewer); an
+  Inertia write gets the 303; the banner's "on the profile" check follows each visit; the cheap checks (guest, not an
+  admin) come before the date is read. Accepted: `/broadcasting/auth` is refused too while blocked, so live updates
+  (the bell) wait until it's set up.

@@ -7,6 +7,7 @@ use App\Http\Middleware\EnsureSafetyFlagsAreEnabled;
 use App\Http\Middleware\EnsureTwoFactorIsEnabled;
 use App\Http\Middleware\EnsureUserIsAdmin;
 use App\Http\Middleware\HandleInertiaRequestsV2;
+use App\Http\Middleware\RequireTwoFactorForAdmins;
 use App\Http\Middleware\StoreVisitationMiddleware;
 use App\Support\AppHost;
 use App\Support\FailureResponse;
@@ -42,6 +43,9 @@ return Application::configure(basePath: dirname(__DIR__))
             AddLinkHeadersForPreloadedAssets::class,
             // SCRUM-359: after the session has started, so the signed-in user resolves.
             EnsureAccountIsNotSuspended::class,
+            // SCRUM-34d: from the required date, an administrator without two-factor sign-in only reaches their own account
+            // until it's set up -- inside Inertia's middleware, so a redirect after a PUT/PATCH/DELETE becomes a 303.
+            RequireTwoFactorForAdmins::class,
         ]);
 
         $middleware->api(append: [
@@ -52,6 +56,8 @@ return Application::configure(basePath: dirname(__DIR__))
             SubstituteBindings::class,
             // SCRUM-359: after EnsureFrontendRequestsAreStateful has started the session.
             EnsureAccountIsNotSuspended::class,
+            // SCRUM-34d: the same for the app's JSON calls.
+            RequireTwoFactorForAdmins::class,
         ]);
 
         $middleware->append(StoreVisitationMiddleware::class);
