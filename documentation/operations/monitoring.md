@@ -86,17 +86,23 @@ of an existing pause.` (backfill, below).
   exception (`exception`, `ward`, `by`, plus `request`/`renews` on a grant).
 - `group_therapy.member_left` (SCRUM-73): a member left a group. Context: `group_therapy_id`,
   `user_id`.
-- `Two-factor sign-in reset by an administrator` (SCRUM-34c, notice): a super administrator turned off someone's
-  two-factor sign-in (lost phone and recovery codes). Context: `admin_id`, `user_id`, `ip` -- ids only. It's the
-  record of the reset (there is no table): resets should be rare, so review each one against the support request
-  that confirmed who the person was; a burst, or an unexpected `admin_id`, may mean a taken-over super-admin account
-  or someone talking support into resets.
-- `Two-factor sign-in reset on the server` (SCRUM-34d, notice): someone with shell access ran `user:two-factor-reset`.
-  Context: `user_id`, `admin` (whether it was an administrator's account), `by` (the sudo user, else the process
-  owner -- often just `www-data`, so match it to the SSM Run Command / Session Manager history for that time), `host`,
-  `forced` (the confirmation was skipped). Every
-  one should match a support request; one with `admin: true` that nobody can account for means the server access
-  itself needs looking at.
+- `Two-factor sign-in reset requested by an administrator` (SCRUM-34c/424, notice): a super administrator scheduled a
+  reset (lost phone and recovery codes). Context: `admin_id`, `user_id`, `reset_id`, `due_at`, `ip` -- ids only. Each
+  should match a support request that confirmed who the person was; a burst, or an unexpected `admin_id`, may mean a
+  taken-over super-admin account or someone talking support into resets.
+- `Two-factor sign-in reset requested on the server` (SCRUM-34d/424, notice): `user:two-factor-reset` scheduled one.
+  Context: `user_id`, `admin`, `by` (the sudo user, else the process owner -- often just `www-data`, so match it to
+  the SSM history for that time), `host`, `forced`, `reset_id`, `due_at`.
+- `Two-factor sign-in reset on the server` (SCRUM-34d/424, notice): `--now` -- applied at once, no wait. Context as
+  above plus `immediate: true`, `has_reason`. Rare by design: every one should be a documented break-glass. Alert on
+  any; one with `admin: true` that nobody can account for means the server access itself needs looking at.
+- `Two-factor sign-in reset applied` (SCRUM-424, notice): the wait ended and it applied. Context: `reset_id`,
+  `user_id`, `requested_by`, `source`.
+- `Two-factor sign-in reset cancelled` / `… cancelled on the server` (SCRUM-424, notice): stopped before applying;
+  `reason` is `link`, `signed_in`, `profile`, `self_change`, `admin`, `server`, `superseded` (set up again meanwhile) or
+  `already_off`. A cancel by the person (`link`, `signed_in`, `profile`) may mean the reset wasn't wanted -- check
+  the request behind it.
+- The `two_factor_resets` table is the durable record of resets (who asked, the reason, when due, how it ended).
 - `TWO_FACTOR_ADMINS_REQUIRED_FROM is not a date (YYYY-MM-DD); …` (SCRUM-34d, warning, at most once per request): the
   configured date couldn't be read, so two-factor is **not** required for administrators. Context: `value`. Fix the
   `.env` and `php artisan config:clear`. Alert on any occurrence -- a requirement you think is on isn't.
@@ -235,3 +241,15 @@ these server-side waits on a Reverb terminate API that works with private channe
 - `SessionCheckRequestedEvent` rows in `failed_jobs` (or rescued exceptions) mean the nudge isn't reaching Reverb:
   open tabs then find out about an ended session only on their next request. Nothing is less secure (EndStaleSessions
   still refuses them).
+
+## Two-factor reset wait (SCRUM-424)
+
+- Resets apply only from the scheduler -- `GET /api/health/scheduler` going 503 covers it. Overdue ones directly:
+  `php artisan tinker --execute='echo App\Models\TwoFactorReset::pending()->where("due_at","<",now()->subMinutes(5))->count();'`
+  -- above 0 means the sweep isn't running, a row is stuck, or the warning email hasn't gone out.
+- `Two-factor resets are due but the person has not been emailed yet; they wait` (warning, each minute while true):
+  the warning email (`TwoFactorResetRequestedNotification`) hasn't gone out -- the queue worker or mail is down, or
+  the job failed (`failed_jobs`; retry with `queue:retry`). Nothing applies until it has.
+- `A two-factor reset could not be applied` (error; `reset_id`, `error`): one row threw; it's retried every minute.
+  The same `reset_id` repeating means a stuck row -- look at it, or cancel it (`user:two-factor-reset <user> --cancel`).
+- `The two-factor reset sweep failed.` (error): the whole sweep threw -- no reset is applying. Alert on two in a row.

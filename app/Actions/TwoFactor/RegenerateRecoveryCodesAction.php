@@ -4,6 +4,7 @@ namespace App\Actions\TwoFactor;
 
 use App\Actions\Action;
 use App\Exceptions\TwoFactorException;
+use App\Models\TwoFactorReset;
 use App\Models\User;
 use App\Notifications\TwoFactorChangedNotification;
 use App\Support\TwoFactorCodes;
@@ -33,6 +34,9 @@ class RegenerateRecoveryCodesAction extends Action
             $user->forceFill(['two_factor_recovery_codes' => $hashes])->save();
             $user->notify(new TwoFactorChangedNotification(TwoFactorChangedNotification::RECOVERY_CODES_REGENERATED));
         });
+
+        // SCRUM-424: they have their second factor -- a reset the team scheduled no longer makes sense.
+        CancelTwoFactorResetAction::new()->forUser($user, TwoFactorReset::CANCELLED_BY_SELF_CHANGE, $user);
 
         return $codes;
     }

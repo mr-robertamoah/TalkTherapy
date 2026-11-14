@@ -78,16 +78,31 @@ Check every item before going live.
        Every super administrator should have it on and have kept their recovery codes.
     4. From the date, administrators without it are sent to their profile to set it up (they stay signed in; admin
        pages, actions and admin powers wait). To stop requiring it: unset it (or move the date) and `config:clear`.
+  - **Resets wait (SCRUM-424)**: a reset from the admin users list or `user:two-factor-reset` is *scheduled* and
+    applies after `TWO_FACTOR_RESET_WAIT_HOURS` (default 48) -- and only once the warning email has gone out -- unless
+    the person cancels it. The scheduler applies them (`apply-due-two-factor-resets`, every minute): with the
+    scheduler, the queue or mail down nothing applies (late, never early). Leave the variable unset unless there's a
+    reason; after changing it, `config:clear` (Docker: `docker compose up -d --force-recreate php queue`); it affects
+    resets asked for afterwards.
   - The way back for an administrator (a super administrator too) who lost their phone and recovery codes is the
-    server: `sudo -u www-data php artisan user:two-factor-reset <username|email>` (or `<id> --id`; asks first; `--force` for a
-    non-interactive run such as SSM Run Command). The admin users list refuses administrators' accounts. Confirm who
-    the person is outside the app first, and make sure more than one person has shell/SSM access before setting the
-    date. A code rollback past SCRUM-34d removes this command -- keep another way to reset an administrator's.
+    server: `sudo -u www-data php artisan user:two-factor-reset <username|email> --reason=<ticket>` (or `<id> --id`;
+    asks first; `--force` skips the question for a non-interactive run such as SSM Run Command, except for an account
+    without a verified email). It schedules the reset; `--cancel` stops one. `--now` applies at once -- break-glass
+    (say, the last super administrator locked out): it needs an interactive terminal (SSM Session Manager, not Run
+    Command), a `--reason`, and refuses `--force`. Confirm who the person is first
+    (`documentation/operations/two-factor-reset-identity-check.md`), and make sure more than one person has interactive
+    Session Manager access before setting the date. A code rollback past SCRUM-34d removes this command -- keep another
+    way to reset an administrator's.
+  - Rolling back SCRUM-424: roll back the code, not the migration -- old code ignores `two_factor_resets`, so waiting
+    resets just never apply (and resets are immediate again). Dropping the table loses the waiting resets and their
+    record; dump it first (`mysqldump <db> two_factor_resets`). To stop all waiting resets in an emergency:
+    `UPDATE two_factor_resets SET cancelled_at = NOW(), cancel_reason = 'server' WHERE applied_at IS NULL AND cancelled_at IS NULL;`
   - A code rollback past SCRUM-34b would let accounts with two-factor in with the password alone -- roll back with
     the switch instead, and count them first (`users.two_factor_confirmed_at` not null).
-  - `LOG_LEVEL` is `notice` or lower (`info`, `debug`): the lines a reset writes (`Two-factor sign-in reset by an
-    administrator`, `Two-factor sign-in reset on the server`; monitoring.md) are the record of it, and a higher level
-    drops them.
+  - `LOG_LEVEL` is `notice` or lower (`info`, `debug`): the reset lines (`… reset requested by an administrator`,
+    `… requested on the server`, `… applied`, `… cancelled`, `… cancelled on the server`, and `Two-factor sign-in reset
+    on the server` for `--now`; monitoring.md) are, with the `two_factor_resets` table, the record of resets, and a
+    higher level drops them.
   - Queue workers restart on deploy (`deploy.sh` does): the security notices are queued, and an old worker doesn't know
     the newer kinds.
 

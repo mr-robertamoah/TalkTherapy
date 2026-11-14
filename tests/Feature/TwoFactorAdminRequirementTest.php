@@ -1,9 +1,13 @@
 <?php
 
+use App\Actions\TwoFactor\ApplyDueTwoFactorResetsAction;
 use App\Enums\AdministratorTypeEnum;
 use App\Models\Administrator;
+use App\Models\TwoFactorReset;
 use App\Models\User;
 use App\Notifications\TwoFactorChangedNotification;
+use App\Notifications\TwoFactorResetRequestedNotification;
+use App\Support\Terminal;
 use App\Support\TwoFactorCodes;
 use App\Support\TwoFactorRequirement;
 use Illuminate\Support\Facades\Log;
@@ -24,6 +28,20 @@ function tarTurnOn(User $user): User
     $user->forceFill(['two_factor_secret' => TwoFactorCodes::newSecret(), 'two_factor_recovery_codes' => $hashes, 'two_factor_confirmed_at' => now(), 'remember_token' => 'remembered'])->save();
 
     return $user->fresh();
+}
+
+// Whether a person is at a terminal (the test runner never is).
+function tarAtATerminal(bool $attached): void
+{
+    app()->instance(Terminal::class, new class($attached) extends Terminal
+    {
+        public function __construct(private bool $attachedHere) {}
+
+        public function attached(): bool
+        {
+            return $this->attachedHere;
+        }
+    });
 }
 
 function tarRequiredFrom(?string $date): void
@@ -160,41 +178,55 @@ test('false means off, quietly', function () {
     Log::shouldNotHaveReceived('warning');
 });
 
-test('the reset command turns it off for an administrator, after asking, and logs it', function () {
+// SCRUM-424: the command schedules the reset (it applies after the wait), like the admin list; --now applies at once.
+test('the reset command schedules a reset for an administrator, after asking, and logs it', function () {
     Notification::fake();
     Log::spy();
     $admin = tarTurnOn(tarAdmin(super: true));
+    $hours = (int) config('auth.two_factor.reset_wait_hours');
 
-    $this->artisan('user:two-factor-reset', ['user' => $admin->username])
-        ->expectsConfirmation("Turn off two-factor sign-in for #{$admin->id} {$admin->username} (administrator)? They'll be told, and signed out everywhere.", 'yes')
+    $this->artisan('user:two-factor-reset', ['user' => $admin->username, '--reason' => 'TICKET-1'])
+        ->expectsConfirmation("Schedule a reset of two-factor sign-in for #{$admin->id} {$admin->username} (administrator)? It applies in {$hours} hours unless they cancel it; they'll be told now.", 'yes')
         ->assertSuccessful();
 
     $admin->refresh();
-    expect($admin->hasTwoFactorEnabled())->toBeFalse()
-        ->and($admin->remember_token)->not->toBe('remembered');
+    expect($admin->hasTwoFactorEnabled())->toBeTrue()
+        ->and($admin->pendingTwoFactorReset)->source->toBe('server')->reason->toBe('TICKET-1')->requested_by_user_id->toBeNull();
+    Notification::assertSentTo($admin, TwoFactorResetRequestedNotification::class);
+    Log::shouldHaveReceived('notice')->withArgs(fn ($message, $context) => $message === 'Two-factor sign-in reset requested on the server' && $context['user_id'] === $admin->id && $context['admin'] === true && filled($context['by']) && $context['forced'] === false);
+
+    $this->travel($hours + 1)->hours();
+    TwoFactorReset::query()->whereNull('notified_at')->update(['notified_at' => now()]); // the warning email went out (faked here)
+    ApplyDueTwoFactorResetsAction::new()->execute();
+    expect($admin->fresh())->hasTwoFactorEnabled()->toBeFalse()->remember_token->not->toBe('remembered');
     Notification::assertSentTo($admin, TwoFactorChangedNotification::class, fn ($notification) => $notification->change === TwoFactorChangedNotification::RESET_BY_ADMIN);
-    Log::shouldHaveReceived('notice')->withArgs(fn ($message, $context) => $message === 'Two-factor sign-in reset on the server' && $context['user_id'] === $admin->id && $context['admin'] === true && filled($context['by']) && $context['forced'] === false);
 });
 
 test('the reset command changes nothing when the answer is no', function () {
     $user = tarTurnOn(User::factory()->create());
 
     $this->artisan('user:two-factor-reset', ['user' => $user->email])
-        ->expectsConfirmation("Turn off two-factor sign-in for #{$user->id} {$user->username}? They'll be told, and signed out everywhere.", 'no')
+        ->expectsConfirmation("Schedule a reset of two-factor sign-in for #{$user->id} {$user->username}? It applies in ".config('auth.two_factor.reset_wait_hours')." hours unless they cancel it; they'll be told now.", 'no')
         ->assertFailed();
 
-    expect($user->fresh()->hasTwoFactorEnabled())->toBeTrue();
+    expect($user->fresh()->pendingTwoFactorReset)->toBeNull();
 });
 
-test('the reset command finds by id with --force, and fails for an unknown account or one without it', function () {
+test('the reset command finds by id with --force, cancels with --cancel, and fails for an unknown account or one without it', function () {
     Notification::fake();
     $user = tarTurnOn(User::factory()->create());
 
     $this->artisan('user:two-factor-reset', ['user' => (string) $user->id, '--id' => true, '--force' => true])
         ->expectsOutputToContain("Found #{$user->id} {$user->username}")->assertSuccessful();
-    expect($user->fresh()->hasTwoFactorEnabled())->toBeFalse();
+    expect($user->fresh()->pendingTwoFactorReset)->not->toBeNull();
 
     $this->artisan('user:two-factor-reset', ['user' => (string) $user->id, '--id' => true, '--force' => true])
+        ->expectsOutputToContain('already scheduled')->assertFailed();
+    $this->artisan('user:two-factor-reset', ['user' => (string) $user->id, '--id' => true, '--cancel' => true])->assertSuccessful();
+    expect($user->fresh()->pendingTwoFactorReset)->toBeNull();
+
+    $plain = User::factory()->create();
+    $this->artisan('user:two-factor-reset', ['user' => $plain->username, '--force' => true])
         ->expectsOutputToContain('doesn\'t have two-factor sign-in on')->assertFailed();
     $this->artisan('user:two-factor-reset', ['user' => 'nobody-by-this-name', '--force' => true])
         ->expectsOutputToContain('No account')->assertFailed();
@@ -207,6 +239,30 @@ test('the reset command never reads a number as an id without --id (a username m
 
     $this->artisan('user:two-factor-reset', ['user' => (string) $other->id, '--force' => true])->assertSuccessful();
 
-    expect($numeric->fresh()->hasTwoFactorEnabled())->toBeFalse()
-        ->and($other->fresh()->hasTwoFactorEnabled())->toBeTrue();
+    expect($numeric->fresh()->pendingTwoFactorReset)->not->toBeNull()
+        ->and($other->fresh()->pendingTwoFactorReset)->toBeNull();
+});
+
+test('--now applies at once -- typed by hand only, with a reason', function () {
+    Notification::fake();
+    Log::spy();
+    $admin = tarTurnOn(tarAdmin(super: true));
+    tarAtATerminal(true);
+
+    $this->artisan('user:two-factor-reset', ['user' => $admin->username, '--now' => true, '--force' => true, '--reason' => 'x'])->assertFailed();
+    $this->artisan('user:two-factor-reset', ['user' => $admin->username, '--now' => true])->expectsOutputToContain('needs a --reason')->assertFailed();
+    $this->artisan('user:two-factor-reset', ['user' => $admin->username, '--now' => true, '--reason' => 'x', '--no-interaction' => true])->assertFailed();
+    // QA: a script piping "yes" in has prompts but no terminal.
+    tarAtATerminal(false);
+    $this->artisan('user:two-factor-reset', ['user' => $admin->username, '--now' => true, '--reason' => 'x'])
+        ->expectsOutputToContain('for a person at a terminal')->assertFailed();
+    expect($admin->fresh()->hasTwoFactorEnabled())->toBeTrue();
+
+    tarAtATerminal(true);
+    $this->artisan('user:two-factor-reset', ['user' => $admin->username, '--now' => true, '--reason' => 'TICKET-9'])
+        ->expectsConfirmation("Turn off two-factor sign-in for #{$admin->id} {$admin->username} (administrator) NOW, without the wait? They'll be told, and signed out everywhere.", 'yes')
+        ->assertSuccessful();
+
+    expect($admin->fresh()->hasTwoFactorEnabled())->toBeFalse();
+    Log::shouldHaveReceived('notice')->withArgs(fn ($message, $context) => $message === 'Two-factor sign-in reset on the server' && $context['immediate'] === true && $context['has_reason'] === true && ! array_key_exists('reason', $context));
 });

@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Contracts\PushSender;
 use App\Listeners\FailHealthCheckOnPendingMigrations;
+use App\Notifications\TwoFactorResetRequestedNotification;
 use App\Services\AppService;
 use App\Support\AppHost;
 use App\Support\MinishlinkPushSender;
@@ -17,6 +18,7 @@ use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Http\Request;
 use Illuminate\Mail\Markdown;
+use Illuminate\Notifications\Events\NotificationSent;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
@@ -48,6 +50,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // SCRUM-424 (ops review): a two-factor reset by the team only applies once its warning email went out.
+        Event::listen(NotificationSent::class, fn (NotificationSent $event) => TwoFactorResetRequestedNotification::markSent($event));
+
         // SCRUM-35: the policy every new password meets (PasswordRules adds "not your username or email").
         Password::defaults(function () {
             $policy = PasswordRules::basics();

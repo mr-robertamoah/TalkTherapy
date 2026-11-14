@@ -10,6 +10,7 @@ use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\Auth\RegisteredUserController;
 use App\Http\Controllers\Auth\TwoFactorChallengeController;
 use App\Http\Controllers\Auth\TwoFactorController;
+use App\Http\Controllers\Auth\TwoFactorResetCancelController;
 use App\Http\Controllers\Auth\VerifyEmailController;
 use Illuminate\Support\Facades\Route;
 
@@ -78,6 +79,9 @@ Route::middleware('auth')->group(function () {
     });
     Route::post('two-factor/recovery-codes', [TwoFactorController::class, 'recoveryCodes'])->name('two_factor.recovery_codes')->middleware('throttle:6,1,two_factor.recovery_codes');
     Route::delete('two-factor', [TwoFactorController::class, 'destroy'])->name('two_factor.destroy')->middleware('throttle:6,1,two_factor.destroy');
+    // SCRUM-424: the person stops a reset the team scheduled (from their profile; no password -- it only makes the
+    // account safer).
+    Route::delete('two-factor/reset', [TwoFactorResetCancelController::class, 'destroy'])->name('two_factor.reset.cancel')->middleware('throttle:10,1,two_factor.reset.cancel');
 
     // SCRUM-423: an open page asking whether it is still signed in (after a session.check nudge, or on coming back to
     // the tab). An ended session gets the usual 401 from `auth`; this answers the rest with nothing.
@@ -86,3 +90,11 @@ Route::middleware('auth')->group(function () {
     Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])
         ->name('logout');
 });
+
+// SCRUM-424: the "cancel this reset" link emailed to a verified address -- signed, good until the reset applies, and no
+// sign-in needed (the person may have lost their phone, or never asked). Opening it only shows the button; the button
+// cancels -- so a mail scanner that opens links can't cancel anything.
+Route::get('two-factor/resets/{reset}/cancel', [TwoFactorResetCancelController::class, 'show'])->name('two_factor_reset.cancel.show')
+    ->where('reset', '[0-9A-Za-z]{26}')->middleware(['signed', 'throttle:30,1,two_factor_reset.cancel.show']);
+Route::post('two-factor/resets/{reset}/cancel', [TwoFactorResetCancelController::class, 'store'])->name('two_factor_reset.cancel')
+    ->where('reset', '[0-9A-Za-z]{26}')->middleware(['signed', 'throttle:10,1,two_factor_reset.cancel']);

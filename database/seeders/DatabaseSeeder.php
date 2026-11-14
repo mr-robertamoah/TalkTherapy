@@ -67,6 +67,7 @@ use App\Models\Testimonial;
 use App\Models\Therapy;
 use App\Models\TherapyCase;
 use App\Models\Transaction;
+use App\Models\TwoFactorReset;
 use App\Models\User;
 use App\Support\CounsellorVerification;
 use App\Support\TwoFactorCodes;
@@ -192,6 +193,7 @@ class DatabaseSeeder extends Seeder
         // every account starts: sign-up doesn't ask for one).
         $this->createEmailVerificationDemoData();
         $this->createTwoFactorDemoData();
+        $this->createTwoFactorResetDemoData();
 
         // TT-4.10e/SCRUM-294: the golden path (a minor WITH a guardian) is already reachable via
         // createGuardianVideoConsentDemoData()'s minor/guardian pair above, but there was no
@@ -2546,6 +2548,36 @@ class DatabaseSeeder extends Seeder
             'two_factor_recovery_codes' => array_map(fn (string $code) => TwoFactorCodes::hash($code), self::TWO_FACTOR_DEMO_RECOVERY_CODES),
             'two_factor_confirmed_at' => now(),
         ])->save();
+    }
+
+    // SCRUM-424: an account with two-factor on and a reset the team scheduled, still waiting -- for the admin list's
+    // "reset scheduled" state, the profile's notice and Cancel, and the emailed cancel link (documented). Same fixed demo
+    // key and recovery codes as two_factor_demo; a non-administrator, like it.
+    public function createTwoFactorResetDemoData(): void
+    {
+        $user = User::factory()->adult()->create([
+            'firstName' => 'TwoFactorReset',
+            'lastName' => 'Demo',
+            'username' => 'two_factor_reset_demo',
+            'email' => 'two.factor.reset.demo@example.com',
+            'email_verified_at' => now(),
+            'password' => Hash::make('password'),
+        ]);
+
+        $user->forceFill([
+            'two_factor_secret' => self::TWO_FACTOR_DEMO_SECRET,
+            'two_factor_recovery_codes' => array_map(fn (string $code) => TwoFactorCodes::hash($code), self::TWO_FACTOR_DEMO_RECOVERY_CODES),
+            'two_factor_confirmed_at' => now(),
+        ])->save();
+
+        TwoFactorReset::query()->create([
+            'user_id' => $user->id,
+            'requested_by_user_id' => User::query()->where('username', 'mr_robertamoah')->value('id'),
+            'source' => TwoFactorReset::SOURCE_ADMIN,
+            'reason' => 'DEMO-424',
+            'two_factor_confirmed_at_snapshot' => $user->fresh()->two_factor_confirmed_at,
+            'due_at' => now()->addHours((int) config('auth.two_factor.reset_wait_hours')),
+        ]);
     }
 
     private function createGuardianVideoConsentDemoData(): void

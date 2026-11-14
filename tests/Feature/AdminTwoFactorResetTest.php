@@ -1,10 +1,12 @@
 <?php
 
+use App\Actions\TwoFactor\ApplyDueTwoFactorResetsAction;
 use App\Actions\TwoFactor\VerifyTwoFactorCodeAction;
 use App\Enums\AdministratorTypeEnum;
 use App\Exceptions\TwoFactorException;
 use App\Http\Middleware\EndStaleSessions;
 use App\Models\Administrator;
+use App\Models\TwoFactorReset;
 use App\Models\User;
 use App\Notifications\TwoFactorChangedNotification;
 use App\Support\TwoFactorCodes;
@@ -24,13 +26,21 @@ function atrAdmin(bool $super = true): User
 function atrWithTwoFactor(): User
 {
     [, $hashes] = TwoFactorCodes::newRecoveryCodes();
-    $user = User::factory()->create(['remember_token' => 'remembered']);
+    $user = User::factory()->create(['remember_token' => 'remembered', 'email_verified_at' => now()]);
     $user->forceFill(['two_factor_secret' => TwoFactorCodes::newSecret(), 'two_factor_recovery_codes' => $hashes, 'two_factor_confirmed_at' => now()])->save();
 
     return $user->fresh();
 }
 
-test('a super administrator resets it with their password: off, told, logged, remember-me and other sessions ended', function () {
+// SCRUM-424: a reset waits -- past the wait, the scheduler applies it.
+function atrPastTheWait($test): void
+{
+    $test->travel((int) config('auth.two_factor.reset_wait_hours') + 1)->hours();
+    TwoFactorReset::query()->whereNull('notified_at')->update(['notified_at' => now()]); // the warning email went out (faked here)
+    ApplyDueTwoFactorResetsAction::new()->execute();
+}
+
+test('a super administrator resets it with their password: after the wait it is off, told, logged, remember-me and other sessions ended', function () {
     Notification::fake();
     Log::spy();
     $admin = atrAdmin();
@@ -38,7 +48,10 @@ test('a super administrator resets it with their password: off, told, logged, re
     $fingerprint = EndStaleSessions::fingerprint($user);
 
     $this->actingAs($admin)->postJson(route('admin.users.two_factor.reset', ['userId' => $user->id]), ['current_password' => 'password'])
-        ->assertOk()->assertJsonPath('user.twoFactorEnabled', false);
+        ->assertOk()->assertJsonPath('user.twoFactorEnabled', true)->assertJsonPath('user.twoFactorResetDueAt', fn ($due) => $due !== null);
+    expect($user->fresh()->hasTwoFactorEnabled())->toBeTrue();
+
+    atrPastTheWait($this);
 
     $user->refresh();
     expect($user->hasTwoFactorEnabled())->toBeFalse()
@@ -49,7 +62,7 @@ test('a super administrator resets it with their password: off, told, logged, re
         ->and($user->remember_token)->not->toBe('remembered')
         ->and(EndStaleSessions::fingerprint($user))->not->toBe($fingerprint);
     Notification::assertSentTo($user, TwoFactorChangedNotification::class, fn ($notification) => $notification->change === TwoFactorChangedNotification::RESET_BY_ADMIN);
-    Log::shouldHaveReceived('notice')->withArgs(fn ($message, $context) => $context['admin_id'] === $admin->id && $context['user_id'] === $user->id && array_key_exists('ip', $context));
+    Log::shouldHaveReceived('notice')->withArgs(fn ($message, $context) => ($context['admin_id'] ?? null) === $admin->id && $context['user_id'] === $user->id && array_key_exists('ip', $context));
 });
 
 test('it needs the administrator\'s own password', function () {
@@ -114,6 +127,7 @@ test('a reset clears the wrong-code count', function () {
     expect(fn () => VerifyTwoFactorCodeAction::new()->execute($user, '000000'))->toThrow(TwoFactorException::class);
 
     $this->actingAs(atrAdmin())->postJson(route('admin.users.two_factor.reset', ['userId' => $user->id]), ['current_password' => 'password'])->assertOk();
+    atrPastTheWait($this);
 
     // Set up again: codes are checked, not refused.
     $user->forceFill(['two_factor_secret' => TwoFactorCodes::newSecret(), 'two_factor_confirmed_at' => now()])->save();
@@ -148,5 +162,5 @@ test('a super administrator with two-factor on gives their own code too', functi
     expect($user->fresh()->hasTwoFactorEnabled())->toBeTrue();
 
     $this->postJson($url, ['current_password' => 'password', 'code' => (new Google2FA)->getCurrentOtp($secret)])->assertOk();
-    expect($user->fresh()->hasTwoFactorEnabled())->toBeFalse();
+    expect($user->fresh()->pendingTwoFactorReset)->not->toBeNull();
 });

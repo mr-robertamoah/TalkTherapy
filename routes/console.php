@@ -21,6 +21,7 @@ use App\Actions\Session\FailUnheldSessionsAction;
 use App\Actions\Session\NotifyParticipantsOfStartingSessionsAction;
 use App\Actions\Therapy\FindPaidTherapiesMissingPaymentDataAction;
 use App\Actions\Transaction\ReconcileStalePendingOrganizationChargesAction;
+use App\Actions\TwoFactor\ApplyDueTwoFactorResetsAction;
 use App\Actions\User\AnonymiseClosedAccountsAction;
 use App\Actions\Video\ExpireIdleSpeakingGrantsAction;
 use App\Actions\VideoConsent\SendGuardianVideoConsentRemindersAction;
@@ -72,6 +73,11 @@ Schedule::command('payments:reconcile-stale-org-charges')
 
 // SCRUM-373: proof of life for /health/scheduler (SchedulerHealthController).
 Schedule::call(fn () => SchedulerHeartbeat::beat())->name('scheduler-heartbeat')->everyMinute();
+
+// SCRUM-424: two-factor resets the team scheduled apply once their wait is over (unless cancelled meanwhile).
+Schedule::call(fn () => ApplyDueTwoFactorResetsAction::new()->execute())->name('apply-due-two-factor-resets')->everyMinute()
+    ->withoutOverlapping(10)->onOneServer()
+    ->onFailure(fn () => Log::error('The two-factor reset sweep failed.'));
 
 Schedule::call(fn () => NotifyParticipantsOfStartingSessionsAction::new()->execute())->name('notify-starting-sessions')->everyFiveMinutes();
 
