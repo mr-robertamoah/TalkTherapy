@@ -91,6 +91,15 @@ of an existing pause.` (backfill, below).
   record of the reset (there is no table): resets should be rare, so review each one against the support request
   that confirmed who the person was; a burst, or an unexpected `admin_id`, may mean a taken-over super-admin account
   or someone talking support into resets.
+- `Two-factor sign-in reset on the server` (SCRUM-34d, notice): someone with shell access ran `user:two-factor-reset`.
+  Context: `user_id`, `admin` (whether it was an administrator's account), `by` (the sudo user, else the process
+  owner -- often just `www-data`, so match it to the SSM Run Command / Session Manager history for that time), `host`,
+  `forced` (the confirmation was skipped). Every
+  one should match a support request; one with `admin: true` that nobody can account for means the server access
+  itself needs looking at.
+- `TWO_FACTOR_ADMINS_REQUIRED_FROM is not a date (YYYY-MM-DD); …` (SCRUM-34d, warning, at most once per request): the
+  configured date couldn't be read, so two-factor is **not** required for administrators. Context: `value`. Fix the
+  `.env` and `php artisan config:clear`. Alert on any occurrence -- a requirement you think is on isn't.
 - `Notifications pruned.` (SCRUM-39, daily): what the notification prune deleted for good. Context:
   `deletedByDays` (count per retention period in use), `ownerless` (notifications of owners deleted
   for good), `defaultDays`. A sudden jump usually means the default was lowered.

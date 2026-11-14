@@ -130,10 +130,13 @@ return [
     /*
     | SCRUM-34: two-factor sign-in with an authenticator app. `enabled` shows setting it up on the profile (sign-in asks
     | for the code whenever an account has it on, whatever this says); `window` is how many 30-second steps either side
-    | a code may be off by.
+    | a code may be off by. `admins_required_from` (SCRUM-34d, a date such as 2027-01-15, unset by default): platform
+    | administrators without it see a reminder before that day and are sent to set it up from it (App\Support\
+    | TwoFactorRequirement); nothing while `enabled` is off.
     */
     'two_factor' => [
         'enabled' => (bool) env('TWO_FACTOR_ENABLED', true),
+        'admins_required_from' => env('TWO_FACTOR_ADMINS_REQUIRED_FROM'),
         'recovery_codes' => 8,
         'window' => 1,
     ],

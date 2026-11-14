@@ -17,6 +17,7 @@ import ContactUsModal from '@/Components/ContactUsModal.vue';
 import { acquireCounsellorChannel, acquireUserChannel } from '@/Composables/sharedChannel';
 import NotificationBell from '@/Components/Notifications/NotificationBell.vue';
 import EmailVerificationNotice from '@/Components/EmailVerificationNotice.vue';
+import TwoFactorRequirementNotice from '@/Components/TwoFactorRequirementNotice.vue';
 import { notificationsChanged } from '@/Composables/useNotifications';
 
 const { modalData, showModal, closeModal } = useModal()
@@ -558,6 +559,8 @@ function goToTherapy(data) {
 
       <!-- SCRUM-41: in the page's flow, so it never covers the help button or a chat. -->
       <EmailVerificationNotice />
+      <!-- SCRUM-34d: administrators who still need two-factor sign-in. -->
+      <TwoFactorRequirementNotice />
 
       <!-- Page Heading -->
       <header class="bg-white shadow" v-if="$slots.header">
