@@ -12290,3 +12290,55 @@ SCRUM-41:
   Inertia write gets the 303; the banner's "on the profile" check follows each visit; the cheap checks (guest, not an
   admin) come before the date is read. Accepted: `/broadcasting/auth` is refused too while blocked, so live updates
   (the bell) wait until it's set up.
+
+## TT-12 planning — account security & session hardening (2026-11-14)
+
+Planned with product-owner, architect and project-manager; the user chose the shape and settled the forks. Four PRs:
+the user's TODO (profile information redesign, card buttons bottom-left) together with SCRUM-422 (they share the
+profile form), SCRUM-423, SCRUM-424, and SCRUM-409 on its own once allowed (2026-11-15). Order: B and A now, D from
+the 15th, C after A merges (its emailed cancel link is only safe once the email can't be changed quietly). The
+user's decisions: idle signed-out tabs find out within seconds; a "page expired" counts as signed out; resets wait
+48 hours with a cancel link; the server command keeps an interactive-only `--now`; the admin list refuses a reset for
+an account without a verified email (the server command after an identity check instead). Defaults not asked: no
+window of security notices to the old address after an email change; a reset's reason is never shown to the person.
+Boxed as Epic TT-12 in `implementation_plan.md` (TT-4.5e points at TT-12.4).
+
+## SCRUM-423 — a signed-out tab closes its live connection and goes to sign-in (2026-11-14)
+
+- **A nudge, the server decides**: when the password or the two-factor state changes (EndStaleSessions' fingerprint
+  -- one `updated` hook on User, so every path is covered: changing or resetting the password, new recovery codes,
+  two-factor on or off, a reset; not closing the account, which saves quietly -- its sessions are refused on their
+  next request anyway; nor a password written with the query builder), a content-free `session.check` goes to the account's private
+  `users.{id}` channel. Each open page (AuthenticatedLayout) asks `GET /session/check?user=<the page's person>`: 204,
+  or 401 for an ended session -- or for a different person now signed in on that browser (security review: on a
+  shared computer, someone else's sign-in mustn't keep the first person's page and subscriptions alive).
+- **After the response, queued** (code review, High): sent once the change is committed *and* the response has gone
+  out (`defer`), so the session that made the change has saved its new fingerprint first -- otherwise its own tabs'
+  check read the old one and signed it out (losing the recovery codes on screen). Queued, so no auth action waits on
+  Reverb (security review); failures are rescued.
+- **On the page** (`resources/js/Support/sessionEnded.js`, the one owner): only for a page shown to someone signed in,
+  once per page load -- close Echo and load `/login?session=ended` ("Your session ended. Please sign in again.", no
+  reason given). Triggered by a 401 from any axios call or page visit; by a 419 only once a check confirms it (code
+  review: a remember-me session past its lifetime gets a 419 yet is still signed in); by the nudge; when a background
+  tab is shown again (at most every 15 s); and in this browser's other tabs on signing out (a BroadcastChannel, not
+  the server -- a server message would reach other devices and keep their idle sessions alive, security review).
+  A visit that leaves a signed-in page for a signed-out one (or another person) closes Echo and loads the new page
+  afresh (code review: a closed connection otherwise stays closed after signing in again in the same tab).
+- **Convention**: a 401 from this app means "not signed in", never "not allowed" (that's 403) -- every signed-in page
+  now treats it as the end of the session.
+- **What it doesn't fix** (security review, SCRUM-386): a client that doesn't disconnect itself -- modified, frozen,
+  or a raw socket with a stolen cookie -- keeps receiving events on channels it already joined until its socket
+  closes; Reverb can't close a person's connections or re-check subscriptions. Pages outside AuthenticatedLayout get
+  no nudge (they find out on their next request or on being shown again).
+- **QA pass (qa-engineer, Playwright, two browsers)**: criteria 1-8 passed, including live chat both ways (and with
+  an anonymous therapy). Fixed: changing your own password signed this session out at its next API call -- an older
+  bug (Sanctum's own session check on the API keeps the password hash in the session, `password_hash_web`, and nothing
+  on the web side refreshed it), which this PR made visible as "Your session ended". `EndStaleSessions` now refreshes
+  that hash at the end of each request (the same fix as SCRUM-422's PR, identical so the two merge cleanly). And a
+  "page expired" on a page that is still signed in now shows Laravel's notice instead of dropping the save silently;
+  only the check that follows decides about sign-in.
+- **Ops** (devops review): the nudge rides the `default` queue (production workers already run `urgent,default`).
+  From a command or tinker it goes out when the command ends successfully. A rollback leaves any queued nudges to
+  fail harmlessly (`queue:flush`).
+- Also: `session.check` isn't a visit (StoreVisitationMiddleware) and stays open to an administrator who still has to
+  set up two-factor (SCRUM-34d); `useAuth.goToLogin` went to a relative `login` URL.

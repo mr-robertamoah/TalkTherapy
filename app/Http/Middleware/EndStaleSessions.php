@@ -41,6 +41,10 @@ class EndStaleSessions
 
         if ($request->hasSession() && ($current = $guard->user()) instanceof User) {
             $request->session()->put(self::KEY, self::fingerprint($current));
+            // SCRUM-422 (QA): Sanctum's own session check on the API (AuthenticateSession) keeps the password hash under
+            // this key. A request here that rehashed it (Auth::logoutOtherDevices: a new email, new recovery codes)
+            // would otherwise read as someone else's change on this session's next API call and sign it out too.
+            $request->session()->put('password_hash_'.Auth::getDefaultDriver(), $current->getAuthPassword());
         }
 
         return $response;

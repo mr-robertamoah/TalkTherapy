@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\ConstantsEnum;
 use App\Enums\FileTagEnum;
 use App\Enums\SuspensionScopeEnum;
+use App\Events\SessionCheckRequestedEvent;
 use App\Notifications\VerifyEmailNotification;
 use App\Traits\HasGuardedDatabaseNotifications;
 use App\Traits\HasTaggedFiles;
@@ -177,6 +178,17 @@ class User extends Authenticatable implements MustVerifyEmailContract
     public function hasTwoFactorEnabled(): bool
     {
         return $this->two_factor_confirmed_at !== null && $this->getRawOriginal('two_factor_secret') !== null;
+    }
+
+    // SCRUM-423: a change that ends the account's other sessions (EndStaleSessions::fingerprint -- the password or the
+    // two-factor state) tells its open pages to check whether they're still signed in.
+    protected static function booted(): void
+    {
+        static::updated(function (User $user) {
+            if ($user->wasChanged(['password', 'two_factor_confirmed_at'])) {
+                SessionCheckRequestedEvent::after($user->id);
+            }
+        });
     }
 
     // SCRUM-34: two-factor sign-in fully off -- the one place that does it (the person, or a super admin's reset). A

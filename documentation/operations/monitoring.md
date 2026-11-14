@@ -222,3 +222,10 @@ these server-side waits on a Reverb terminate API that works with private channe
   created, so `config:clear` alone changes nothing. If config is cached, run `php artisan config:cache` after.
   Back on: `HELP_ENABLED=true` and the same.
 
+## Signed-out tabs (SCRUM-423)
+
+- `GET /session/check` answers 401 to an ended session by design -- leave it out of any 4xx-rate alert. A burst of
+  429s there means a page checking far more often than it should.
+- `SessionCheckRequestedEvent` rows in `failed_jobs` (or rescued exceptions) mean the nudge isn't reaching Reverb:
+  open tabs then find out about an ended session only on their next request. Nothing is less secure (EndStaleSessions
+  still refuses them).

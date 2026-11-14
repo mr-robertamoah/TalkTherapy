@@ -116,7 +116,8 @@ broadcast — filed separately as SCRUM-195, not folded into this ticket's scope
 | TT-4.5a | ✅ **Done** (PR #334). Authenticator-app (TOTP) setup on the profile behind `TWO_FACTOR_ENABLED`: password, then scan a QR (or type the key), then a code; 8 recovery codes shown once (kept as keyed hashes); new codes and turning off need the password and a code; a notice (in-app and email) on each change. The unfinished secret lives in that session only, 15 minutes (SCRUM-34) | Story | Medium | 2 | New (SCRUM-34 split) | — |
 | TT-4.5b | ✅ **Done** (PR #335). Sign-in asks for the code (or a recovery code) when two-factor is on -- the password step signs nobody in; 5 minutes for the code; whatever the feature switch says. One count of wrong codes per account across every step (5, then 15 minutes). Other sessions end, and "remember me" elsewhere stops, when it's turned on or off or new codes are made. A notice when a recovery code is used to sign in. Setup shown by default (SCRUM-34) | Story | Medium | 2 | New (SCRUM-34 split) | TT-4.5a |
 | TT-4.5c | ✅ **Done** (PR #336). A super admin resets someone's two-factor (lost phone and codes) from the admin users list, with their own password: it goes off, the person is told and signed out elsewhere, the reset is logged; not their own. Seeded `two_factor_demo` with a fixed key and recovery codes; feature doc `documentation/features/scrum-34-two-factor-sign-in.md` (SCRUM-34) | Story | Medium | 1 | New (SCRUM-34 split) | TT-4.5b |
-| TT-4.5d | 🔄 **In review**. Required for platform admins from a configured start date (a reminder before, a redirect to setup after -- never a lockout); `user:two-factor-reset` command (SCRUM-34) | Story | Medium | 1 | New (SCRUM-34 split) | TT-4.5c |
+| TT-4.5d | ✅ **Done** (PR #337). Required for platform admins from a configured start date (a reminder before, a redirect to setup after -- never a lockout); `user:two-factor-reset` command (SCRUM-34) | Story | Medium | 1 | New (SCRUM-34 split) | TT-4.5c |
+| TT-4.5e | Two-factor resets wait (default 48h) and can be cancelled before they apply; tracked as TT-12.4 (SCRUM-424) | Story | Medium | 13 | New (SCRUM-34 follow-up) | TT-4.5d, TT-12.2b |
 | TT-4.6 | Password policy enforcement + weak-password profile warning (SCRUM-35); split into TT-4.6a/b below | Story | Medium | 3 | Existing (5.5) | — |
 | TT-4.6a | ✅ **Done** (PR #332). One policy for every new password (sign-up, reset, change): at least 10 characters, letters and numbers, not the username or email (or the part before the @), not in Have I Been Pwned's breached list (5-character hash prefix only; allowed if it doesn't answer within 3s, and the failure logged without the password). Rules shown on the three forms from the same config; reset checks the account only once its token is proven; reset and change throttled; privacy page updated (SCRUM-35) | Story | Medium | 2 | New (SCRUM-35 split) | — |
 | TT-4.6b | ✅ **Done** (PR #333). At sign-in (the only moment the plain password exists) whether it meets today's policy -- only a reason is kept (short or simple / contains the username or email / breached), never the password; the breached-list check after the response and once per password; never slows or stops sign-in. Cleared on change and reset, and by closing the account. A notice on the profile's password section, to the person only (SCRUM-35) | Story | Medium | 1 | New (SCRUM-35 split) | TT-4.6a |
@@ -542,6 +543,21 @@ working order. Rows 1 to 4 are fixes and chores and go ahead directly; rows 5 an
 
 ---
 
+## Epic TT-12: Account security & session hardening — *New, 2026-11-14*
+Four PRs into develop, one branch each off a freshly pulled develop. Order: B and A start now, D on or after 2026-11-15, C after A merges. The user's decisions (2026-11-14): idle signed-out tabs find out within seconds, a "page expired" counts too; resets wait 48h with a cancel link; a typed-by-hand `--now` on the server command; no admin reset for an account without a verified email.
+
+| Key | Story | Type | Priority | Points | Source | Depends on |
+|---|---|---|---|---|---|---|
+| TT-12.1 | Remove the four exact npm hold-back overrides (keep get-blob-duration → @babel/runtime); every resolved version at least 7 days old; not before 2026-11-15 (PR D) | Chore | High | 1 | SCRUM-409 | — |
+| TT-12.2 | Profile and email-change protection (PR A); split into TT-12.2a/b | Story | High | 8 | SCRUM-422 + user TODO | — |
+| TT-12.2a | Profile Information card: two-column read view, Edit form with Save/Cancel bottom-left, stale-props Cancel fix, DOB timezone display fix; actions bottom-left on every profile card (including the shared TestimonialSection); tour text "Edit" | Task | High | 5 | User TODO | — |
+| TT-12.2b | Current password required on any email change; whole submit refused on a wrong password; `profile.update` 10/min; mail-only notice to the previous verified address, new address masked | Story | High | 3 | SCRUM-422 | TT-12.2a |
+| TT-12.3 | 🔄 **In review**. Signed-out tabs stop cleanly: a content-free `session.check` nudge (after a password or two-factor change) makes each open page ask whether it is still signed in, as the person it was shown to; an ended one closes its live connection and goes to sign-in ("Your session ended"). Also on a 401, on a "page expired" that the check confirms, on coming back to the tab, and in this browser's other tabs on signing out (PR B) | Story | Highest | 6 | SCRUM-423 | — |
+| TT-12.4 | Two-factor resets wait before they apply (default 48h) and can be cancelled (PR C); split into TT-12.4a-c | Story | Medium | 13 | SCRUM-424 | TT-12.2b, TT-4.5d |
+| TT-12.4a | `two_factor_resets` table; Request/Cancel/ApplyDue actions; scheduler through `ResetTwoFactorAction`; command defaults to pending, with `--cancel` and an interactive `--now` | Story | Medium | 5 | SCRUM-424 | TT-12.2b |
+| TT-12.4b | Signed cancel link (GET confirm, POST cancel) to the verified address; auto-cancel on a two-factor sign-in; cancel from the profile; admin list shows pending with cancel; refused for accounts without a verified email; optional reason; new notification types | Story | Medium | 5 | SCRUM-424 | TT-12.4a |
+| TT-12.4c | Seeded account with a pending reset; identity-check procedure in `documentation/operations/`; feature doc, decision log, production checklist and monitoring | Task | Medium | 3 | SCRUM-424 | TT-12.4b |
+
 ## Reconciled Sprint Roadmap
 
 | Sprint | Focus | Epics | Why here |
@@ -555,6 +571,7 @@ working order. Rows 1 to 4 are fixes and chores and go ahead directly; rows 5 an
 | 7 | Admin, ops & remaining security | TT-8, TT-4.2/4.5/4.6 | Hardening work batched together |
 | 8 | Profile polish & icebox | TT-9 | Unchanged |
 | Next | Hardening follow-ups | TT-11 (SCRUM-402) | The open review follow-ups from urgent help, the notification center and the help safeguards, boxed together (2026-11-09) |
+| Next+1 | Account security & session hardening | TT-12 (SCRUM-409/422/423/424) | Email-change protection, cleaner signed-out tabs, a wait before two-factor resets, and the npm hold-backs removed, boxed together (2026-11-14) |
 
 ---
 

@@ -18,9 +18,9 @@ class RequireTwoFactorForAdmins
     public const MESSAGE = 'Two-factor sign-in is required for administrators. Set it up on your profile to go on.';
 
     // Their own account only: the profile and what its page loads, setting two-factor up, email, password, notices,
-    // signing out.
+    // signing out, and whether the page is still signed in (SCRUM-423).
     private const OPEN = [
-        'profile.*', 'two_factor.*', 'password.*', 'verification.*', 'logout',
+        'profile.*', 'two_factor.*', 'password.*', 'verification.*', 'logout', 'session.check',
         'notifications.*', 'safety_notice.current', 'help.requests.current', 'api.users.guardianship', 'api.testimonials',
     ];
 
