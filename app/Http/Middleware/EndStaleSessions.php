@@ -52,6 +52,10 @@ class EndStaleSessions
 
     public static function fingerprint(User $user): string
     {
-        return hash_hmac('sha256', $user->getAuthPassword().'|'.($user->two_factor_confirmed_at?->getTimestamp() ?? ''), (string) config('app.key'));
+        // SCRUM-427: and the session version, which ends sessions without a password change (a new email a super
+        // administrator asked for). Only once it's been raised -- 0 leaves every existing session's fingerprint as it was.
+        $version = (int) $user->session_version > 0 ? '|v'.$user->session_version : '';
+
+        return hash_hmac('sha256', $user->getAuthPassword().'|'.($user->two_factor_confirmed_at?->getTimestamp() ?? '').$version, (string) config('app.key'));
     }
 }

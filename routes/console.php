@@ -23,6 +23,7 @@ use App\Actions\Therapy\FindPaidTherapiesMissingPaymentDataAction;
 use App\Actions\Transaction\ReconcileStalePendingOrganizationChargesAction;
 use App\Actions\TwoFactor\ApplyDueTwoFactorResetsAction;
 use App\Actions\User\AnonymiseClosedAccountsAction;
+use App\Actions\User\ApplyDueEmailChangesAction;
 use App\Actions\Video\ExpireIdleSpeakingGrantsAction;
 use App\Actions\VideoConsent\SendGuardianVideoConsentRemindersAction;
 use App\Actions\Visitor\ClearVisitorsAction;
@@ -74,6 +75,10 @@ Schedule::command('payments:reconcile-stale-org-charges')
 // SCRUM-373: proof of life for /health/scheduler (SchedulerHealthController).
 Schedule::call(fn () => SchedulerHeartbeat::beat())->name('scheduler-heartbeat')->everyMinute();
 
+// SCRUM-427: confirmed new emails become the account's once their wait is over (unless stopped meanwhile).
+Schedule::call(fn () => ApplyDueEmailChangesAction::new()->execute())->name('apply-due-email-changes')->everyMinute()
+    ->withoutOverlapping(10)->onOneServer()
+    ->onFailure(fn () => Log::error('The email change sweep failed.'));
 // SCRUM-424: two-factor resets the team scheduled apply once their wait is over (unless cancelled meanwhile).
 Schedule::call(fn () => ApplyDueTwoFactorResetsAction::new()->execute())->name('apply-due-two-factor-resets')->everyMinute()
     ->withoutOverlapping(10)->onOneServer()

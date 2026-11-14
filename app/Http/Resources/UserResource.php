@@ -42,6 +42,12 @@ class UserResource extends JsonResource
             'passwordWeakReason' => $request->user()?->is($this->resource) ? $this->password_weak_reason : null,
             // SCRUM-34: only the person themselves learns whether their account has two-factor sign-in.
             'twoFactorEnabled' => $request->user()?->is($this->resource) ? $this->hasTwoFactorEnabled() : null,
+            // SCRUM-427: a new address waiting for its owner to confirm it, and once confirmed when it takes effect --
+            // only about themselves.
+            'pendingEmail' => $request->user()?->is($this->resource) ? $this->pending_email : null,
+            'pendingEmailEffectiveAt' => $request->user()?->is($this->resource) ? $this->pendingEmailEffectiveAt() : null,
+            // Whether it will wait two days once confirmed (QA: judged by the server's rule, not the current tick).
+            'pendingEmailWaits' => $request->user()?->is($this->resource) && $this->pending_email ? $this->protectedEmail($this->pending_email_requested_at) !== null : null,
             // SCRUM-424: when a reset the team scheduled applies -- only about themselves (their profile can cancel it).
             'twoFactorResetDueAt' => $request->user()?->is($this->resource) && $this->hasTwoFactorEnabled() ? $this->pendingTwoFactorReset?->due_at : null,
         ];

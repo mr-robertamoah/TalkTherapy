@@ -235,9 +235,22 @@ these server-side waits on a Reverb terminate API that works with private channe
   someone changes their own email (SCRUM-422) and when a super administrator changes it (SCRUM-425), only when the old
   address was verified. It's the only email the real owner gets if someone else changed it -- check the mail settings
   and retry (`php artisan queue:retry`). It needs a running queue worker (`default` queue).
-- `Account email changed by an administrator` (SCRUM-425, notice): a super administrator changed someone's sign-in
-  email from the admin user edit. Context: `admin_id`, `user_id` -- ids only. Each should match a support ticket; one
-  that doesn't may be an account-takeover attempt ("forgot password" now goes to the new address).
+- `Account email change requested by an administrator` (SCRUM-425/427, notice): a super administrator asked for a new
+  sign-in email on someone's account from the admin user edit. Context: `admin_id`, `user_id` -- ids only. It only
+  takes effect once the new address's owner confirms it. Each should match a support ticket.
+- `Account email change requested` (SCRUM-427, notice): the person asked for a new email on their profile (password
+  given). `Account email change confirmed, waiting` (notice): its owner confirmed it; it takes effect after
+  `EMAIL_CHANGE_WAIT_HOURS` (48). `Account email change applied` (notice; `requested_by_team`): it's now the
+  account's -- after a change the team asked for, the person's other sessions end. `Account email change cancelled`
+  (notice): dropped from the profile.
+- `Account email change stopped by its owner` (SCRUM-427, **warning**): someone pressed "This wasn't me" in the warning
+  to the account's current address -- the change was dropped and every session ended. Likely an account under attack:
+  look at who asked (the request's log line) and help the person secure the account.
+- `The email change sweep failed.` / `An email change could not be applied` (error): confirmed changes aren't taking
+  effect (scheduler `apply-due-email-changes`). Late, never early.
+- `ConfirmNewEmailNotification` in `failed_jobs` (SCRUM-427): the link to a new address didn't go out, so the change
+  can't be confirmed -- it needs a running queue worker (`default`). Retry (`queue:retry`), or the person sends it
+  again from their profile.
 - `Account email marked verified by an administrator` (SCRUM-425, notice): a super administrator ticked an address
   verified by hand. Rare; check it was the person's own address.
 ## Signed-out tabs (SCRUM-423)

@@ -7,9 +7,6 @@ use App\Actions\Guardianship\HandleGuardianLossAction;
 use App\DTOs\EnsureDobChangeIsAllowedDTO;
 use App\DTOs\UpdateUserDTO;
 use App\Exceptions\DobChangeRequiresApprovalException;
-use App\Notifications\AccountEmailChangedByTeamNotification;
-use App\Notifications\EmailChangedNotification;
-use App\Support\MaskedEmail;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 
@@ -22,8 +19,6 @@ class UpdateUserAction extends Action
         // here: its owner verifies it.
         $emailChanges = EnsureCanUpdateUserByAdminAction::changesEmail($target, $updateUserDTO->email);
         $wasVerified = (bool) $target->email_verified_at;
-
-        $previousEmail = $emailChanges && $target->email_verified_at ? $target->email : null;
         $previousName = $target->name ?: $target->username;
 
         $data = [
@@ -31,10 +26,14 @@ class UpdateUserAction extends Action
             'lastName' => $updateUserDTO->lastName,
             'otherNames' => $updateUserDTO->otherNames,
             'country' => $updateUserDTO->country,
-            'email' => $updateUserDTO->email,
-            // Kept when it was already verified (not re-stamped); a new address starts unverified.
-            'email_verified_at' => ! $emailChanges && $updateUserDTO->emailVerified ? ($target->email_verified_at ?? now()->utc()) : null,
         ];
+
+        // SCRUM-427: a new address waits for its owner to confirm it (RequestEmailChangeAction, below) -- the current one,
+        // and its verification, stay as they are. Otherwise the tick: kept when already verified (not re-stamped).
+        if (! $emailChanges) {
+            $data['email'] = $updateUserDTO->email;
+            $data['email_verified_at'] = $updateUserDTO->emailVerified ? ($target->email_verified_at ?? now()->utc()) : null;
+        }
 
         // TT-4.10c/SCRUM-292: `dob` is only ever included below when a value was actually
         // submitted -- previously this always ran `new Carbon($updateUserDTO->dob)`
@@ -75,14 +74,12 @@ class UpdateUserAction extends Action
         }
 
         if ($emailChanges) {
-            Log::notice('Account email changed by an administrator', ['admin_id' => $updateUserDTO->user->id, 'user_id' => $target->id]);
-
-            // The address it had before, when verified, is told by email (the new one masked, SCRUM-422); the account
-            // itself in the app -- the only way to reach someone with no verified address (security review).
-            EmailChangedNotification::sendTo($previousEmail, $previousName, $target->email, byTeam: true);
-            $target->notify(new AccountEmailChangedByTeamNotification($target->email ? MaskedEmail::of($target->email) : null));
+            // The current address, when verified, is told by email and the account in the app (RequestEmailChangeAction).
+            RequestEmailChangeAction::new()->execute($target, (string) $updateUserDTO->email, $updateUserDTO->user, $previousName);
         } elseif (! $wasVerified && $target->email_verified_at) {
             Log::notice('Account email marked verified by an administrator', ['admin_id' => $updateUserDTO->user->id, 'user_id' => $target->id]);
+        } elseif ($wasVerified && ! $target->email_verified_at) {
+            Log::notice('Account email marked unverified by an administrator', ['admin_id' => $updateUserDTO->user->id, 'user_id' => $target->id]);
         }
 
         return $updateUserDTO->updatedUser->refresh();

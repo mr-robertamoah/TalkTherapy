@@ -38,8 +38,9 @@ test('profile information can be updated', function () {
     $user->refresh();
 
     $this->assertSame('Test User', $user->name);
-    $this->assertSame('test@example.com', $user->email);
-    $this->assertNull($user->email_verified_at);
+    // SCRUM-427: a new address waits for its owner to confirm it.
+    $this->assertSame('test@example.com', $user->pending_email);
+    $this->assertNotSame('test@example.com', $user->email);
 });
 
 test('email verification status is unchanged when the email address is unchanged', function () {

@@ -9,7 +9,7 @@ import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import Select from '@/Components/Select.vue';
 import TextInput from '@/Components/TextInput.vue';
-import { useForm, usePage } from '@inertiajs/vue3';
+import { router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, nextTick, ref } from 'vue';
 import { format, subYears } from 'date-fns';
 
@@ -55,6 +55,38 @@ function savedValues() {
 const form = useForm(savedValues());
 
 const editing = ref(false);
+
+// SCRUM-427
+const pendingBusy = ref(false);
+const pendingMessage = ref('');
+
+async function resendPending() {
+    if (pendingBusy.value) return;
+    pendingBusy.value = true;
+    pendingMessage.value = '';
+    try {
+        await axios.post(route('profile.email.resend'));
+        pendingMessage.value = 'Sent.';
+    } catch (error) {
+        pendingMessage.value = error?.response?.status === 429 ? 'Please wait a minute before asking again.' : (error?.response?.data?.message || 'Something went wrong. Please try again.');
+    } finally {
+        pendingBusy.value = false;
+    }
+}
+
+async function cancelPending() {
+    if (pendingBusy.value) return;
+    pendingBusy.value = true;
+    pendingMessage.value = '';
+    try {
+        await axios.delete(route('profile.email.cancel'));
+        router.reload({ only: ['auth'] });
+    } catch (error) {
+        pendingMessage.value = error?.response?.data?.message || 'Something went wrong. Please try again.';
+    } finally {
+        pendingBusy.value = false;
+    }
+}
 const saved = ref(false);
 const editButton = ref(null);
 const firstField = ref(null);
@@ -139,6 +171,24 @@ function save() {
                 </template>
             </dl>
 
+            <!-- SCRUM-427: a new address waiting for its owner to open the link sent to it. -->
+            <div v-if="user.pendingEmail" role="status" class="mt-6 rounded-md border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900">
+                <p v-if="user.pendingEmailEffectiveAt">
+                    <span class="font-medium break-all">{{ user.pendingEmail }}</span> is confirmed. It becomes your email
+                    on {{ new Date(user.pendingEmailEffectiveAt).toLocaleString() }} -- until then your current address stays
+                    in use, for signing in and password resets too.
+                </p>
+                <p v-else>
+                    We sent a link to <span class="font-medium break-all">{{ user.pendingEmail }}</span>. Once you confirm it,
+                    it becomes your email{{ user.pendingEmailWaits ? ' 48 hours later' : '' }}{{ user.email ? ' -- until then your current address stays in use, for signing in and password resets too' : '' }}.
+                </p>
+                <div class="mt-3 flex flex-wrap items-center gap-3">
+                    <SecondaryButton v-if="!user.pendingEmailEffectiveAt" type="button" :disabled="pendingBusy" @click="resendPending">Send the link again</SecondaryButton>
+                    <SecondaryButton type="button" :disabled="pendingBusy" @click="cancelPending">Keep my current email</SecondaryButton>
+                    <span v-if="pendingMessage" class="text-sm">{{ pendingMessage }}</span>
+                </div>
+            </div>
+
             <div
                 v-if="dobChangePendingApproval"
                 role="status"
@@ -179,7 +229,8 @@ function save() {
             <div v-if="changingEmail" class="rounded-md border border-gray-200 bg-gray-50 p-4">
                 <InputLabel for="profile_current_password" value="Your current password" />
                 <p class="mt-1 text-xs text-gray-600">
-                    Needed to change your email. You'll need to verify the new address, and we'll let your current one know.
+                    Needed to change your email. We'll send a link to the new address; once it's confirmed it becomes your
+                    email{{ user.emailVerifiedAt ? ' two days later' : '' }}, and we'll let your current address know.
                 </p>
                 <TextInput
                     id="profile_current_password"

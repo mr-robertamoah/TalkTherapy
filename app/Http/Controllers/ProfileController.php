@@ -11,6 +11,7 @@ use App\Actions\Suspension\EnsureCanDeleteOwnAccountWhileSuspendedAction;
 use App\Actions\User\EnsureDobChangeIsAllowedAction;
 use App\Actions\User\GetCounsellorCreationStepOfUserAction;
 use App\Actions\User\HasSubmittedAgeVerificationAction;
+use App\Actions\User\RequestEmailChangeAction;
 use App\Actions\User\UpdateUserAvatarAction;
 use App\DTOs\CheckNameRetrievabilityDTO;
 use App\DTOs\DeleteCounsellorDTO;
@@ -29,6 +30,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redirect;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -117,6 +119,13 @@ class ProfileController extends Controller
         $fillData = $request->safe()->except('current_password');
         $fillData['dob'] = $dobChangeRequiresApproval ? $request->user()->dob : $newDob;
 
+        // SCRUM-427: a new address waits for its owner to confirm it (RequestEmailChangeAction, below); only removing the
+        // email applies at once.
+        $newEmail = $request->changesEmail() && filled($request->validated('email')) ? $request->validated('email') : null;
+        if ($newEmail || ! $request->changesEmail()) {
+            unset($fillData['email']);
+        }
+
         // SCRUM-422: who to tell if the email changes -- the address before, if it was verified -- and by the name they knew
         // (code review: not one set in this same request).
         $previousEmail = $request->user()->email_verified_at ? $request->user()->email : null;
@@ -151,11 +160,19 @@ class ProfileController extends Controller
         // SCRUM-422 (security review): a new email -- often because they suspect someone else is in -- ends the account's
         // other sessions (the password was just confirmed). Rehashes the same password, which changes the sessions'
         // fingerprint (EndStaleSessions).
-        if ($emailChanged) {
+        if ($emailChanged || $newEmail) {
             Auth::logoutOtherDevices($request->validated('current_password'));
+            // "Remember me" elsewhere too (SCRUM-427 security review) -- this browser keeps its session, and signs in
+            // again next time if its cookie goes.
+            $request->user()->forceFill(['remember_token' => Str::random(60)])->save();
         }
 
-        if ($emailChanged) {
+        if ($newEmail) {
+            RequestEmailChangeAction::new()->execute($request->user(), $newEmail, name: $previousName);
+        } elseif ($emailChanged) {
+            // Removing the email also drops a new address that was waiting (code review: decided -- no surprise address
+            // turning up later).
+            RequestEmailChangeAction::new()->cancel($request->user());
             EmailChangedNotification::sendTo($previousEmail, $previousName, $request->user()->email);
         }
 

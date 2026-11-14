@@ -111,7 +111,8 @@ Check every item before going live.
 - [ ] It sets `X-Forwarded-Proto` (https), `X-Forwarded-For`, and `Host` / `X-Forwarded-Host` equal to
   `APP_URL`'s host.
 - [ ] It **strips any `X-Forwarded-*` headers a client sent**.
-- [ ] Without the forwarded scheme and host, signed links (email verification for users and counsellors)
+- [ ] Without the forwarded scheme and host, signed links (email verification for users and counsellors, confirming a new account email -- SCRUM-427, the
+  two-factor reset cancel link -- SCRUM-424)
   fail their signature check with a 403. The link is signed as `https://APP_URL/...`, but the request
   would look like `http://...`.
 

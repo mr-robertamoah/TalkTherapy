@@ -21,6 +21,8 @@
             <div class="flex flex-col justify-start items-center p-2 rounded bg-slate-100 text-nowrap">
                 <div class="mb-2 text-gray-600 min-w-[150px] w-fit text-center text-sm font-semibold tracking-wide">{{ !!user.email ? user.email : 'not set'}}</div>
                 <div class="text-gray-500 text-xs">email</div>
+                <!-- SCRUM-427: a new address waiting for its owner to confirm it (super administrators only). -->
+                <div v-if="user.pendingEmail" class="mt-1 text-xs text-amber-900">waiting for confirmation: {{ user.pendingEmail }}</div>
             </div>
             <div class="flex flex-col justify-start items-center p-2 rounded bg-slate-100 text-nowrap">
                 <div class="mb-2 text-gray-600 min-w-[150px] w-fit text-center text-sm font-semibold tracking-wide">{{ computedGender }}</div>

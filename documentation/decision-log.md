@@ -12462,3 +12462,59 @@ The user asked for both in one PR.
   verification, group and individual session creation). Taken from its notes: the old-address email says when the team
   made the change ("If you asked us to…") instead of "If you made this change"; the dialog says up front when an
   ordinary admin can't edit an administrator's account.
+
+## SCRUM-427 — a new account email takes effect only once its owner confirms it (2026-11-14)
+
+The user's decisions: the new address waits as pending until its owner confirms it; for changes on someone's own
+profile as well as a super administrator's; and a change a super administrator asked for signs the person out on
+their other devices.
+
+- **Pending, then confirmed**: `users.pending_email` (+ when, and which admin asked). A link (signed, 24 hours, bound to
+  that exact address with a keyed hash -- a later request makes earlier links useless) goes to the new address;
+  opening it makes it the account's email, verified. Until then the current address is the account's for everything,
+  password reset included -- so a taken-over super admin or a stolen session plus password can no longer redirect a
+  reset by changing the email. Confirming needs no sign-in (the owner may be on another device). An address another
+  account took meanwhile is never applied. Asking again replaces the request; the profile can send the link again
+  (3 a minute) or drop the request. Removing the email (self only, with the password) still applies at once.
+- **Who's told when**: at the request, the current address (if verified, masked, worded "requested ... only takes
+  effect once confirmed") and, for a change the team asked for, the account in the app. The admin's "verified" tick
+  only ever applies to the current address -- a pending one can't be ticked into place.
+- **Signing out elsewhere without a password**: `users.session_version`, part of the session fingerprint
+  (EndStaleSessions) only once it's above 0 -- every existing session keeps its fingerprint. It's raised when a change
+  a super administrator asked for is confirmed; the browser that opens the link stays signed in, as with the person's
+  own changes. Their own change already ends their other sessions at the request (the password was given).
+- Closed accounts forget a pending address.
+- **Reviews.** Security (High, design): confirming only proves the attacker owns the address they typed -- a stolen
+  session plus password, or a taken-over super admin, confirms in seconds. The user chose both safeguards: the
+  warnings to the current address carry a signed **This wasn't me** link (4 days) that drops the change and ends
+  every session of the account, "remember me" too; and when the current address is verified, a confirmed change waits
+  48 hours (`EMAIL_CHANGE_WAIT_HOURS`) before the scheduler applies it -- the current address is told when, and again
+  once it has. With no verified address to protect, confirming applies at once. Also from security: opening a link
+  only shows a button (mail scanners mustn't confirm someone else's typo, or stop a change); the confirm email names
+  nobody; at most 5 new addresses a day per account. Code review: a team-asked change also ends remember-me logins
+  (`remember_token` rotated); confirming in one's own signed-in browser keeps that browser (and shows a message);
+  a change of capitals only isn't a change on the profile either; asking again for the address already waiting only
+  resends its link; removing the email drops a waiting request; cancelling is logged. Ops: a confirm racing a new
+  account's registration answers "taken", not an error.
+- **Security re-review** (Critical + High, fixed): the "nothing to protect, apply at once" path could be reached on
+  purpose -- remove the email (profile, with the password) then add one's own; or untick "verified" (admin) then change
+  it. Now the account remembers its last verified address for 30 days after it stops being one
+  (`last_verified_email` / `_until`, kept by a model hook on removal, replacement or untick): a change in that time
+  still waits 48 hours and that address gets the warnings with "This wasn't me". Unticking "verified" is a super
+  administrator's too, and logged. "This wasn't me" now also stops the password working (whoever made the change
+  knows it and would start again) -- the owner sets a new one through "Forgot your password?", which goes to their
+  address. Also: "send the link again" is capped at 5 a day; the wait can't be configured under 24 hours; the
+  person's own change ends "remember me" elsewhere (this browser keeps its session). Accepted: whoever holds the
+  account's mailbox can stop every change (they could already reset the password from it) -- the way out is support.
+- **Security confirmation review** (Medium/Low, fixed): the 30 days are judged when the change was asked for, not when
+  it's confirmed (ask on day 29, confirm on day 31 no longer skips the wait); while an account has no email at all its
+  last verified address stays protected however long ago; "This wasn't me" after the email was removed puts that
+  address back (else "Forgot your password?" couldn't reach them); the wait is 24-72 hours (the stop link lasts 4
+  days); anonymising a closed account never writes its address back into the remembered one. Accepted (logged, super
+  administrators only): untick "verified", wait 30 days, then change it -- no wait.
+- **QA pass (qa-engineer, Playwright)**: all 8 criteria passed (request and both emails, the confirm page and the
+  wait, password reset and sign-in staying on the old address, the scheduler applying it, "This wasn't me", the
+  removal loophole closed, the admin path). Fixed from its notes: links are bound to the request, not only the address
+  (a link from a cancelled request no longer works when the same address is asked for again); the profile box and the
+  warning say what really happens after the email was removed (the server says whether it will wait); the
+  "confirmed" email has its own subject ("Your account email changes on ...").

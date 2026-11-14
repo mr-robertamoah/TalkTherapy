@@ -134,6 +134,11 @@ return [
     | administrators without it see a reminder before that day and are sent to set it up from it (App\Support\
     | TwoFactorRequirement); nothing while `enabled` is off.
     */
+    // SCRUM-427: how long a confirmed new email waits before it becomes the account's, when the current address is
+    // verified -- its owner can stop it meanwhile ("This wasn't me"). Under 24 (or not a number) is 48: a misconfiguration
+    // mustn't quietly gut it (security review). Over 72 is 48 too: the "This wasn't me" link lasts 4 days.
+    'email_change_wait_hours' => ($emailChangeWait = (int) env('EMAIL_CHANGE_WAIT_HOURS', 48)) >= 24 && $emailChangeWait <= 72 ? $emailChangeWait : 48,
+
     'two_factor' => [
         'enabled' => (bool) env('TWO_FACTOR_ENABLED', true),
         'admins_required_from' => env('TWO_FACTOR_ADMINS_REQUIRED_FROM'),

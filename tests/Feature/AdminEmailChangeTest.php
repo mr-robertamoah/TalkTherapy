@@ -39,7 +39,7 @@ test('an ordinary administrator can\'t change an email; their other edits still 
         ->and($user->fresh()->email_verified_at->toDateTimeString())->toBe($verifiedAt);
 });
 
-test('a super administrator can change it: never marked verified, the old address told (masked), logged', function () {
+test('a super administrator can ask for a change: it waits for its owner, the current address is told (masked), logged', function () {
     Notification::fake();
     Log::spy();
     $admin = aecAdmin(true);
@@ -48,7 +48,8 @@ test('a super administrator can change it: never marked verified, the old addres
 
     aecUpdate($this, $admin, $user, ['email' => 'new.place@example.org', 'emailVerified' => true])->assertOk();
 
-    expect($user->fresh())->email->toBe('new.place@example.org')->email_verified_at->toBeNull();
+    // SCRUM-427: the current address (and its verification) stays until the new one is confirmed.
+    expect($user->fresh())->email->toBe('person@example.com')->email_verified_at->not->toBeNull()->pending_email->toBe('new.place@example.org');
     Notification::assertSentOnDemand(EmailChangedNotification::class, function (EmailChangedNotification $notification, array $channels, AnonymousNotifiable $notifiable) use ($before) {
         return $notifiable->routes['mail'] === 'person@example.com'
             && $notification->maskedNewEmail === 'n•••@e•••.org'
@@ -56,7 +57,7 @@ test('a super administrator can change it: never marked verified, the old addres
             && $notification->byTeam
             && str_contains((string) $notification->toMail($notifiable)->render(), 'If you asked us to');
     });
-    Log::shouldHaveReceived('notice')->withArgs(fn ($message, $context) => $message === 'Account email changed by an administrator' && $context['admin_id'] === $admin->id && $context['user_id'] === $user->id);
+    Log::shouldHaveReceived('notice')->withArgs(fn ($message, $context) => $message === 'Account email change requested by an administrator' && $context['admin_id'] === $admin->id && $context['user_id'] === $user->id);
 });
 
 test('an old address that was never verified isn\'t emailed -- but the account is told in the app', function () {
@@ -88,7 +89,7 @@ test('a real address, and not someone else\'s', function () {
     aecUpdate($this, $admin, $user, ['email' => 'person@example.com', 'firstName' => 'Same'])->assertOk();
 });
 
-test('ticking an address verified is a super administrator\'s (logged); any admin can untick it', function () {
+test('ticking or unticking an address verified is a super administrator\'s (logged)', function () {
     Log::spy();
     $user = aecPerson(['email_verified_at' => null]);
 
@@ -100,19 +101,24 @@ test('ticking an address verified is a super administrator\'s (logged); any admi
     expect($user->fresh()->email_verified_at)->not->toBeNull();
     Log::shouldHaveReceived('notice')->withArgs(fn ($message, $context) => $message === 'Account email marked verified by an administrator' && $context['admin_id'] === $super->id);
 
-    aecUpdate($this, aecAdmin(false), $user, ['emailVerified' => false])->assertOk();
+    // SCRUM-427: unticking too is a super administrator's, and logged.
+    aecUpdate($this, aecAdmin(false), $user, ['emailVerified' => false])->assertForbidden();
+    aecUpdate($this, $super, $user, ['emailVerified' => false])->assertOk();
     expect($user->fresh()->email_verified_at)->toBeNull();
+    Log::shouldHaveReceived('notice')->withArgs(fn ($message, $context) => $message === 'Account email marked unverified by an administrator' && $context['admin_id'] === $super->id);
 });
 
 // Security review: a super admin's change can't be finished by an ordinary admin ticking the new address verified.
-test('after a super administrator\'s change, an ordinary admin can\'t mark the new address verified', function () {
+// SCRUM-427: a requested address becomes the account's only through its owner's link -- no admin tick reaches it.
+test('after a super administrator\'s request, no admin can make the new address the account\'s', function () {
     Notification::fake();
     $user = aecPerson();
     aecUpdate($this, aecAdmin(true), $user, ['email' => 'new.place@example.org'])->assertOk();
 
-    aecUpdate($this, aecAdmin(false), $user, ['emailVerified' => true])->assertForbidden();
+    aecUpdate($this, aecAdmin(true), $user, ['emailVerified' => true])->assertOk();
+    aecUpdate($this, aecAdmin(false), $user, ['emailVerified' => true])->assertOk();
 
-    expect($user->fresh()->email_verified_at)->toBeNull();
+    expect($user->fresh())->email->toBe('person@example.com')->pending_email->toBe('new.place@example.org');
 });
 
 test('an email can\'t be removed, and a refusal changes nothing else in the same request', function () {
