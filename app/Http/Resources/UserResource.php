@@ -42,6 +42,8 @@ class UserResource extends JsonResource
             'passwordWeakReason' => $request->user()?->is($this->resource) ? $this->password_weak_reason : null,
             // SCRUM-34: only the person themselves learns whether their account has two-factor sign-in.
             'twoFactorEnabled' => $request->user()?->is($this->resource) ? $this->hasTwoFactorEnabled() : null,
+            // SCRUM-424: when a reset the team scheduled applies -- only about themselves (their profile can cancel it).
+            'twoFactorResetDueAt' => $request->user()?->is($this->resource) && $this->hasTwoFactorEnabled() ? $this->pendingTwoFactorReset?->due_at : null,
         ];
     }
 }

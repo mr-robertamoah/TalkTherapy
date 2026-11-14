@@ -59,11 +59,14 @@
                 :href="route('administrator.content-accesses', { admin: user.id })"
                 class="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-md font-semibold text-xs text-gray-700 uppercase tracking-widest shadow-sm hover:bg-gray-50"
             >access history</Link>
-            <!-- SCRUM-34c: lost phone and recovery codes (super admins only). -->
-            <SecondaryButton
-                v-if="user.twoFactorEnabled && $page.props.auth.user?.isSuperAdmin"
-                @click="() => openReset()"
-            >reset two-factor</SecondaryButton>
+            <!-- SCRUM-34c: lost phone and recovery codes (super admins only). SCRUM-424: it waits before applying. -->
+            <template v-if="$page.props.auth.user?.isSuperAdmin">
+                <template v-if="user.twoFactorResetDueAt">
+                    <span class="shrink-0 whitespace-nowrap rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-900">two-factor reset scheduled for {{ new Date(user.twoFactorResetDueAt).toLocaleString() }}</span>
+                    <SecondaryButton :disabled="loading" @click="cancelReset">cancel reset</SecondaryButton>
+                </template>
+                <SecondaryButton v-else-if="user.twoFactorEnabled" @click="() => openReset()">reset two-factor</SecondaryButton>
+            </template>
             <PrimaryButton>ban</PrimaryButton>        
             <DangerButton @click="() => showModal('delete')">delete</DangerButton>      
         </div>
@@ -110,9 +113,13 @@
             <div class="space-y-3 p-2 text-sm text-gray-700">
                 <p>
                     Only do this once you're sure it's really them -- for someone who lost both their phone and their
-                    recovery codes. It turns two-factor sign-in off: they can then sign in with their password alone.
+                    recovery codes (follow the identity-check procedure). It turns two-factor sign-in off after a
+                    waiting period, unless they cancel it: they can then sign in with their password alone.
                 </p>
-                <p>They're told by notification (and email, if verified), and signed out everywhere.</p>
+                <p v-if="user.emailVerified">They're told now, by email with a link to cancel it, and signed out everywhere when it applies.</p>
+                <p v-if="!user.emailVerified" class="rounded-md border border-amber-200 bg-amber-50 p-2 text-amber-900">
+                    This account has no verified email, so they couldn't cancel it. Reset it on the server instead.
+                </p>
                 <div>
                     <InputLabel for="reset_two_factor_password" value="Your password" />
                     <TextInput
@@ -135,12 +142,23 @@
                         maxlength="20"
                     />
                 </div>
+                <div>
+                    <InputLabel for="reset_two_factor_reason" value="Ticket number or short note (optional)" />
+                    <TextInput
+                        id="reset_two_factor_reason"
+                        v-model="resetReason"
+                        type="text"
+                        class="mt-1 block w-full"
+                        maxlength="255"
+                    />
+                    <p class="mt-1 text-xs text-gray-500">Kept with the reset, never shown to them. No health or personal details.</p>
+                </div>
                 <InputError :message="resetError" />
             </div>
 
             <div class="flex space-x-2 justify-end items-center w-full p-2">
                 <SecondaryButton type="button" @click="() => closeModal()" class="shrink-0">cancel</SecondaryButton>
-                <DangerButton type="submit" :disabled="loading || !resetPassword || ($page.props.auth.user?.twoFactorEnabled && !resetCode)" class="shrink-0">reset</DangerButton>
+                <DangerButton type="submit" :disabled="loading || !user.emailVerified || !resetPassword || ($page.props.auth.user?.twoFactorEnabled && !resetCode)" class="shrink-0">schedule reset</DangerButton>
             </div>
         </form>
     </MiniModal>
@@ -209,10 +227,12 @@ function updateUser(user) {
 const resetPassword = ref('')
 const resetCode = ref('')
 const resetError = ref('')
+const resetReason = ref('')
 
 function openReset() {
     resetPassword.value = ''
     resetCode.value = ''
+    resetReason.value = ''
     resetError.value = ''
     showModal('resetTwoFactor')
 }
@@ -223,9 +243,9 @@ async function resetTwoFactor() {
     resetError.value = ''
 
     await axios
-    .post(route('admin.users.two_factor.reset', { userId: props.user.id }), { current_password: resetPassword.value, code: resetCode.value || null })
+    .post(route('admin.users.two_factor.reset', { userId: props.user.id }), { current_password: resetPassword.value, code: resetCode.value || null, reason: resetReason.value || null })
     .then((res) => {
-        setSuccessAlertData({ message: `${props.user.username}'s two-factor sign-in has been reset.` })
+        setSuccessAlertData({ message: `A reset of ${props.user.username}'s two-factor sign-in is scheduled. They've been told and can cancel it.` })
         emits('updated', res.data.user)
         closeModal()
     })
@@ -242,6 +262,23 @@ async function resetTwoFactor() {
     })
 }
   
+// SCRUM-424
+async function cancelReset() {
+    if (loading.value) return
+    loading.value = true
+
+    await axios
+    .delete(route('admin.users.two_factor.reset.cancel', { userId: props.user.id }))
+    .then((res) => {
+        setSuccessAlertData({ message: `The scheduled two-factor reset for ${props.user.username} is cancelled.` })
+        emits('updated', res.data.user)
+    })
+    .catch((err) => {
+        setFailedAlertData({ message: err.response?.data?.message ?? 'Something unfortunate happened. Please try again later.' })
+    })
+    .finally(() => { loading.value = false })
+}
+
 async function deleteUser() {
     loading.value = true
     

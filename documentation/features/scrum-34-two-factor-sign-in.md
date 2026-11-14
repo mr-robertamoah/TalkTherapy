@@ -22,14 +22,20 @@ Limits: 5 wrong codes per account (counted across every step), then codes are re
 clears the count; a super administrator's reset does too). "Remember me"
 still skips the code for the life of its cookie — cookies from before two-factor was turned on stop working.
 
-## What a super administrator can do
+## What a super administrator can do (a reset waits 48 hours -- SCRUM-424)
 
 For someone who lost both their phone and their recovery codes, **once the team has confirmed it's really them**
-(outside the app): Administrator → Users → find them → *show actions* → **reset two-factor** → their own password
-(and their own code, if they have two-factor on) → **reset**. Two-factor goes off for that account; they're told,
-signed out everywhere, and can sign in with the password and set it up again. The reset is written to the
-application log (`Two-factor sign-in reset by an administrator`, with both account ids and the address;
-`documentation/operations/monitoring.md`). The button only shows to super administrators, and only for accounts
+(`documentation/operations/two-factor-reset-identity-check.md`): Administrator → Users → find them → *show actions* →
+**reset two-factor** → their own password (and their own code, if they have two-factor on), and the support ticket
+number → **schedule reset**. Nothing changes yet: the person is emailed a **Cancel this reset** link (their verified
+address -- the button is refused for an account without one) and sees a notice on their profile. After 48 hours
+(`TWO_FACTOR_RESET_WAIT_HOURS`) two-factor goes off; they're told, signed out everywhere, and can sign in with the
+password and set it up again. Meanwhile it's cancelled by: the email link (opening it shows a button; the button
+cancels), signing in with a code or recovery code, **Cancel the reset** on their profile, making new recovery codes or
+turning it off themselves, or **cancel reset** in the admin list (which shows "two-factor reset scheduled for …"). It applies only once
+the warning email has gone out. Asking, applying and cancelling are logged (`… reset requested by an
+administrator`, `… applied`, `… cancelled`; `documentation/operations/monitoring.md`), and the `two_factor_resets`
+table keeps the record. A reset scheduled on the server (or on an administrator's account) is cancelled there. The button only shows to super administrators, and only for accounts
 with two-factor on. Never their own (they turn it off from their profile), and never another administrator's:
 those are reset on the server (below).
 
@@ -64,9 +70,13 @@ docker compose exec -u www-data php php artisan user:two-factor-reset <id> --id
 ```
 
 It shows who it found (and whether they're an administrator) and asks before changing anything (`--force` skips the
-question). A number is read as an id only with `--id` (a username may be all digits). The effect is the same as the admin reset: off, told, signed out everywhere, wrong-code count cleared;
-logged as `Two-factor sign-in reset on the server` with the account id, who ran it (the sudo user, else the
-process owner), the host and whether `--force` was used. An administrator reset this way is then sent
+question). A number is read as an id only with `--id` (a username may be all digits). Since SCRUM-424 it **schedules**
+the reset like the admin list (`--reason=<ticket>` keeps a note), `--cancel` stops one, and `--now` applies at once --
+break-glass only, typed at a terminal, with a reason (see the identity-check procedure). When it applies the effect is the same as the admin
+reset: off, told, signed out everywhere, wrong-code count cleared. Logged as `… requested on the server` (or, for
+`--now`, `Two-factor sign-in reset on the server`, `immediate: true`) with the account id, who ran it, the host and
+whether `--force` was used -- the reason stays in the ticket, not the log. For an account without a verified email
+it warns (no cancel link) and won't run with `--force`. An administrator reset this way is then sent
 to set it up again on their next page, if the required date has passed.
 
 ## Switch
@@ -81,6 +91,7 @@ still asked for the code, and can still make new codes or turn it off. After cha
 | Account | Password | State |
 |---|---|---|
 | `two_factor_demo` | `password` | Two-factor on, with the fixed demo key `TALKTHERAPYDEMOTWOFACTORSEEDKEYA` and recovery codes `demo1-aaaaa` … `demo8-hhhhh` (`DatabaseSeeder::TWO_FACTOR_DEMO_*`). Each recovery code works once — reseed (or use another) after. |
+| `two_factor_reset_demo` | `password` | Two-factor on (same demo key and recovery codes) **with a reset scheduled** ~48 hours after seeding (SCRUM-424). |
 | `mr_robertamoah` | (see `seeded-data.md`) | The super administrator, for the reset. |
 | any other seeded account, e.g. `unverified_email_demo` | `password` | Two-factor off — to try setting it up. |
 
@@ -120,6 +131,16 @@ A code works once — for a second sign-in within the same 30 seconds, wait for 
    → it shows who it found → confirm → off. That browser is signed out (as with any reset); signing in again with the
    password alone lands on the profile while the date is set. By id: `… user:two-factor-reset 1 --id`.
 
+9. **A reset waits (SCRUM-424)** — as `mr_robertamoah`, Administrator → Users → `two_factor_reset_demo`: "two-factor
+   reset scheduled for …" and **cancel reset**. Sign in as `two_factor_reset_demo` with the code: the reset is
+   cancelled (a "Two-factor reset cancelled" notice). Schedule one for `two_factor_demo` from the list → Mailpit has
+   "Two-factor sign-in reset scheduled" with **Cancel this reset**: open it (nothing changes), press the button →
+   cancelled. To see one apply without waiting: `docker compose exec -u www-data php php artisan tinker
+   --execute='App\Models\TwoFactorReset::query()->whereNull("applied_at")->whereNull("cancelled_at")->update(["due_at" => now()->subMinute()]);'`
+   and wait a minute for the scheduler (or run `App\Actions\TwoFactor\ApplyDueTwoFactorResetsAction::new()->execute()`).
+10. **Download the recovery codes** — when codes are shown (turning it on, or new codes), **Download** saves
+    `talktherapy-recovery-codes.txt`.
+
 ## Where it lives
 
 - Setup and management: `app/Actions/TwoFactor/*`, `app/Http/Controllers/Auth/TwoFactorController.php`,
@@ -129,9 +150,12 @@ A code works once — for a second sign-in within the same 30 seconds, wait for 
   `resources/js/Pages/Auth/TwoFactorChallenge.vue`.
 - Shared: `app/Support/TwoFactorCodes.php` (secrets, QR, recovery-code hashes), `TwoFactorAttempts` (the wrong-code
   count), `EndStaleSessions` (other sessions end), `TwoFactorChangedNotification`.
+- The wait (SCRUM-424): `TwoFactorReset`, `RequestTwoFactorResetAction`, `CancelTwoFactorResetAction`,
+  `ApplyDueTwoFactorResetsAction` (scheduler, every minute), `TwoFactorResetCancelController` +
+  `resources/js/Pages/Auth/CancelTwoFactorReset.vue`, `TwoFactorResetRequestedNotification`.
 - Admin reset: `ResetTwoFactorByAdminAction` (who may) and `ResetTwoFactorAction` (the reset itself),
   `AdminTwoFactorController`, `AdminUserComponent.vue`; on the server, `app/Console/Commands/ResetUserTwoFactor.php`.
 - Required for administrators: `app/Support/TwoFactorRequirement.php`, `RequireTwoFactorForAdmins` (web and api
   groups), the `twoFactorRequirement` shared prop, `resources/js/Components/TwoFactorRequirementNotice.vue`.
-- Decisions: `documentation/decision-log.md` (SCRUM-34a, 34b, 34c, 34d). Operations: the SCRUM-34 lines in
+- Decisions: `documentation/decision-log.md` (SCRUM-34a, 34b, 34c, 34d, SCRUM-424). Operations: the SCRUM-34 lines in
   `documentation/operations/production-checklist.md` (keep old `APP_KEY`s; roll back with the switch, not a revert).

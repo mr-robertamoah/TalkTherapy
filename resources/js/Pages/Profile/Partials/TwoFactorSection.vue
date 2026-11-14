@@ -12,6 +12,24 @@ import TextInput from '@/Components/TextInput.vue'
 
 const page = usePage()
 const enabled = computed(() => !!page.props.auth?.user?.twoFactorEnabled)
+// SCRUM-424: a reset the team scheduled, still waiting to apply.
+const resetDueAt = computed(() => page.props.auth?.user?.twoFactorResetDueAt)
+const cancellingReset = ref(false)
+const resetError = ref('')
+
+async function cancelReset() {
+    if (cancellingReset.value) return
+    cancellingReset.value = true
+    resetError.value = ''
+    try {
+        await axios.delete(route('two_factor.reset.cancel'))
+        router.reload({ only: ['auth'] })
+    } catch (error) {
+        resetError.value = error?.response?.data?.message || 'Something went wrong. Please try again.'
+    } finally {
+        cancellingReset.value = false
+    }
+}
 
 // idle | password (for: setup, codes, disable) | scan | codes
 const step = ref('idle')
@@ -106,6 +124,18 @@ async function copyCodes() {
     }
 }
 
+// The user's TODO: keep the codes as a file too. Made in the browser -- they never travel again.
+function downloadCodes() {
+    const text = ['TalkTherapy two-factor recovery codes', 'Each one signs you in once. Keep them somewhere safe.', '', ...recoveryCodes.value, ''].join('\n')
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }))
+    const link = Object.assign(document.createElement('a'), { href: url, download: 'talktherapy-recovery-codes.txt' })
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    // Later, not at once: some browsers abort a download whose address is revoked straight away.
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
 function doneWithCodes() {
     recoveryCodes.value = []
     reset()
@@ -137,6 +167,19 @@ const passwordTitle = computed(() => ({
                 <span v-else class="font-medium text-gray-700">off</span>
             </p>
         </header>
+
+        <!-- SCRUM-424: a reset the team scheduled. -->
+        <div v-if="enabled && resetDueAt" role="status" class="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            <p>
+                <span class="font-medium">A reset of your two-factor sign-in is scheduled</span> for
+                {{ new Date(resetDueAt).toLocaleString() }}. If you didn't ask the TalkTherapy team for it, cancel it and
+                change your password.
+            </p>
+            <div class="mt-3 flex flex-wrap items-center gap-3">
+                <SecondaryButton type="button" :disabled="cancellingReset" @click="cancelReset">Cancel the reset</SecondaryButton>
+            </div>
+            <InputError class="mt-2" :message="resetError" />
+        </div>
 
         <!-- Not started -->
         <div v-if="step === 'idle'" class="mt-6 flex flex-wrap gap-3">
@@ -225,6 +268,7 @@ const passwordTitle = computed(() => ({
             </ul>
             <div class="flex flex-wrap items-center gap-3">
                 <SecondaryButton type="button" @click="copyCodes">Copy</SecondaryButton>
+                <SecondaryButton type="button" @click="downloadCodes">Download</SecondaryButton>
                 <PrimaryButton type="button" @click="doneWithCodes">I've saved them</PrimaryButton>
                 <p v-if="copied" class="text-sm text-gray-600" role="status">Copied.</p>
             </div>

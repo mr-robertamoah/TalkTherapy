@@ -137,6 +137,9 @@ return [
     'two_factor' => [
         'enabled' => (bool) env('TWO_FACTOR_ENABLED', true),
         'admins_required_from' => env('TWO_FACTOR_ADMINS_REQUIRED_FROM'),
+        // SCRUM-424: how long a reset by the team waits before it applies (hours). Under 1 (or not a number) is 48:
+        // a mistyped value never removes the wait.
+        'reset_wait_hours' => ($resetWait = (int) env('TWO_FACTOR_RESET_WAIT_HOURS', 48)) >= 1 ? $resetWait : 48,
         'recovery_codes' => 8,
         'window' => 1,
     ],

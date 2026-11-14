@@ -16,6 +16,7 @@ use App\Models\SafeguardingException;
 use App\Models\SafetyFlag;
 use App\Models\SafetyFlagEvent;
 use App\Models\SafetyFlagNote;
+use App\Models\TwoFactorReset;
 use App\Models\User;
 use App\Notifications\ClientAccessPausedNotification;
 use App\Notifications\ClientAccessResumedNotification;
@@ -149,6 +150,8 @@ class AnonymiseClosedAccountAction extends Action
             }
             // SCRUM-399: their devices for web push.
             PushSubscription::query()->where('user_id', $user->id)->delete();
+            // SCRUM-424: scheduled or past two-factor resets (who asked, the reason) go with the account.
+            TwoFactorReset::query()->where('user_id', $user->id)->delete();
             // SCRUM-396: the reason they gave for declining someone's proposed session time, on the request.
             Request::query()->where('type', RequestTypeEnum::sessionScheduleProposal->value)
                 ->where(fn ($query) => $query->where(fn ($query) => $query->where('to_type', $user->getMorphClass())->where('to_id', $user->id))

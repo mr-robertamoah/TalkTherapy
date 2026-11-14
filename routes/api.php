@@ -139,6 +139,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/administrator/users/{userId}', [AdministratorController::class, 'deleteUser'])->name('admin.users.delete');
         // SCRUM-34c: a super administrator turns off someone's two-factor sign-in (lost phone and codes).
         Route::post('/administrator/users/{userId}/two-factor/reset', [AdminTwoFactorController::class, 'reset'])->name('admin.users.two_factor.reset')->whereNumber('userId')->middleware('throttle:10,1,admin.users.two_factor.reset');
+        // SCRUM-424: stop a scheduled reset.
+        Route::delete('/administrator/users/{userId}/two-factor/reset', [AdminTwoFactorController::class, 'cancel'])->name('admin.users.two_factor.reset.cancel')->whereNumber('userId')->middleware('throttle:10,1,admin.users.two_factor.reset.cancel');
 
         // TT-7.6e/SCRUM-229: getPayoutsForAdmin's own guard also answers a non-admin with an empty
         // result, behind the `admin` middleware's 403 above (SCRUM-387).

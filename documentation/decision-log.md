@@ -12378,3 +12378,54 @@ Boxed as Epic TT-12 in `implementation_plan.md` (TT-4.5e points at TT-12.4).
   fail harmlessly (`queue:flush`).
 - Also: `session.check` isn't a visit (StoreVisitationMiddleware) and stays open to an administrator who still has to
   set up two-factor (SCRUM-34d); `useAuth.goToLogin` went to a relative `login` URL.
+
+## SCRUM-424 — a two-factor reset by the team waits, and can be cancelled (2026-11-14)
+
+- **48 hours, then it applies** (`TWO_FACTOR_RESET_WAIT_HOURS`; under 1 or not a number means 48, so a typo never
+  removes the wait). Both ways in schedule: the admin list and `user:two-factor-reset`. The scheduler applies due
+  ones every minute through the existing `ResetTwoFactorAction` -- the same reset as before (columns cleared, other
+  sessions end, "remember me" stops, the wrong-code count cleared, a notice).
+- **A table, not columns on users** (architect): one row per reset (ULID) -- so a cancel link is bound to one reset
+  and can't stop a later one; it keeps who asked, the reason and how it ended; the sweep has a cheap index. This
+  changes 34c's "no audit table": it's a state machine that also happens to be the record. Rows go with a closed
+  account (anonymisation).
+- **Cancelled by**: the emailed link (signed, good until the reset applies, no sign-in; opening it only shows the
+  button -- mail scanners open links, so a GET must never cancel); signing in with a code or recovery code (the
+  challenge controller, not the shared code verifier -- that's also used to check an acting admin's own code);
+  **Cancel the reset** on their profile (no password: it only makes the account safer); making new recovery codes or
+  turning it off themselves (quietly); a super administrator (**cancel reset** in the list); the command
+  (`--cancel`). The person is told when it's cancelled, except when it simply no longer applies.
+- **Re-checked when it's due**, under the lock (user row first, then the reset -- one order everywhere): cancelled
+  meanwhile, two-factor already off, or **set up again since it was asked** (a new phone: the snapshot of
+  `two_factor_confirmed_at` differs) -- then it's closed without applying.
+- **The user's decisions**: the admin list refuses an account without a verified email (nobody could cancel it --
+  the server command after an identity check instead); the command keeps `--now` -- break-glass for, say, the last
+  super administrator locked out: typed at a terminal only (refused with `--force` or without one), needs a reason,
+  logged as immediate. Defaults not vetoed: 48 hours; the reason is never shown to the person.
+- **The notice**: email to the verified address with the time it applies and **Cancel this reset**; the in-app entry
+  never holds the link (it's a bearer token) -- it points to the profile. The final "reset" notice no longer says "as
+  asked" (they had 48 hours to object).
+- **Identity check written down**: `documentation/operations/two-factor-reset-identity-check.md` (contact them through
+  the verified address; what's never enough; warning signs; `--now`; "it wasn't me").
+- **The user's TODO, in the same section**: recovery codes can be downloaded (`talktherapy-recovery-codes.txt`, made
+  in the browser -- the codes never travel again) as well as copied.
+- **Demo data**: `two_factor_reset_demo` with a scheduled reset (added to the local database without reseeding).
+- **Reviews.** Ops and security (Medium, both): the 48 hours started when it was asked, so with the queue or mail
+  down the reset could apply without the person ever being warned -- it now applies only once the warning email has
+  gone out (`mail_required` / `notified_at`, set when the mail is sent); late, never early, with a warning in the log
+  meanwhile. Code review: `--now` on an account with one waiting told the person "cancelled" then "reset" -- the
+  waiting one is now recorded as applied in the same step; a closed (superseded / already off) reset is decided and
+  written under the same lock; the link page stays readable a week after it's due (someone too late learns it
+  applied and to contact support, instead of a bare "invalid signature" -- the button only ever cancels one still
+  waiting); times on the cancel page in the reader's time zone; an existing reset is refused before the admin's own
+  code is used up. Security (Low): the command warns about an account without a verified email and won't schedule
+  one with `--force`; a reset scheduled on the server (or on an administrator) is cancelled on the server, not from
+  the admin list -- a taken-over super admin can't keep blocking it; the reason stays out of the log lines; the
+  cancel page sends `Referrer-Policy: no-referrer` and redirects to itself, not to the Referer. Accepted: one extra
+  small query per page for people with two-factor on (their profile shows a waiting reset).
+- **QA pass (qa-engineer, Playwright)**: 7 of 9 criteria passed first time (the admin dialog, no-verified-email
+  refusal, emailed link and cancel page, profile cancel, sign-in cancel, applying after the wait -- and not before the
+  email -- and the codes download). Fixed: `--now` ran when a script piped "yes" in (only `-n` was checked; now a real
+  terminal is required, `App\Support\Terminal`); the "reset scheduled" label in the admin row was unreadable (now a
+  solid amber chip); the email showed "GMT+0000" (now the app's time zone); the dialog promised a cancel email to an
+  account without one; the command logged an empty "by" in the container (now the process's own user).

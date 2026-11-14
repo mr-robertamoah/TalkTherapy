@@ -4,6 +4,7 @@ namespace App\Actions\TwoFactor;
 
 use App\Actions\Action;
 use App\Exceptions\TwoFactorException;
+use App\Models\TwoFactorReset;
 use App\Models\User;
 use App\Notifications\TwoFactorChangedNotification;
 use Illuminate\Support\Facades\DB;
@@ -28,5 +29,8 @@ class DisableTwoFactorAction extends Action
 
             $user->notify(new TwoFactorChangedNotification(TwoFactorChangedNotification::DISABLED));
         });
+
+        // SCRUM-424: turned off by them -- a reset the team scheduled has nothing left to do.
+        CancelTwoFactorResetAction::new()->forUser($user, TwoFactorReset::CANCELLED_BY_SELF_CHANGE, $user);
     }
 }

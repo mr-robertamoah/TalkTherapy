@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Actions\Auth\CompleteLoginAction;
+use App\Actions\TwoFactor\CancelTwoFactorResetAction;
 use App\Actions\TwoFactor\VerifyTwoFactorCodeAction;
 use App\Exceptions\TwoFactorException;
 use App\Http\Controllers\Controller;
+use App\Models\TwoFactorReset;
 use App\Notifications\TwoFactorChangedNotification;
 use App\Providers\RouteServiceProvider;
 use App\Support\TwoFactorLogin;
@@ -51,6 +53,10 @@ class TwoFactorChallengeController extends Controller
         $remember = TwoFactorLogin::remember($request);
         TwoFactorLogin::forget($request);
         CompleteLoginAction::new()->execute($request, $user, $remember);
+
+        // SCRUM-424: signing in with a code (or a recovery code) shows they still have it -- a reset the team scheduled
+        // is cancelled, and they're told.
+        CancelTwoFactorResetAction::new()->forUser($user, TwoFactorReset::CANCELLED_BY_SIGN_IN, $user);
 
         // A recovery code is a lost-phone route: the person hears of it, so a stolen code can't be used unseen.
         if ($used === VerifyTwoFactorCodeAction::RECOVERY) {

@@ -33,6 +33,8 @@ class AdminUserResource extends JsonResource
             'avatar' => $this->avatar?->url,
             // SCRUM-34c: whether they have two-factor sign-in on -- for a super administrator only (they can reset it).
             'twoFactorEnabled' => $request->user()?->isSuperAdmin() ? $this->hasTwoFactorEnabled() : null,
+            // SCRUM-424: when a scheduled reset applies (super administrators only; loaded, never a query per row).
+            'twoFactorResetDueAt' => $request->user()?->isSuperAdmin() && $this->relationLoaded('pendingTwoFactorReset') ? $this->pendingTwoFactorReset?->due_at : null,
         ];
     }
 }

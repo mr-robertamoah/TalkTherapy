@@ -15,6 +15,7 @@ use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -189,6 +190,12 @@ class User extends Authenticatable implements MustVerifyEmailContract
                 SessionCheckRequestedEvent::after($user->id);
             }
         });
+    }
+
+    // SCRUM-424: a reset of their two-factor sign-in by the team that is still waiting to apply (at most one).
+    public function pendingTwoFactorReset(): HasOne
+    {
+        return $this->hasOne(TwoFactorReset::class)->whereNull('applied_at')->whereNull('cancelled_at');
     }
 
     // SCRUM-34: two-factor sign-in fully off -- the one place that does it (the person, or a super admin's reset). A

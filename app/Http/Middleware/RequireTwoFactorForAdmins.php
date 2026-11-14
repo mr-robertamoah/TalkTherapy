@@ -20,7 +20,7 @@ class RequireTwoFactorForAdmins
     // Their own account only: the profile and what its page loads, setting two-factor up, email, password, notices,
     // signing out, and whether the page is still signed in (SCRUM-423).
     private const OPEN = [
-        'profile.*', 'two_factor.*', 'password.*', 'verification.*', 'logout', 'session.check',
+        'profile.*', 'two_factor.*', 'two_factor_reset.*', 'password.*', 'verification.*', 'logout', 'session.check',
         'notifications.*', 'safety_notice.current', 'help.requests.current', 'api.users.guardianship', 'api.testimonials',
     ];
 

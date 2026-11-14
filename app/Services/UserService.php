@@ -107,7 +107,8 @@ class UserService extends Service
         }
 
         // SCRUM-193: avatarFile eager-loaded -- AdminUserResource shows each user's avatar.
-        $query = User::query()->with(['administrator', 'avatarFile']);
+        // SCRUM-424: and a scheduled two-factor reset (shown to super administrators).
+        $query = User::query()->with(['administrator', 'avatarFile', 'pendingTwoFactorReset']);
 
         $query->whereNot('id', $getModelsForAdminDTO->user->id);
 
