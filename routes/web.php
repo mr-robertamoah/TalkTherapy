@@ -442,8 +442,8 @@ Route::middleware('auth')->group(function () {
     Route::delete('/counsellor/{counsellorId}', [CounsellorController::class, 'deleteCounsellor'])->name('counsellor.delete');
 
     Route::get('/profile', [ProfileController::class, 'show'])->name('profile.show');
-    Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
-    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+    Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update')->middleware('throttle:10,1,profile.update'); // SCRUM-422: it checks the password when the email changes
+    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy')->middleware('throttle:6,1,profile.destroy'); // SCRUM-422: checks the password
     // Self-service only -- always operates on $request->user(), never a route-supplied user id,
     // so there's no other-user id to check/enumerate (SCRUM-182/TT-10.6).
     Route::post('/profile/avatar', [ProfileController::class, 'updateAvatar'])->name('profile.avatar.update')->middleware('throttle:10,1,image-uploads'); // SCRUM-192: image uploads, own counter

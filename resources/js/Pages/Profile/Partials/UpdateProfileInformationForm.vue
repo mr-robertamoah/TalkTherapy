@@ -1,15 +1,17 @@
 <script setup>
+// The user's TODO (TT-12.2a): read as a plain list; Edit (bottom left) turns the card into the form. SCRUM-422: changing
+// the email (adding, replacing or clearing it) asks for the current password, and the previous verified address is told.
+import CardActions from '@/Components/CardActions.vue';
 import CountrySelect from '@/Components/CountrySelect.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
+import SecondaryButton from '@/Components/SecondaryButton.vue';
 import Select from '@/Components/Select.vue';
 import TextInput from '@/Components/TextInput.vue';
-import ProfileInformationDisplay from '@/Components/ProfileInformationDisplay.vue';
-import { Link, useForm, usePage } from '@inertiajs/vue3';
-import { ref } from 'vue';
-import { computed } from 'vue';
-import { subYears } from 'date-fns';
+import { useForm, usePage } from '@inertiajs/vue3';
+import { computed, nextTick, ref } from 'vue';
+import { format, subYears } from 'date-fns';
 
 defineProps({
     dobChangePendingApproval: {
@@ -18,233 +20,207 @@ defineProps({
     },
 });
 
-const user = usePage().props.auth.user;
+const page = usePage();
+// Always the latest saved values (a one-off copy went stale after a save, and Cancel brought old edits back).
+const user = computed(() => page.props.auth.user ?? {});
 
-const form = useForm({
-    firstName: user.firstName ?? '',
-    lastName: user.lastName ?? '',
-    otherNames: user.otherNames ?? '',
-    email: user.email ?? '',
-    dob: user.dob ? getDate(user.dob) : '',
-    gender: user.gender ?? '',
-    country: user.country ?? '',
-});
+// A date of birth is a calendar day: read its YYYY-MM-DD as is. (new Date(...) on the server's value shifted it a day
+// in timezones behind UTC.)
+function dayOf(value) {
+    const day = String(value ?? '').slice(0, 10);
 
-const update = ref(false)
-
-const computedGender = computed(() => {
-    const u = usePage().props.auth.user
-
-    return u?.gender == 'NON_BINARY' ? 'NON-BINARY' : (u?.gender ?? '')
-})
-const computedMaxDOB = computed(() => {
-    return subYears(new Date(), 10).toISOString().slice(0, 10)
-})
-const computedUserDOB = computed(() => {
-    return form.dob ? (new Date(form.dob)).toDateString() : ''
-})
-
-function getDate(dob) {
-    const dateSplit = new Date(dob).toISOString().split('T')
-
-    if (dateSplit.length) return dateSplit[0]
-
-    return ''
+    return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : '';
 }
 
-function updateProfileInformation() {
-    form.patch(route('profile.update'), {
-        preserveScroll: true,
-        onSuccess: () => update.value = false
-    })
+function showDay(day) {
+    if (!day) return '';
+    const [year, month, date] = day.split('-').map(Number);
+
+    return new Date(year, month - 1, date).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
-function clickedUpdate() {
-    update.value = true
+function savedValues() {
+    return {
+        firstName: user.value.firstName ?? '',
+        lastName: user.value.lastName ?? '',
+        otherNames: user.value.otherNames ?? '',
+        email: user.value.email ?? '',
+        dob: dayOf(user.value.dob),
+        gender: user.value.gender ?? '',
+        country: user.value.country ?? '',
+        current_password: '',
+    };
 }
 
+const form = useForm(savedValues());
+
+const editing = ref(false);
+const saved = ref(false);
+const editButton = ref(null);
+const firstField = ref(null);
+
+// Stored as GenderEnum values (MALE, FEMALE, NON_BINARY).
+const GENDERS = { MALE: 'Male', FEMALE: 'Female', NON_BINARY: 'Non-binary' };
+
+const details = computed(() => [
+    { label: 'First name', value: user.value.firstName },
+    { label: 'Last name', value: user.value.lastName },
+    { label: 'Other names', value: user.value.otherNames },
+    { label: 'Email', value: user.value.email, email: true },
+    { label: 'Date of birth', value: showDay(dayOf(user.value.dob)) },
+    { label: 'Gender', value: GENDERS[String(user.value.gender ?? '').toUpperCase()] ?? user.value.gender },
+    { label: 'Country', value: user.value.country },
+]);
+
+// The same test the server makes (ProfileUpdateRequest::changesEmail): the address as typed, against the saved one.
+const changingEmail = computed(() => (form.email.trim() || null) !== (user.value.email || null));
+
+// In local time, like the day it's compared with (the server's rule is the real limit).
+const maxDob = computed(() => format(subYears(new Date(), 10), 'yyyy-MM-dd'));
+
+function edit() {
+    form.defaults(savedValues());
+    form.reset();
+    form.clearErrors();
+    saved.value = false;
+    editing.value = true;
+    nextTick(() => firstField.value?.focus());
+}
+
+function cancel() {
+    if (form.processing) return;
+    form.reset();
+    form.clearErrors();
+    editing.value = false;
+    nextTick(() => editButton.value?.$el?.focus?.());
+}
+
+function save() {
+    form.transform((data) => (changingEmail.value ? data : { ...data, current_password: undefined }))
+        .patch(route('profile.update'), {
+            preserveScroll: true,
+            onSuccess: () => {
+                editing.value = false;
+                saved.value = true;
+                form.defaults(savedValues());
+                form.reset();
+                nextTick(() => editButton.value?.$el?.focus?.());
+            },
+            // A refusal keeps what they typed -- only the password is cleared.
+            onError: () => form.reset('current_password'),
+        });
+}
 </script>
 
 <template>
     <section>
         <header>
             <h2 class="text-lg font-medium text-gray-900">Profile Information</h2>
-
-            <p v-if="update" class="mt-1 text-sm text-gray-600">
-                Update your account's profile information and email address.
+            <p class="mt-1 text-sm text-gray-600">
+                {{ editing ? 'Update your name, email and other details.' : 'Your personal details on the app.' }}
             </p>
-
-            <template v-else>
-                <p class="mt-1 text-sm text-gray-600">
-                    These are your personal information currently on the app.
-                </p>
-
-                <div class="my-8 mx-auto w-full">
-                    <ProfileInformationDisplay
-                        class="my-8"
-                        label="first name"
-                        :text="$page.props.auth.user?.firstName ?? ''"
-                    />
-                    <ProfileInformationDisplay
-                        class="my-8"
-                        label="last name"
-                        :text="$page.props.auth.user?.lastName ?? ''"
-                    />
-                    <ProfileInformationDisplay
-                        class="my-8"
-                        label="other names"
-                        :text="$page.props.auth.user?.otherNames ?? ''"
-                    />
-                    <ProfileInformationDisplay
-                        class="my-8"
-                        label="email"
-                        :capitalize="false"
-                        :text="$page.props.auth.user?.email ?? ''"
-                    />
-                    <ProfileInformationDisplay
-                        class="my-8"
-                        label="date of birth"
-                        :capitalize="false"
-                        :text="$page.props.auth.user?.dob ? new Date($page.props.auth.user.dob).toDateString() : ''"
-                    />
-                    <div
-                        v-if="dobChangePendingApproval"
-                        class="mt-2 mb-6 p-4 bg-indigo-50 border border-indigo-200 rounded-lg text-sm text-indigo-700"
-                    >Your date-of-birth change has been submitted for your guardian's (or an admin's) approval and will take effect once approved. Everything else you changed has already been saved.</div>
-                    <ProfileInformationDisplay
-                        class="my-8"
-                        label="gender"
-                        :text="computedGender"
-                    />
-                    <ProfileInformationDisplay
-                        class="my-8"
-                        label="country"
-                        :text="$page.props.auth.user?.country ?? ''"
-                    />
-                </div>
-            </template>
-            <PrimaryButton v-if="!update" @click="clickedUpdate" class="mr-2 mt-2 float-right">Update</PrimaryButton>
         </header>
 
-        <form
-            v-if="update"
-            @submit.prevent="updateProfileInformation" class="mt-8 space-y-6">
+        <template v-if="!editing">
+            <dl class="mt-6 grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-[10rem,1fr] sm:gap-y-3">
+                <template v-for="detail in details" :key="detail.label">
+                    <dt class="pt-2 font-medium text-gray-500 sm:pt-0">{{ detail.label }}</dt>
+                    <dd class="break-words text-gray-900">
+                        <template v-if="detail.value">
+                            {{ detail.value }}
+                            <span
+                                v-if="detail.email"
+                                class="ml-2 inline-block rounded-full border px-2 py-0.5 text-xs font-medium"
+                                :class="user.emailVerifiedAt ? 'border-green-200 bg-green-50 text-green-800' : 'border-amber-200 bg-amber-50 text-amber-900'"
+                            >{{ user.emailVerifiedAt ? 'Verified' : 'Not verified' }}</span>
+                        </template>
+                        <template v-else><span class="text-gray-400" aria-hidden="true">—</span><span class="sr-only">Not set</span></template>
+                    </dd>
+                </template>
+            </dl>
+
+            <div
+                v-if="dobChangePendingApproval"
+                role="status"
+                class="mt-6 rounded-md border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-800"
+            >Your date-of-birth change has been submitted for your guardian's (or an admin's) approval and will take effect once approved. Everything else you changed has already been saved.</div>
+
+            <CardActions>
+                <PrimaryButton ref="editButton" @click="edit">Edit</PrimaryButton>
+                <p v-if="saved" role="status" class="text-sm text-gray-600">Saved.</p>
+            </CardActions>
+        </template>
+
+        <form v-else class="mt-6 space-y-6" @submit.prevent="save">
             <div>
-                <InputLabel for="firstName" value="First Name" />
-
-                <TextInput
-                    id="firstName"
-                    type="text"
-                    class="mt-1 block w-full"
-                    v-model="form.firstName"
-                    autofocus
-                    autocomplete="firstName"
-                />
-
+                <InputLabel for="firstName" value="First name" />
+                <TextInput id="firstName" ref="firstField" v-model="form.firstName" type="text" class="mt-1 block w-full" autocomplete="given-name" />
                 <InputError class="mt-2" :message="form.errors.firstName" />
             </div>
-            
+
             <div>
-                <InputLabel for="lastName" value="Last Name" />
-
-                <TextInput
-                    id="lastName"
-                    type="text"
-                    class="mt-1 block w-full"
-                    v-model="form.lastName"
-                    autocomplete="lastName"
-                />
-
+                <InputLabel for="lastName" value="Last name" />
+                <TextInput id="lastName" v-model="form.lastName" type="text" class="mt-1 block w-full" autocomplete="family-name" />
                 <InputError class="mt-2" :message="form.errors.lastName" />
             </div>
 
             <div>
-                <InputLabel for="otherNames" value="Other Names" />
-
-                <TextInput
-                    id="otherNames"
-                    type="text"
-                    class="mt-1 block w-full"
-                    v-model="form.otherNames"
-                    autocomplete="otherNames"
-                />
-
+                <InputLabel for="otherNames" value="Other names" />
+                <TextInput id="otherNames" v-model="form.otherNames" type="text" class="mt-1 block w-full" autocomplete="additional-name" />
                 <InputError class="mt-2" :message="form.errors.otherNames" />
             </div>
 
             <div>
                 <InputLabel for="email" value="Email" />
-
-                <TextInput
-                    id="email"
-                    type="email"
-                    class="mt-1 block w-full"
-                    v-model="form.email"
-                    autocomplete="email"
-                />
-
+                <TextInput id="email" v-model="form.email" type="email" class="mt-1 block w-full" autocomplete="email" />
                 <InputError class="mt-2" :message="form.errors.email" />
+            </div>
+
+            <div v-if="changingEmail" class="rounded-md border border-gray-200 bg-gray-50 p-4">
+                <InputLabel for="profile_current_password" value="Your current password" />
+                <p class="mt-1 text-xs text-gray-600">
+                    Needed to change your email. You'll need to verify the new address, and we'll let your current one know.
+                </p>
+                <TextInput
+                    id="profile_current_password"
+                    v-model="form.current_password"
+                    type="password"
+                    class="mt-2 block w-full"
+                    autocomplete="current-password"
+                />
+                <InputError class="mt-2" :message="form.errors.current_password" />
             </div>
 
             <div>
                 <InputLabel for="dob" value="Date of birth" />
-
-                <TextInput
-                    id="dob"
-                    type="date"
-                    class="mt-1 block w-full"
-                    v-model="form.dob"
-                    :max="computedMaxDOB"
-                    autocomplete="dob"
-                />
-
-                <div v-if="computedUserDOB"  class="mt-2 text-xs text-gray-600 text-end">{{ computedUserDOB }}</div>
+                <TextInput id="dob" v-model="form.dob" type="date" class="mt-1 block w-full" :max="maxDob" autocomplete="bday" />
                 <InputError class="mt-2" :message="form.errors.dob" />
             </div>
 
             <div>
                 <InputLabel for="gender" value="Gender" />
-
                 <Select
                     id="gender"
-                    class="mt-1 block w-full"
                     v-model="form.gender"
-                    autocomplete="gender"
-                    :options="['male', 'female', {value: 'NON_BINARY', name: 'non-binary'}]"
+                    class="mt-1 block w-full"
+                    :options="['male', 'female', { value: 'NON_BINARY', name: 'non-binary' }]"
                     :default-option="'select gender'"
                 />
-
                 <InputError class="mt-2" :message="form.errors.gender" />
             </div>
 
             <div>
                 <InputLabel for="country" value="Country" />
-
                 <CountrySelect v-model="form.country" input-id="country" class="mt-1 block w-full" />
-
                 <InputError class="mt-2" :message="form.errors.country" />
             </div>
 
-            <div class="flex items-center gap-4">
-                <PrimaryButton :disabled="form.processing">Save</PrimaryButton>
-                <div
-                    @click="() => {
-                        if (form.processing) return
-                        update = false
-                    }" 
-                    :disabled="form.processing"
-                    class="cursor-pointer ml-2 inline-flex items-center px-4 py-2 bg-gray-800 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-gray-700 focus:bg-gray-700 active:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition ease-in-out duration-150"
-                >cancel</div>
+            <InputError :message="form.errors.profile" />
 
-                <Transition
-                    enter-active-class="transition ease-in-out"
-                    enter-from-class="opacity-0"
-                    leave-active-class="transition ease-in-out"
-                    leave-to-class="opacity-0"
-                >
-                    <p v-if="form.recentlySuccessful" class="text-sm text-gray-600">Saved.</p>
-                </Transition>
-            </div>
+            <CardActions>
+                <PrimaryButton type="submit" :disabled="form.processing">Save</PrimaryButton>
+                <SecondaryButton type="button" :disabled="form.processing" @click="cancel">Cancel</SecondaryButton>
+            </CardActions>
         </form>
     </section>
 </template>

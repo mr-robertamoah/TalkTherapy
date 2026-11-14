@@ -1,4 +1,5 @@
 <script setup>
+import CardActions from '@/Components/CardActions.vue';
 import InputError from '@/Components/InputError.vue';
 import PasswordHints from '@/Components/PasswordHints.vue';
 import InputLabel from '@/Components/InputLabel.vue';
@@ -64,10 +65,12 @@ function clickedUpdate() {
             <p v-if="update" class="mt-1 text-sm text-gray-600">
                 Ensure your account is using a long, random password to stay secure.
             </p>
-            <p v-else class="mt-1 text-sm text-gray-600 mb-8">
+            <p v-else class="mt-1 text-sm text-gray-600">
                 Ensure your account is well protected from other persons. Use strong password. You can have your password changed here. Start by clicking update.
             </p>
-            <PrimaryButton v-if="!update" @click="clickedUpdate" class="mr-2 my-2 float-right">Update</PrimaryButton>
+            <CardActions v-if="!update">
+                <PrimaryButton @click="clickedUpdate">Update</PrimaryButton>
+            </CardActions>
         </header>
 
         <form

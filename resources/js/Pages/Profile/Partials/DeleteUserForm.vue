@@ -1,4 +1,5 @@
 <script setup>
+import CardActions from '@/Components/CardActions.vue';
 import DangerButton from '@/Components/DangerButton.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
@@ -46,7 +47,9 @@ const closeModal = () => {
                 Once your account is deleted, all of its resources and data will be permanently deleted. Before deleting
                 your account, please download any data or information that you wish to retain.
             </p>
-            <DangerButton class="float-right my-2 mr-2" @click="confirmUserDeletion">Delete Account</DangerButton>
+            <CardActions>
+                <DangerButton @click="confirmUserDeletion">Delete Account</DangerButton>
+            </CardActions>
         </header>
 
 

@@ -144,7 +144,7 @@ export default function useGuidedTours() {
                     id: 5,
                     position: 5,
                     name: 'Profile Information', 
-                    description: 'Here you see the basic information of your user account and by clicking the "UPDATE" button, you can easily update these information.',
+                    description: 'Here you see the basic information of your user account. Press "Edit" to change it.',
                     elementId: 'profile-info-id',
                     messages: [
                         {

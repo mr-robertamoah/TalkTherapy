@@ -82,4 +82,14 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->render(fn (ThrottleRequestsException $exception, Request $request) => $request->routeIs('verification.send') && ! $request->expectsJson()
             ? back()->with('status', 'verification-throttled')
             : null);
+        // SCRUM-422: the limits on forms that check a password -- said on the form, under a key it always shows. A 303
+        // (QA): the throttle answers before Inertia's middleware could turn a 302 into one, and a 302 after a PATCH or
+        // DELETE repeats it -- a redirect loop.
+        $exceptions->render(function (ThrottleRequestsException $exception, Request $request) {
+            $field = ['profile.update' => 'profile', 'profile.destroy' => 'password', 'password.confirm.store' => 'password'][$request->route()?->getName()] ?? null;
+
+            return $field && ! $request->expectsJson()
+                ? back(303)->withErrors([$field => 'Too many tries. Please wait a minute and try again.'])
+                : null;
+        });
     })->create();

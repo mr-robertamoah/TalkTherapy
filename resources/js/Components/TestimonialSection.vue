@@ -7,7 +7,7 @@
 
             <div 
                 v-if="testimonial"
-                class="flex flex-col justify-center items-start w-[90%] sm:w-[80%] mx-auto"
+                class="mt-2 flex flex-col justify-center items-start"
             >
                 <div class="text-base"><span class="bg-gradient-to-br from-blue-800 to-violet-500 bg-clip-text text-transparent font-bold">@{{ testimonial.addedby.username }}</span></div>
                 <div class="text-lg text-gray-600">{{ testimonial.addedby.fullName ?? testimonial.addedby.name }} ({{ testimonial.by }})</div>
@@ -19,23 +19,23 @@
             </div>
 
             <template v-else>
-                <div v-if="computedCanAdd" class="text-sm text-gray-600 mt-8 w-[90%] sm:w-[80%] mx-auto">
+                <div v-if="computedCanAdd" class="text-sm text-gray-600 mt-2">
                     No testimonials to show for now. If you feel this app has had an impact, do share a testimonial.
                 </div>
 
-                <div v-else class="text-sm text-gray-600 mt-8 w-[90%] sm:w-[80%] mx-auto">
+                <div v-else class="text-sm text-gray-600 mt-2">
                     No testimonials to show for now. You may have a look around the app and you may want to testify soon
                 </div>
 
-                <div v-if="!loading && computedCanAdd" class="mt-4 flex w-[90%] sm:w-[80%] mx-auto space-x-3 justify-start items-center overflow-hidden overflow-x-auto p-2">
-                    <PrimaryButton class="shrink-0" @click="() => showModal('add')">add testimonial</PrimaryButton>
-                </div>      
+                <CardActions v-if="!loading && computedCanAdd">
+                    <PrimaryButton @click="() => showModal('add')">add testimonial</PrimaryButton>
+                </CardActions>
             </template>
 
-            <div v-if="!loading && computedIsByYou" class="mt-4 flex w-[90%] sm:w-[80%] mx-auto space-x-3 justify-start items-center overflow-hidden overflow-x-auto p-2">
-                <PrimaryButton class="shrink-0" @click="() => showModal('update')">update</PrimaryButton>
-                <DangerButton class="shrink-0" @click="() => showModal('delete')">delete</DangerButton>
-            </div>      
+            <CardActions v-if="!loading && computedIsByYou">
+                <PrimaryButton @click="() => showModal('update')">update</PrimaryButton>
+                <DangerButton @click="() => showModal('delete')">delete</DangerButton>
+            </CardActions>
         </header>
 
         <Alert
@@ -95,6 +95,7 @@ import MiniModal from './MiniModal.vue';
 import CreateTestimonialModal from './CreateTestimonialModal.vue';
 import { computed } from 'vue';
 import PrimaryButton from './PrimaryButton.vue';
+import CardActions from './CardActions.vue';
 import { usePage } from '@inertiajs/vue3';
 
 const { goToLogin } = useAuth()
