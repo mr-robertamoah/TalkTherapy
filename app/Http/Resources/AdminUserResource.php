@@ -31,6 +31,8 @@ class AdminUserResource extends JsonResource
             'isAdmin' => $this->relationLoaded('administrator') ? (bool) $this->administrator : null,
             // SCRUM-193: AdminUserComponent shows it beside the username in the admin users list.
             'avatar' => $this->avatar?->url,
+            // SCRUM-34c: whether they have two-factor sign-in on -- for a super administrator only (they can reset it).
+            'twoFactorEnabled' => $request->user()?->isSuperAdmin() ? $this->hasTwoFactorEnabled() : null,
         ];
     }
 }

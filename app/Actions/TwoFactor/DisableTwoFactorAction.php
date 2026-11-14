@@ -7,7 +7,6 @@ use App\Exceptions\TwoFactorException;
 use App\Models\User;
 use App\Notifications\TwoFactorChangedNotification;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 // SCRUM-34: turns two-factor sign-in off (the password was checked by the request) -- also needs a current code or a
 // recovery code, so a stolen password alone can't remove it. Other sessions end (EndStaleSessions) and "remember me"
@@ -25,13 +24,7 @@ class DisableTwoFactorAction extends Action
         }
 
         DB::transaction(function () use ($user) {
-            $user->forceFill([
-                'two_factor_secret' => null,
-                'two_factor_recovery_codes' => null,
-                'two_factor_confirmed_at' => null,
-                'two_factor_last_used_step' => null,
-                'remember_token' => Str::random(60),
-            ])->save();
+            $user->turnOffTwoFactor();
 
             $user->notify(new TwoFactorChangedNotification(TwoFactorChangedNotification::DISABLED));
         });

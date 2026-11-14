@@ -59,6 +59,11 @@
                 :href="route('administrator.content-accesses', { admin: user.id })"
                 class="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-md font-semibold text-xs text-gray-700 uppercase tracking-widest shadow-sm hover:bg-gray-50"
             >access history</Link>
+            <!-- SCRUM-34c: lost phone and recovery codes (super admins only). -->
+            <SecondaryButton
+                v-if="user.twoFactorEnabled && $page.props.auth.user?.isSuperAdmin"
+                @click="() => openReset()"
+            >reset two-factor</SecondaryButton>
             <PrimaryButton>ban</PrimaryButton>        
             <DangerButton @click="() => showModal('delete')">delete</DangerButton>      
         </div>
@@ -90,6 +95,56 @@
 
     </MiniModal>
 
+    <MiniModal
+        :show="modalData.show && modalData.type == 'resetTwoFactor'"
+        @close="closeModal"
+    >
+        <form @submit.prevent="resetTwoFactor">
+            <FormLoader class="mx-auto" :show="loading" :text="'resetting two-factor sign-in'"/>
+            <div class="text-gray-800 text-center font-bold tracking-wide">
+                Reset @{{ user.username }}'s two-factor sign-in
+            </div>
+
+            <hr class="my-2">
+
+            <div class="space-y-3 p-2 text-sm text-gray-700">
+                <p>
+                    Only do this once you're sure it's really them -- for someone who lost both their phone and their
+                    recovery codes. It turns two-factor sign-in off: they can then sign in with their password alone.
+                </p>
+                <p>They're told by notification (and email, if verified), and signed out everywhere.</p>
+                <div>
+                    <InputLabel for="reset_two_factor_password" value="Your password" />
+                    <TextInput
+                        id="reset_two_factor_password"
+                        v-model="resetPassword"
+                        type="password"
+                        class="mt-1 block w-full"
+                        autocomplete="current-password"
+                    />
+                </div>
+                <!-- When this administrator has two-factor on, their own code too. -->
+                <div v-if="$page.props.auth.user?.twoFactorEnabled">
+                    <InputLabel for="reset_two_factor_code" value="A code from your app, or one of your recovery codes" />
+                    <TextInput
+                        id="reset_two_factor_code"
+                        v-model="resetCode"
+                        type="text"
+                        class="mt-1 block w-full"
+                        autocomplete="one-time-code"
+                        maxlength="20"
+                    />
+                </div>
+                <InputError :message="resetError" />
+            </div>
+
+            <div class="flex space-x-2 justify-end items-center w-full p-2">
+                <SecondaryButton type="button" @click="() => closeModal()" class="shrink-0">cancel</SecondaryButton>
+                <DangerButton type="submit" :disabled="loading || !resetPassword || ($page.props.auth.user?.twoFactorEnabled && !resetCode)" class="shrink-0">reset</DangerButton>
+            </div>
+        </form>
+    </MiniModal>
+
     <AdminUserUpdateModal
         :show="modalData.show && modalData.type == 'update'"
         @close="closeModal"
@@ -119,6 +174,10 @@ import PrimaryButton from "./PrimaryButton.vue"
 import Avatar from "./Avatar.vue"
 import FormLoader from "./FormLoader.vue"
 import MiniModal from "./MiniModal.vue"
+import SecondaryButton from "./SecondaryButton.vue"
+import InputLabel from "./InputLabel.vue"
+import InputError from "./InputError.vue"
+import TextInput from "./TextInput.vue"
 
 
 const { goToLogin } = useAuth()
@@ -144,6 +203,43 @@ const computedGender = computed(() => {
 
 function updateUser(user) {
     emits('updated', user)
+}
+
+// SCRUM-34c
+const resetPassword = ref('')
+const resetCode = ref('')
+const resetError = ref('')
+
+function openReset() {
+    resetPassword.value = ''
+    resetCode.value = ''
+    resetError.value = ''
+    showModal('resetTwoFactor')
+}
+
+async function resetTwoFactor() {
+    if (loading.value) return
+    loading.value = true
+    resetError.value = ''
+
+    await axios
+    .post(route('admin.users.two_factor.reset', { userId: props.user.id }), { current_password: resetPassword.value, code: resetCode.value || null })
+    .then((res) => {
+        setSuccessAlertData({ message: `${props.user.username}'s two-factor sign-in has been reset.` })
+        emits('updated', res.data.user)
+        closeModal()
+    })
+    .catch((err) => {
+        resetError.value = err.response?.data?.errors?.current_password?.[0]
+            ?? err.response?.data?.errors?.code?.[0]
+            ?? err.response?.data?.message
+            ?? 'Something unfortunate happened. Please try again later.'
+    })
+    .finally(() => {
+        resetPassword.value = ''
+        resetCode.value = ''
+        loading.value = false
+    })
 }
   
 async function deleteUser() {

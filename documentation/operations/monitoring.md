@@ -86,6 +86,11 @@ of an existing pause.` (backfill, below).
   exception (`exception`, `ward`, `by`, plus `request`/`renews` on a grant).
 - `group_therapy.member_left` (SCRUM-73): a member left a group. Context: `group_therapy_id`,
   `user_id`.
+- `Two-factor sign-in reset by an administrator` (SCRUM-34c, notice): a super administrator turned off someone's
+  two-factor sign-in (lost phone and recovery codes). Context: `admin_id`, `user_id`, `ip` -- ids only. It's the
+  record of the reset (there is no table): resets should be rare, so review each one against the support request
+  that confirmed who the person was; a burst, or an unexpected `admin_id`, may mean a taken-over super-admin account
+  or someone talking support into resets.
 - `Notifications pruned.` (SCRUM-39, daily): what the notification prune deleted for good. Context:
   `deletedByDays` (count per retention period in use), `ownerless` (notifications of owners deleted
   for good), `defaultDays`. A sudden jump usually means the default was lowered.

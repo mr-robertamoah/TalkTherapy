@@ -69,6 +69,7 @@ use App\Models\TherapyCase;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Support\CounsellorVerification;
+use App\Support\TwoFactorCodes;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
@@ -190,6 +191,7 @@ class DatabaseSeeder extends Seeder
         // SCRUM-41: the email-verification notice's two states -- an email not yet verified, and no email at all (how
         // every account starts: sign-up doesn't ask for one).
         $this->createEmailVerificationDemoData();
+        $this->createTwoFactorDemoData();
 
         // TT-4.10e/SCRUM-294: the golden path (a minor WITH a guardian) is already reachable via
         // createGuardianVideoConsentDemoData()'s minor/guardian pair above, but there was no
@@ -2520,6 +2522,30 @@ class DatabaseSeeder extends Seeder
             'email_verified_at' => null,
             'password' => Hash::make('password'),
         ]);
+    }
+
+    // SCRUM-34: an account with two-factor sign-in on, with a fixed key and recovery codes so it can be tried without
+    // setting up an app (documentation/features/scrum-34-two-factor-sign-in.md). Demo data only -- never a real account's.
+    public const TWO_FACTOR_DEMO_SECRET = 'TALKTHERAPYDEMOTWOFACTORSEEDKEYA';
+
+    public const TWO_FACTOR_DEMO_RECOVERY_CODES = ['demo1-aaaaa', 'demo2-bbbbb', 'demo3-ccccc', 'demo4-ddddd', 'demo5-eeeee', 'demo6-fffff', 'demo7-ggggg', 'demo8-hhhhh'];
+
+    public function createTwoFactorDemoData(): void
+    {
+        $user = User::factory()->adult()->create([
+            'firstName' => 'TwoFactor',
+            'lastName' => 'Demo',
+            'username' => 'two_factor_demo',
+            'email' => 'two.factor.demo@example.com',
+            'email_verified_at' => now(),
+            'password' => Hash::make('password'),
+        ]);
+
+        $user->forceFill([
+            'two_factor_secret' => self::TWO_FACTOR_DEMO_SECRET,
+            'two_factor_recovery_codes' => array_map(fn (string $code) => TwoFactorCodes::hash($code), self::TWO_FACTOR_DEMO_RECOVERY_CODES),
+            'two_factor_confirmed_at' => now(),
+        ])->save();
     }
 
     private function createGuardianVideoConsentDemoData(): void

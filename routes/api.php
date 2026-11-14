@@ -5,6 +5,7 @@ use App\Http\Controllers\AdminCounsellorVerificationController;
 use App\Http\Controllers\AdministratorController;
 use App\Http\Controllers\AdminPayoutController;
 use App\Http\Controllers\AdminReportController;
+use App\Http\Controllers\AdminTwoFactorController;
 use App\Http\Controllers\AlertController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\ContactController;
@@ -136,6 +137,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/administrator/users', [AdministratorController::class, 'getUsers'])->name('admin.users');
         Route::post('/administrator/users/{userId}', [AdministratorController::class, 'updateUser'])->name('admin.users.update');
         Route::delete('/administrator/users/{userId}', [AdministratorController::class, 'deleteUser'])->name('admin.users.delete');
+        // SCRUM-34c: a super administrator turns off someone's two-factor sign-in (lost phone and codes).
+        Route::post('/administrator/users/{userId}/two-factor/reset', [AdminTwoFactorController::class, 'reset'])->name('admin.users.two_factor.reset')->whereNumber('userId')->middleware('throttle:10,1,admin.users.two_factor.reset');
 
         // TT-7.6e/SCRUM-229: getPayoutsForAdmin's own guard also answers a non-admin with an empty
         // result, behind the `admin` middleware's 403 above (SCRUM-387).
