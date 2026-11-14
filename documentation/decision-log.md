@@ -12330,6 +12330,13 @@ Boxed as Epic TT-12 in `implementation_plan.md` (TT-4.5e points at TT-12.4).
   or a raw socket with a stolen cookie -- keeps receiving events on channels it already joined until its socket
   closes; Reverb can't close a person's connections or re-check subscriptions. Pages outside AuthenticatedLayout get
   no nudge (they find out on their next request or on being shown again).
+- **QA pass (qa-engineer, Playwright, two browsers)**: criteria 1-8 passed, including live chat both ways (and with
+  an anonymous therapy). Fixed: changing your own password signed this session out at its next API call -- an older
+  bug (Sanctum's own session check on the API keeps the password hash in the session, `password_hash_web`, and nothing
+  on the web side refreshed it), which this PR made visible as "Your session ended". `EndStaleSessions` now refreshes
+  that hash at the end of each request (the same fix as SCRUM-422's PR, identical so the two merge cleanly). And a
+  "page expired" on a page that is still signed in now shows Laravel's notice instead of dropping the save silently;
+  only the check that follows decides about sign-in.
 - **Ops** (devops review): the nudge rides the `default` queue (production workers already run `urgent,default`).
   From a command or tinker it goes out when the command ends successfully. A rollback leaves any queued nudges to
   fail harmlessly (`queue:flush`).

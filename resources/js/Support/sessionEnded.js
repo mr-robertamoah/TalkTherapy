@@ -78,9 +78,14 @@ export function watchSession(router, initialPage) {
     // (419) instead of the next page.
     router.on('invalid', (event) => {
         const status = event.detail.response?.status
-        if (signedIn && (status === 401 || status === 419)) {
+        if (!signedIn) return
+        if (status === 401) {
             event.preventDefault()
-            handleRefusal(status)
+            handleSessionEnded()
+        } else if (status === 419) {
+            // Leave Laravel's "page expired" showing (QA: while still signed in, a quietly dropped save told them
+            // nothing) and check: an ended session goes on to sign-in.
+            checkSession({ force: true })
         }
     })
 

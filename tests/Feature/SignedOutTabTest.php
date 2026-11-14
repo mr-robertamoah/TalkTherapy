@@ -146,3 +146,17 @@ test('the check isn\'t recorded as a visit', function () {
 
     Queue::assertNotPushed(StoreVisitationJob::class);
 });
+
+// QA: Sanctum's own session check on the API (password_hash_web) mustn't read the session's own new password as someone
+// else's change -- the page would go to sign-in with "Your session ended".
+test('the session that changes its own password stays signed in for its next API call', function () {
+    $user = User::factory()->create();
+    sotSignIn($this, $user);
+
+    $this->put(route('password.update'), ['current_password' => 'password', 'password' => 'quiet harbour 2026', 'password_confirmation' => 'quiet harbour 2026'])
+        ->assertSessionHasNoErrors();
+    app('auth')->forgetGuards();
+
+    $this->withHeaders(['Referer' => config('app.url'), 'Origin' => config('app.url')])
+        ->getJson('/api/users/guardianship')->assertOk();
+});
