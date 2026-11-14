@@ -229,11 +229,17 @@ these server-side waits on a Reverb terminate API that works with private channe
   Back on: `HELP_ENABLED=true` and the same.
 
 
-## Email changes (SCRUM-422)
+## Email changes (SCRUM-422, SCRUM-425)
 
-- `EmailChangedNotification` in `failed_jobs`: the warning to an account's previous address didn't go out. It's
-  the only notice the real owner gets if someone else changed the email -- check the mail settings and retry
-  (`php artisan queue:retry`). It needs a running queue worker (`default` queue).
+- `EmailChangedNotification` in `failed_jobs`: the warning to an account's previous address didn't go out -- sent when
+  someone changes their own email (SCRUM-422) and when a super administrator changes it (SCRUM-425), only when the old
+  address was verified. It's the only email the real owner gets if someone else changed it -- check the mail settings
+  and retry (`php artisan queue:retry`). It needs a running queue worker (`default` queue).
+- `Account email changed by an administrator` (SCRUM-425, notice): a super administrator changed someone's sign-in
+  email from the admin user edit. Context: `admin_id`, `user_id` -- ids only. Each should match a support ticket; one
+  that doesn't may be an account-takeover attempt ("forgot password" now goes to the new address).
+- `Account email marked verified by an administrator` (SCRUM-425, notice): a super administrator ticked an address
+  verified by hand. Rare; check it was the person's own address.
 ## Signed-out tabs (SCRUM-423)
 
 - `GET /session/check` answers 401 to an ended session by design -- leave it out of any 4xx-rate alert. A burst of

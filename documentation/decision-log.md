@@ -12429,3 +12429,36 @@ Boxed as Epic TT-12 in `implementation_plan.md` (TT-4.5e points at TT-12.4).
   terminal is required, `App\Support\Terminal`); the "reset scheduled" label in the admin row was unreadable (now a
   solid amber chip); the email showed "GMT+0000" (now the app's time zone); the dialog promised a cancel email to an
   account without one; the command logged an empty "by" in the container (now the process's own user).
+
+## SCRUM-425 + SCRUM-426 — the admin user edit and email; unique route names (2026-11-14)
+
+The user asked for both in one PR.
+
+- **Who may change someone's email from the admin user edit** (`EnsureCanUpdateUserByAdminAction`, the codebase's
+  `Ensure*` pattern, called from `UserService`): a super administrator only; never an administrator's account (they
+  change their own on their profile, with their password); never to nothing (it's how they get back in). A changed
+  address is a real, unused one (validation) and is never marked verified here -- its owner verifies it. The address
+  before, if verified, is emailed (the same masked notice as SCRUM-422, one shared `EmailChangedNotification::sendTo`),
+  and the account is told in the app as well -- the only way to reach someone with no verified address (security
+  review). Logged (`Account email changed by an administrator`).
+- **The "verified" tick** (security review, Medium): ticking an unverified address verified is a super
+  administrator's (logged); any admin can untick -- otherwise an ordinary admin could finish a super admin's change by
+  verifying the new address. Leaving the tick out of a request keeps it as it is (it used to un-verify).
+- **Also hardened** (security review): ordinary admins can't edit administrators' accounts at all (only a super admin,
+  or themselves); the email permission is checked before validation, so "already taken" tells an ordinary admin
+  nothing; `admin.users.update` 30 a minute. A change of capitals only isn't an email change (same mailbox; the unique
+  check treats them alike).
+- **Follow-up SCRUM-427** (security review, Medium, existing): the new address takes effect at once and "forgot
+  password" goes there unverified -- a taken-over super admin can still redirect a reset. The real fix is a pending
+  email confirmed by its owner (and/or no reset to an unconfirmed admin-set address); also, an admin's change can't end
+  the person's other sessions (no password to rehash). Too big for this PR.
+- **SCRUM-426**: the group therapy's session routes are `group.sessions.*` now (they shared `sessions.*` with the
+  individual therapy's, which broke `route:cache` and meant `route()` could give only one of them). While there: the
+  create-session form posted every session to the individual therapy's route, with a group's id as a therapy id -- a
+  group's sessions now go to the group's route. CI checks that routes can be cached; the production checklist says how
+  to cache them safely if `deploy.sh` ever does (best-effort -- an older commit can't).
+- **QA pass (qa-engineer, Playwright)**: all six criteria passed (the super admin's change with both notices, refusals
+  for invalid/taken/empty addresses and administrators' accounts, the ordinary admin's limits, names-only edits keeping
+  verification, group and individual session creation). Taken from its notes: the old-address email says when the team
+  made the change ("If you asked us to…") instead of "If you made this change"; the dialog says up front when an
+  ordinary admin can't edit an administrator's account.

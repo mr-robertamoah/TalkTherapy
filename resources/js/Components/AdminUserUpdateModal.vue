@@ -18,6 +18,10 @@
                     @submit.prevent="updateUser"
                 >
                     <div class="mx-auto w-[90%] px-4 py-2 h-[70vh] overflow-hidden overflow-y-auto">
+                        <!-- SCRUM-425 (QA): said up front, not only after saving. -->
+                        <p v-if="!canEditAccount" role="status" class="mt-4 mx-auto max-w-[400px] rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                            Only a super administrator can edit an administrator's account.
+                        </p>
                         <div class="mt-4 mx-auto max-w-[400px]">
                             <InputLabel for="firstName" value="First Name" />
 
@@ -65,10 +69,20 @@
                             <TextInput
                                 id="email"
                                 type="email"
-                                class="mt-1 block w-full"
+                                class="mt-1 block w-full disabled:bg-gray-100 disabled:text-gray-500"
                                 v-model="userData.email"
                                 :required="!!user.email"
+                                :disabled="!canChangeEmail"
                             />
+
+                            <!-- SCRUM-425 -->
+                            <p v-if="!canChangeEmail" class="mt-1 text-xs text-gray-500">
+                                {{ user.isAdmin ? 'An administrator changes their own email, from their profile.' : 'Only a super administrator can change someone\'s email.' }}
+                            </p>
+                            <p v-else-if="changingEmail" class="mt-1 text-xs text-gray-600">
+                                The new address starts unverified — they verify it themselves. They're told in the
+                                app{{ user.emailVerified ? ', and their current address by email' : '' }}.
+                            </p>
 
                             <InputError class="mt-2" :message="userErrors.email" />
                         </div>
@@ -99,7 +113,7 @@
 
                         <div class="mt-4 mx-auto max-w-[400px]">
                             <label class="flex items-center">
-                                <Checkbox name="emailVerified" v-model:checked="userData.emailVerified" />
+                                <Checkbox name="emailVerified" v-model:checked="userData.emailVerified" :disabled="changingEmail || !canTickVerified" />
                                 <span class="ms-2 text-sm text-gray-600">email verified.</span>
                             </label>
 
@@ -139,6 +153,7 @@ import InputError from "./InputError.vue";
 import { subYears } from 'date-fns';
 import PrimaryButton from "./PrimaryButton.vue";
 import { computed, ref } from "vue";
+import { usePage } from "@inertiajs/vue3";
 import Modal from "./Modal.vue";
 import useErrorHandler from "@/Composables/useErrorHandler";
 import { watch } from "vue";
@@ -186,6 +201,18 @@ watch(() => props.show, () => {
 
     setUserData()
 })
+
+// SCRUM-425: only a super administrator changes someone's email, and never an administrator's (the server refuses
+// too); a changed address is never ticked verified here.
+const canChangeEmail = computed(() => !!usePage().props.auth.user?.isSuperAdmin && !props.user?.isAdmin)
+// The server's rule: an administrator's account is edited by a super administrator, or by themselves.
+const canEditAccount = computed(() => !props.user?.isAdmin || !!usePage().props.auth.user?.isSuperAdmin || usePage().props.auth.user?.id === props.user?.id)
+// The server's test: a different address, not just different capitals.
+const changingEmail = computed(() => (userData.value.email || '').trim().toLowerCase() !== (props.user?.email || '').toLowerCase())
+// Typed back to the saved address: the tick comes back as it was (code review: else saving un-verified it).
+watch(changingEmail, (changing) => { userData.value.emailVerified = changing ? false : props.user?.emailVerified })
+// Ticking an unverified address verified is a super administrator's; anyone can untick.
+const canTickVerified = computed(() => !!usePage().props.auth.user?.isSuperAdmin || !!props.user?.emailVerified)
 
 const computedMaxDOB = computed(() => {
     return subYears(new Date(), 10).toISOString().slice(0, 10)

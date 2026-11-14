@@ -292,9 +292,11 @@ Route::middleware('auth')->group(function () {
     Route::delete('/group-therapies/{groupTherapyId}', [GroupTherapyController::class, 'deleteGroupTherapy'])->name('group.therapies.delete');
     Route::post('/group-therapies/{groupTherapyId}', [GroupTherapyController::class, 'endGroupTherapy'])->name('group.therapies.end');
 
-    Route::post('/group-therapies/{groupTherapyId}/sessions', [SessionController::class, 'createSession'])->name('sessions.create');
-    Route::patch('/group-therapies/{groupTherapyId}/sessions/{sessionId}', [SessionController::class, 'updateSession'])->name('sessions.update');
-    Route::delete('/group-therapies/{groupTherapyId}/sessions/{sessionId}', [SessionController::class, 'deleteSession'])->name('sessions.delete');
+    // SCRUM-426: their own names -- the same names as the individual therapy's routes broke route:cache, and route()
+    // could only ever give one of the two.
+    Route::post('/group-therapies/{groupTherapyId}/sessions', [SessionController::class, 'createSession'])->name('group.sessions.create');
+    Route::patch('/group-therapies/{groupTherapyId}/sessions/{sessionId}', [SessionController::class, 'updateSession'])->name('group.sessions.update');
+    Route::delete('/group-therapies/{groupTherapyId}/sessions/{sessionId}', [SessionController::class, 'deleteSession'])->name('group.sessions.delete');
 
     Route::post('/sessions/{sessionId}/in_session', [SessionController::class, 'getInSession'])->name('sessions.in_session');
     Route::post('/sessions/{sessionId}/end', [SessionController::class, 'endSession'])->name('sessions.end');

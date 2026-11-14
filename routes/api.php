@@ -135,7 +135,7 @@ Route::middleware('auth:sanctum')->group(function () {
         // isSuperAdmin() for the admin branch, mirroring admin.users.delete's super-admin gate below.
         Route::delete('/administrator/counsellors/{counsellorId}', [AdministratorController::class, 'deleteCounsellor'])->name('admin.counsellors.delete');
         Route::get('/administrator/users', [AdministratorController::class, 'getUsers'])->name('admin.users');
-        Route::post('/administrator/users/{userId}', [AdministratorController::class, 'updateUser'])->name('admin.users.update');
+        Route::post('/administrator/users/{userId}', [AdministratorController::class, 'updateUser'])->name('admin.users.update')->middleware('throttle:30,1,admin.users.update'); // SCRUM-425
         Route::delete('/administrator/users/{userId}', [AdministratorController::class, 'deleteUser'])->name('admin.users.delete');
         // SCRUM-34c: a super administrator turns off someone's two-factor sign-in (lost phone and codes).
         Route::post('/administrator/users/{userId}/two-factor/reset', [AdminTwoFactorController::class, 'reset'])->name('admin.users.two_factor.reset')->whereNumber('userId')->middleware('throttle:10,1,admin.users.two_factor.reset');

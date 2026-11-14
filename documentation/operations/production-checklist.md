@@ -115,6 +115,15 @@ Check every item before going live.
   fail their signature check with a 403. The link is signed as `https://APP_URL/...`, but the request
   would look like `http://...`.
 
+## Route caching (optional, SCRUM-426)
+
+- [ ] Route names are unique since SCRUM-426 (CI checks it), so `php artisan route:cache` works. `scripts/deploy.sh`
+  doesn't run it. If routes are cached, re-run `route:cache` after every deploy that touches `routes/` (a stale cache
+  serves the old routes), and run `route:clear` before rolling back to a commit older than SCRUM-426 (those can't be
+  cached). If it's added to `deploy.sh`, make it best-effort: a failed cache must not leave the site in maintenance
+  mode -- `artisan route:cache || { artisan route:clear || true; }`. Ziggy (`@routes`) reads the routes on each
+  request, so the frontend build needs nothing.
+
 ## Health checks and monitors
 
 - [ ] A load-balancer or uptime probe calling `/up` or `/api/health/scheduler` sends the **public Host
