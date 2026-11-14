@@ -12314,6 +12314,14 @@ SCRUM-41:
 - **Limits** (security review): `profile.update` 10 a minute (said on the form, not an error page), and the two
   password checks next door that weren't limited -- `POST confirm-password` (now named `password.confirm.store`) and
   deleting the account -- 6 a minute, like the other password checks.
+- **QA pass (qa-engineer, Playwright), two bugs fixed**: (1) the browser that changed the email was signed out on its
+  next page -- Sanctum's own session check on the API keeps the password hash (`password_hash_web`), and the rehash
+  from `logoutOtherDevices` read as someone else's change. `EndStaleSessions` now stores the new hash there too at the
+  end of the request; this also fixed the same sign-out after making new two-factor recovery codes (SCRUM-34b),
+  which the tests had missed because they never made a follow-up API call. (2) The 11th save in a minute looped:
+  the throttle answers before Inertia's middleware could turn a 302 into a 303, and a 302 after a PATCH repeats it.
+  The password forms' limits now answer `back(303)` with an error the form always shows (`profile`, or `password` on
+  confirm-password and account deletion).
 - **Follow-up SCRUM-425** (security review, High, existing): the admin user edit changes anyone's email -- any admin,
   no format or uniqueness check, can mark it verified, no notice. Accepted as is: the `unique` error still answers
   without the password (enumeration, as registration already allows; now 10 a minute). The old address's owner

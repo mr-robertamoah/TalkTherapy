@@ -215,6 +215,8 @@ function save() {
                 <InputError class="mt-2" :message="form.errors.country" />
             </div>
 
+            <InputError :message="form.errors.profile" />
+
             <CardActions>
                 <PrimaryButton type="submit" :disabled="form.processing">Save</PrimaryButton>
                 <SecondaryButton type="button" :disabled="form.processing" @click="cancel">Cancel</SecondaryButton>

@@ -4,9 +4,11 @@ use App\Models\Request;
 use App\Models\User;
 use App\Notifications\EmailChangedNotification;
 use App\Support\MaskedEmail;
+use App\Support\TwoFactorCodes;
 use Illuminate\Notifications\AnonymousNotifiable;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
+use PragmaRX\Google2FA\Google2FA;
 
 // SCRUM-422: changing the account email needs the current password, and the previous verified address is told
 // (without the new address in full).
@@ -115,7 +117,7 @@ test('the profile form is limited to 10 tries a minute', function () {
     }
 
     pecSend($this, $user, ['email' => 'new.address@example.org', 'current_password' => 'password'])
-        ->assertSessionHasErrors(['current_password' => 'Too many tries. Please wait a minute and try again.']);
+        ->assertSessionHasErrors(['profile' => 'Too many tries. Please wait a minute and try again.']);
     expect($user->fresh()->email)->toBe('old.address@example.com');
 });
 
@@ -167,10 +169,58 @@ test('the password checks next door are limited too: confirming the password and
     foreach (range(1, 6) as $try) {
         $this->actingAs($user)->post('/confirm-password', ['password' => 'wrong-'.$try]);
     }
-    $this->actingAs($user)->post('/confirm-password', ['password' => 'password'])->assertStatus(429);
+    $this->actingAs($user)->post('/confirm-password', ['password' => 'password'])
+        ->assertStatus(303)->assertSessionHasErrors(['password' => 'Too many tries. Please wait a minute and try again.']);
 
     foreach (range(1, 6) as $try) {
         $this->actingAs($user)->delete(route('profile.destroy'), ['password' => 'wrong-'.$try]);
     }
-    $this->actingAs($user)->delete(route('profile.destroy'), ['password' => 'wrong'])->assertStatus(429);
+    $this->actingAs($user)->delete(route('profile.destroy'), ['password' => 'wrong'])
+        ->assertStatus(303)->assertSessionHasErrors('password');
+    expect($user->fresh())->not->toBeNull();
+});
+
+// QA (Bug A): the browser that changed the email stays signed in -- its next call through the API (Sanctum's own
+// session check compares the password hash it stored) mustn't see the rehash as someone else's change.
+test('the browser that changed the email stays signed in for its next API call', function () {
+    $user = pecUser();
+    $this->post('/login', ['username' => $user->username, 'password' => 'password']);
+
+    $this->patch(route('profile.update'), ['email' => 'new.address@example.org', 'current_password' => 'password'])->assertSessionHasNoErrors();
+    app('auth')->forgetGuards();
+
+    $this->withHeaders(['Referer' => config('app.url'), 'Origin' => config('app.url')])
+        ->getJson('/api/users/guardianship')->assertOk();
+});
+
+// QA (Bug B): over the limit, an Inertia save gets the 303 it needs (a 302 after PATCH repeats the PATCH -- a loop) and
+// an error the form always shows.
+test('over the limit, the page gets a 303 and an error it can show', function () {
+    $user = pecUser();
+
+    foreach (range(1, 10) as $try) {
+        $this->actingAs($user)->patch(route('profile.update'), ['country' => 'Ghana']);
+    }
+
+    $this->actingAs($user)->patch(route('profile.update'), ['country' => 'Kenya'], ['X-Inertia' => 'true'])
+        ->assertStatus(303)
+        ->assertSessionHasErrors(['profile' => 'Too many tries. Please wait a minute and try again.']);
+});
+
+// QA: the same cause on the SCRUM-34b path -- new recovery codes rehash the password too.
+test('the browser that makes new recovery codes stays signed in for its next API call', function () {
+    $user = pecUser();
+    [$codes, $hashes] = TwoFactorCodes::newRecoveryCodes();
+    $secret = TwoFactorCodes::newSecret();
+    $user->forceFill(['two_factor_secret' => $secret, 'two_factor_recovery_codes' => $hashes, 'two_factor_confirmed_at' => now()])->save();
+    // Signed in for real (a session login), through the code step.
+    $this->post('/login', ['username' => $user->username, 'password' => 'password']);
+    $this->post(route('two_factor.challenge.store'), ['code' => (new Google2FA)->getCurrentOtp($secret)]);
+    $this->get(route('profile.show'))->assertOk();
+
+    $this->postJson(route('two_factor.recovery_codes'), ['current_password' => 'password', 'code' => $codes[0]])->assertOk();
+    app('auth')->forgetGuards();
+
+    $this->withHeaders(['Referer' => config('app.url'), 'Origin' => config('app.url')])
+        ->getJson('/api/users/guardianship')->assertOk();
 });
