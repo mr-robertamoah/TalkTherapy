@@ -131,6 +131,10 @@ jobs:
       - name: Prepare test environment
         run: cp .env.testing .env
 
+      # SCRUM-426: two routes sharing a name break route:cache -- caught here, not on a deploy that tries to cache them.
+      - name: Routes can be cached
+        run: php artisan route:cache && php artisan route:clear
+
       - name: Run Pest suite
         run: php artisan test --parallel
 

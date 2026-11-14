@@ -23,13 +23,11 @@ use App\Http\Requests\ProfileUpdateRequest;
 use App\Http\Requests\UpdateUserAvatarRequest;
 use App\Models\PushSubscription;
 use App\Notifications\EmailChangedNotification;
-use App\Support\MaskedEmail;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -157,12 +155,8 @@ class ProfileController extends Controller
             Auth::logoutOtherDevices($request->validated('current_password'));
         }
 
-        if ($emailChanged && $previousEmail) {
-            Notification::route('mail', $previousEmail)->notify(new EmailChangedNotification(
-                $previousName,
-                $request->user()->email ? MaskedEmail::of($request->user()->email) : null,
-                now()->format('j F Y, H:i T'),
-            ));
+        if ($emailChanged) {
+            EmailChangedNotification::sendTo($previousEmail, $previousName, $request->user()->email);
         }
 
         return Redirect::route('profile.show')->with(

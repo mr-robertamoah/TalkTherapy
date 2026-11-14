@@ -1366,6 +1366,7 @@ function reportCreated(report) {
       <CreateSessionFormModal
         :show="modalData.show && modalData.type == 'create session'"
         :therapy="computedTherapy"
+        :therapy-type="therapyType"
         @close-modal="closeModal"
         @on-success="(data) => { if (data) newSession = data }"
       />

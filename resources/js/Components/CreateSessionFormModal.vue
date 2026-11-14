@@ -27,7 +27,10 @@ const props = defineProps({
     },
     therapy: {
         default: null,
-    }
+    },
+    // SCRUM-426: a group therapy's sessions go to its own route (this always posted to the individual one, with the
+    // group's id as a therapy id).
+    therapyType: { type: String, default: 'individual' },
 })
 
 const emits = defineEmits(['closeModal', 'onSuccess'])
@@ -109,7 +112,11 @@ async function createSession() {
     if (!props.therapy.allowInPerson && !sessionForm.type)
         sessionForm.type = 'ONLINE'
 
-    sessionForm.post(route(`sessions.create`, { therapyId: props.therapy.id }), {
+    const url = props.therapyType === 'group'
+        ? route('group.sessions.create', { groupTherapyId: props.therapy.id })
+        : route('sessions.create', { therapyId: props.therapy.id })
+
+    sessionForm.post(url, {
         onStart: () => {
             loading.value = true
             sessionForm.clearErrors()

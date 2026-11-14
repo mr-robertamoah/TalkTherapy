@@ -9,6 +9,7 @@ use App\Actions\User\CreateGuardianshipRequestAction;
 use App\Actions\User\DeleteGuardianshipAction;
 use App\Actions\User\DeleteUserAction;
 use App\Actions\User\EnsureCanUpdateGuardianshipAction;
+use App\Actions\User\EnsureCanUpdateUserByAdminAction;
 use App\Actions\User\EnsureGuardianshipExistsAction;
 use App\Actions\User\EnsureRequestDataIsValidAction;
 use App\Actions\User\EnsureUserCanBeGuardianAction;
@@ -79,6 +80,9 @@ class UserService extends Service
         EnsureIsAdminAction::new()->execute($updateUserDTO);
 
         EnsureUserExistsAction::new()->execute($updateUserDTO->updatedUser);
+
+        // SCRUM-425: the email, the verified tick and administrators' accounts.
+        EnsureCanUpdateUserByAdminAction::new()->execute($updateUserDTO->user, $updateUserDTO->updatedUser, $updateUserDTO->email, $updateUserDTO->emailVerified);
 
         $user = UpdateUserAction::new()->execute($updateUserDTO);
 

@@ -147,16 +147,19 @@ class AdministratorController extends Controller
     public function updateUser(AdminUpdateUserRequest $request)
     {
         try {
+            $updatedUser = User::find($request->route('userId'));
+
             $user = UserService::new()->updateUserByAdmin(
                 UpdateUserDTO::new()->fromArray([
                     'user' => $request->user(),
-                    'updatedUser' => User::find($request->route('userId')),
+                    'updatedUser' => $updatedUser,
                     'firstName' => $request->firstName,
                     'lastName' => $request->lastName,
                     'otherNames' => $request->otherNames,
-                    'email' => $request->email,
+                    // SCRUM-425: a field left out keeps its value (leaving out emailVerified used to un-verify the email).
+                    'email' => $request->has('email') ? $request->email : $updatedUser?->email,
                     'country' => $request->country,
-                    'emailVerified' => $request->boolean('emailVerified'),
+                    'emailVerified' => $request->has('emailVerified') ? $request->boolean('emailVerified') : (bool) $updatedUser?->email_verified_at,
                     'dob' => $request->dob,
                 ])
             );
