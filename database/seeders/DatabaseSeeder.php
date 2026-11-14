@@ -79,6 +79,8 @@ use RuntimeException;
 
 class DatabaseSeeder extends Seeder
 {
+    use RefusesOutsideLocal;
+
     // SCRUM-382: the one seeded account deliberately left without a date of birth.
     public const NO_DOB_DEMO_USERNAME = 'no_dob_demo_user';
 
@@ -87,6 +89,11 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        // SCRUM-429: demo accounts never outside local and testing (RefusesOutsideLocal).
+        if ($this->refusedHere()) {
+            return;
+        }
+
         // Create super admin user
         $superAdmin = User::factory()->create([
             'username' => 'mr_robertamoah',

@@ -16,6 +16,9 @@ class TwoFactorReset extends Model
 
     public const SOURCE_SERVER = 'server';
 
+    // SCRUM-428: "This wasn't me" on an email change, when two-factor was turned on while it waited.
+    public const SOURCE_EMAIL_STOP = 'email_stop';
+
     // Why a reset stopped without applying.
     public const CANCELLED_BY_LINK = 'link';
 

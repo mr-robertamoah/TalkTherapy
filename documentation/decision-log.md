@@ -12518,3 +12518,30 @@ their other devices.
   (a link from a cancelled request no longer works when the same address is asked for again); the profile box and the
   warning say what really happens after the email was removed (the server says whether it will wait); the
   "confirmed" email has its own subject ("Your account email changes on ...").
+
+## SCRUM-428 + SCRUM-429 — "This wasn't me" and an intruder's two-factor; no demo seeding outside local (2026-11-14)
+
+The user asked to add the backlog's fitting item to SCRUM-428; the seeder guard (an untracked follow-up from SCRUM-41's
+security review) was the only one, ticketed as SCRUM-429.
+
+- **SCRUM-428 -- the user's decision**: two-factor turned on while a self-requested email change waited
+  (`two_factor_confirmed_at` at or after `pending_email_requested_at`) may be the intruder's phone -- or the owner's,
+  if the old mailbox is the intruder; the app can't tell. So "This wasn't me" doesn't remove it at once (security
+  review: that would hand a compromised old mailbox the account) but schedules the 48-hour two-factor reset (SCRUM-424,
+  source `email_stop`), and both the account's address and the dropped new address get the notice with **Cancel this
+  reset**. If the intruder changed the email, they can cancel -- but they can't sign in (the password is scrambled), so
+  the owner goes through support's identity-checked reset; if the old mailbox is the intruder, the owner cancels and
+  keeps their two-factor. No silent takeover either way. Never for a change a super administrator asked for (no
+  intruder session), nor for two-factor the owner had before the request.
+- **SCRUM-429**: every seeder (`RefusesOutsideLocal`) refuses unless `APP_ENV` is local or testing -- an allowlist, so
+  "staging" or "prod" never qualify by accident (security review); `ALLOW_DEMO_SEED=true` overrides as a one-off on the
+  command line (env() still reads real environment variables, so not in an env file). A refusal exits cleanly: the
+  Docker entrypoint seeds a fresh database, and failing there would stop the container. The entrypoint's own
+  production check stays.
+- **Reviews.** Security (Medium, fixed): two copies of the reset notice go out, and either one marked it "told" -- if
+  the old mailbox is the intruder, only the copy to the dropped address reaches the owner, so for this kind of reset
+  only that copy counts, and it's always required. If a reset was already pending, the dropped address hears of that
+  one. The override never reaches production (a value left in an env file would stay on). Code review: a refusal
+  stays a clean exit (the entrypoint seeds a fresh database -- an error would stop the container), test hardening.
+  Accepted: two-factor an intruder turned on *before* asking for the change isn't covered -- not a takeover (the
+  owner goes through support), and it can't be told apart from the owner's own.
