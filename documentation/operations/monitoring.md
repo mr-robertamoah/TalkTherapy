@@ -228,3 +228,10 @@ these server-side waits on a Reverb terminate API that works with private channe
 - `EmailChangedNotification` in `failed_jobs`: the warning to an account's previous address didn't go out. It's
   the only notice the real owner gets if someone else changed the email -- check the mail settings and retry
   (`php artisan queue:retry`). It needs a running queue worker (`default` queue).
+## Signed-out tabs (SCRUM-423)
+
+- `GET /session/check` answers 401 to an ended session by design -- leave it out of any 4xx-rate alert. A burst of
+  429s there means a page checking far more often than it should.
+- `SessionCheckRequestedEvent` rows in `failed_jobs` (or rescued exceptions) mean the nudge isn't reaching Reverb:
+  open tabs then find out about an ended session only on their next request. Nothing is less secure (EndStaleSessions
+  still refuses them).

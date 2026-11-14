@@ -51,6 +51,15 @@ class AuthenticatedSessionController extends Controller
         return redirect()->intended(RouteServiceProvider::HOME);
     }
 
+    // SCRUM-423: an open page asking whether it is still signed in -- as the person it was shown to (security review:
+    // on a shared browser someone else may have signed in since). Behind `auth`, so an ended session is a 401 already.
+    public function check(Request $request): \Illuminate\Http\Response
+    {
+        abort_unless((string) $request->query('user') === (string) $request->user()->id, 401);
+
+        return response()->noContent();
+    }
+
     /**
      * Destroy an authenticated session.
      */

@@ -15,6 +15,7 @@ import Footer from "@/Components/Footer.vue";
 import useModal from '@/Composables/useModal';
 import ContactUsModal from '@/Components/ContactUsModal.vue';
 import { acquireCounsellorChannel, acquireUserChannel } from '@/Composables/sharedChannel';
+import { checkSession } from '@/Support/sessionEnded';
 import NotificationBell from '@/Components/Notifications/NotificationBell.vue';
 import EmailVerificationNotice from '@/Components/EmailVerificationNotice.vue';
 import TwoFactorRequirementNotice from '@/Components/TwoFactorRequirementNotice.vue';
@@ -86,6 +87,8 @@ watchEffect(() => {
       // SCRUM-359: leave for the suspended page the moment an account is suspended (the server
       // refuses everything else from then on anyway).
       .listen(".account.suspended", () => router.visit(route("suspended.show")))
+      // SCRUM-423: one of this account's sessions may have ended -- ask whether this page's still stands.
+      .listen(".session.check", () => checkSession({ force: true }))
       // SCRUM-288: this account's therapy was paused (no active guardian) or resumed. The events
       // carry nothing; reloading the page's props shows the banner and locks or unlocks the controls.
       .listen(".guardian-access.paused", () => router.reload({ preserveScroll: true }))

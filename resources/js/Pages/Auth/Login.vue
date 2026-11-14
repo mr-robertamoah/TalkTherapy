@@ -26,6 +26,9 @@ const form = useForm({
 
 const useUsername = ref(true)
 
+// SCRUM-423: sent here because this browser's session ended (Support/sessionEnded.js). Says nothing of why.
+const sessionEnded = new URLSearchParams(window.location.search).get('session') === 'ended'
+
 const submit = () => {
     form.post(route('login'), {
         onFinish: () => form.reset('password'),
@@ -39,6 +42,9 @@ const submit = () => {
 
         <div v-if="status" class="mb-4 font-medium text-sm text-green-600">
             {{ status }}
+        </div>
+        <div v-else-if="sessionEnded" role="status" class="mb-4 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+            Your session ended. Please sign in again.
         </div>
 
         <form @submit.prevent="submit">

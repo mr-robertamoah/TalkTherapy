@@ -79,6 +79,10 @@ Route::middleware('auth')->group(function () {
     Route::post('two-factor/recovery-codes', [TwoFactorController::class, 'recoveryCodes'])->name('two_factor.recovery_codes')->middleware('throttle:6,1,two_factor.recovery_codes');
     Route::delete('two-factor', [TwoFactorController::class, 'destroy'])->name('two_factor.destroy')->middleware('throttle:6,1,two_factor.destroy');
 
+    // SCRUM-423: an open page asking whether it is still signed in (after a session.check nudge, or on coming back to
+    // the tab). An ended session gets the usual 401 from `auth`; this answers the rest with nothing.
+    Route::get('session/check', [AuthenticatedSessionController::class, 'check'])->name('session.check')->middleware('throttle:60,1,session.check');
+
     Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])
         ->name('logout');
 });
