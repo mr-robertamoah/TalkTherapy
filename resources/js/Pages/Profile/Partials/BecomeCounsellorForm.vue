@@ -1,4 +1,5 @@
 <script setup>
+import CardActions from '@/Components/CardActions.vue';
 import CounsellorCreationSteps from '@/Components/CounsellorCreationSteps.vue';
 import BecomeCounsellorButton from '@/Components/BecomeCounsellorButton.vue';
 
@@ -34,13 +35,9 @@ function onSuccessful() {
                     :current-step="counsellorCreationStep"
                     :light="true"
                 />
-                <div
-                    class="max-w-xl"
-                >
-                    <BecomeCounsellorButton
-                        @successful="onSuccessful"
-                        class="mr-2 my-2 float-right"/>
-                </div>
+                <CardActions>
+                    <BecomeCounsellorButton @successful="onSuccessful" />
+                </CardActions>
             </header>
         </section>
 

@@ -63,7 +63,8 @@ Route::middleware('auth')->group(function () {
     Route::get('confirm-password', [ConfirmablePasswordController::class, 'show'])
         ->name('password.confirm');
 
-    Route::post('confirm-password', [ConfirmablePasswordController::class, 'store']);
+    // SCRUM-422 (security review): it says whether a password is right -- limited like the other password checks.
+    Route::post('confirm-password', [ConfirmablePasswordController::class, 'store'])->name('password.confirm.store')->middleware('throttle:6,1,password.confirm.store');
 
     Route::put('password', [PasswordController::class, 'update'])->name('password.update')
         // SCRUM-35: a new password can ask Have I Been Pwned (and this checks the current password).

@@ -222,3 +222,9 @@ these server-side waits on a Reverb terminate API that works with private channe
   created, so `config:clear` alone changes nothing. If config is cached, run `php artisan config:cache` after.
   Back on: `HELP_ENABLED=true` and the same.
 
+
+## Email changes (SCRUM-422)
+
+- `EmailChangedNotification` in `failed_jobs`: the warning to an account's previous address didn't go out. It's
+  the only notice the real owner gets if someone else changed the email -- check the mail settings and retry
+  (`php artisan queue:retry`). It needs a running queue worker (`default` queue).

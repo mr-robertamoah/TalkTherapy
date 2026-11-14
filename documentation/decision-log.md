@@ -12290,3 +12290,32 @@ SCRUM-41:
   Inertia write gets the 303; the banner's "on the profile" check follows each visit; the cheap checks (guest, not an
   admin) come before the date is read. Accepted: `/broadcasting/auth` is refused too while blocked, so live updates
   (the bell) wait until it's set up.
+
+## SCRUM-422 + TT-12.2a — profile information redesign; the email change needs the password (2026-11-14)
+
+- **The user's TODO, done as asked**: Profile Information reads as a plain two-column list (unset: "—", with "Not
+  set" for screen readers; the email's Verified / Not verified badge), and **Edit** at the bottom left turns the card
+  into the form with Save and Cancel. Every profile card's buttons sit at the bottom left, flush with its text --
+  one small `CardActions` component, not a full card wrapper (the gradient cards and the counsellor page's own
+  chrome would make a wrapper churn for nothing). Dialog footers keep their right-aligned buttons. While there: Cancel
+  brought back stale values after a save (the form held a one-off copy of the user); the date of birth showed a day
+  early in timezones behind UTC (now read as the calendar day it is); gender showed raw enum values.
+- **The password, only when the email changes** -- replacing it, adding a first one or clearing it; a form that
+  leaves the email out doesn't count. One comparison, the same on the page and the server (`changesEmail()`, after
+  trimming, case-sensitive like `isDirty`), so the password box shows exactly when it's needed. A wrong or missing
+  password refuses the whole save (nothing half-saved, and no date-of-birth approval request is made first).
+- **The previous address is told** when it was verified: sent straight to it (the account now points at the new one),
+  mail only (an in-app entry would go to whoever holds the account), greeted by the name from before the change (code
+  review: not one set in the same request), the new address masked (`MaskedEmail`), and never "reset your password"
+  (that would go to the new address). A plain subject line. No window of further notices to the old address (a
+  default the user didn't veto: the change notice covers it, and it would mean keeping the old address).
+- **A new email signs the account out elsewhere** (security review): the password was just confirmed, so
+  `logoutOtherDevices` -- the common reason to change it is suspecting someone else is in.
+- **Limits** (security review): `profile.update` 10 a minute (said on the form, not an error page), and the two
+  password checks next door that weren't limited -- `POST confirm-password` (now named `password.confirm.store`) and
+  deleting the account -- 6 a minute, like the other password checks.
+- **Follow-up SCRUM-425** (security review, High, existing): the admin user edit changes anyone's email -- any admin,
+  no format or uniqueness check, can mark it verified, no notice. Accepted as is: the `unique` error still answers
+  without the password (enumeration, as registration already allows; now 10 a minute). The old address's owner
+  recovers through support (an admin restores the address, they reset the password -- which ends the other sessions);
+  the identity-check procedure comes with SCRUM-424.

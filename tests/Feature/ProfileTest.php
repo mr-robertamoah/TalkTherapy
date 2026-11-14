@@ -26,6 +26,7 @@ test('profile information can be updated', function () {
             'firstName' => 'Test',
             'lastName' => 'User',
             'email' => 'test@example.com',
+            'current_password' => 'password', // SCRUM-422
         ]);
 
     $user->refresh();

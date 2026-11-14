@@ -82,4 +82,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->render(fn (ThrottleRequestsException $exception, Request $request) => $request->routeIs('verification.send') && ! $request->expectsJson()
             ? back()->with('status', 'verification-throttled')
             : null);
+        // SCRUM-422: the profile form's limit (it checks the password when the email changes) -- said on the form.
+        $exceptions->render(fn (ThrottleRequestsException $exception, Request $request) => $request->routeIs('profile.update') && ! $request->expectsJson()
+            ? back()->withErrors(['current_password' => 'Too many tries. Please wait a minute and try again.'])
+            : null);
     })->create();

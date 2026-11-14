@@ -21,7 +21,7 @@
                     />
                 </div>
 
-                <div v-else class="text-sm text-gray-600 mt-4 w-[90%] sm:w-[80%] mx-auto">
+                <div v-else class="text-sm text-gray-600 mt-2">
                     You have no wards at this time. If you believe a ward has an account, have him/her send you a guardianship request or get a guardianship link from him/her
                 </div>
             </div>
@@ -41,14 +41,14 @@
                     />
                 </div>
 
-                <div v-else class="text-sm text-gray-600 mt-4 w-[90%] sm:w-[80%] mx-auto">
+                <div v-else class="text-sm text-gray-600 mt-2">
                     You have no guardians at this time. If you believe an account holder can be your guardian, click the button below to either send a request to that user or create a guardianship link.
                 </div>
             </div>
 
-            <div v-if="!loading" class="mt-4 flex w-[90%] sm:w-[80%] mx-auto space-x-3 justify-start items-center overflow-hidden overflow-x-auto p-2">
-                <PrimaryButton class="shrink-0" @click="() => showModal('add')">add guardian</PrimaryButton>
-            </div>
+            <CardActions v-if="!loading">
+                <PrimaryButton @click="() => showModal('add')">add guardian</PrimaryButton>
+            </CardActions>
         </header>
 
         <Alert
@@ -77,6 +77,7 @@ import AddGuardianModal from './AddGuardianModal.vue';
 import GuardianshipComponent from './GuardianshipComponent.vue';
 import { computed } from 'vue';
 import PrimaryButton from './PrimaryButton.vue';
+import CardActions from './CardActions.vue';
 import { usePage } from '@inertiajs/vue3';
 
 const { goToLogin } = useAuth()

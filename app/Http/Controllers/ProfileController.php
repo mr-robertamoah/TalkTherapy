@@ -22,11 +22,14 @@ use App\Exceptions\SuspensionException;
 use App\Http\Requests\ProfileUpdateRequest;
 use App\Http\Requests\UpdateUserAvatarRequest;
 use App\Models\PushSubscription;
+use App\Notifications\EmailChangedNotification;
+use App\Support\MaskedEmail;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -113,12 +116,19 @@ class ProfileController extends Controller
             $dobChangeRequiresApproval = true;
         }
 
-        $fillData = $request->validated();
+        $fillData = $request->safe()->except('current_password');
         $fillData['dob'] = $dobChangeRequiresApproval ? $request->user()->dob : $newDob;
+
+        // SCRUM-422: who to tell if the email changes -- the address before, if it was verified -- and by the name they knew
+        // (code review: not one set in this same request).
+        $previousEmail = $request->user()->email_verified_at ? $request->user()->email : null;
+        $previousName = $request->user()->name ?: $request->user()->username;
 
         $request->user()->fill($fillData);
 
-        if ($request->user()->isDirty('email')) {
+        $emailChanged = $request->user()->isDirty('email');
+
+        if ($emailChanged) {
             $request->user()->email_verified_at = null;
         }
 
@@ -138,6 +148,21 @@ class ProfileController extends Controller
             HandleGuardianLossAction::new()->around($request->user(), HandleGuardianLossAction::DOB_CHANGED, fn () => $request->user()->save());
         } else {
             $request->user()->save();
+        }
+
+        // SCRUM-422 (security review): a new email -- often because they suspect someone else is in -- ends the account's
+        // other sessions (the password was just confirmed). Rehashes the same password, which changes the sessions'
+        // fingerprint (EndStaleSessions).
+        if ($emailChanged) {
+            Auth::logoutOtherDevices($request->validated('current_password'));
+        }
+
+        if ($emailChanged && $previousEmail) {
+            Notification::route('mail', $previousEmail)->notify(new EmailChangedNotification(
+                $previousName,
+                $request->user()->email ? MaskedEmail::of($request->user()->email) : null,
+                now()->format('j F Y, H:i T'),
+            ));
         }
 
         return Redirect::route('profile.show')->with(
