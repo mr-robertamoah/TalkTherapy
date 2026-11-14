@@ -2,6 +2,7 @@
 
 use App\Models\Request;
 use App\Models\User;
+use App\Notifications\ConfirmNewEmailNotification;
 use App\Notifications\EmailChangedNotification;
 use App\Support\MaskedEmail;
 use App\Support\TwoFactorCodes;
@@ -43,13 +44,15 @@ test('a wrong current password is refused the same way', function () {
     Notification::assertNothingSent();
 });
 
-test('with the right password the email changes, needs verifying, and the old address is told -- masked', function () {
+test('with the right password the new address waits for confirmation, and the current address is told -- masked', function () {
     Notification::fake();
     $user = pecUser();
 
     pecSend($this, $user, ['email' => 'new.address@example.org', 'current_password' => 'password'])->assertSessionHasNoErrors();
 
-    expect($user->fresh())->email->toBe('new.address@example.org')->email_verified_at->toBeNull();
+    // SCRUM-427: nothing moves until the new address is confirmed.
+    expect($user->fresh())->email->toBe('old.address@example.com')->email_verified_at->not->toBeNull()->pending_email->toBe('new.address@example.org');
+    Notification::assertSentOnDemand(ConfirmNewEmailNotification::class, fn ($notification, $channels, $notifiable) => $notifiable->routes['mail'] === 'new.address@example.org');
     Notification::assertSentOnDemand(EmailChangedNotification::class, function (EmailChangedNotification $notification, array $channels, AnonymousNotifiable $notifiable) {
         $body = (string) $notification->toMail($notifiable)->render();
 
@@ -57,20 +60,22 @@ test('with the right password the email changes, needs verifying, and the old ad
             && $channels === ['mail']
             && str_contains($body, 'n•••@e•••.org')
             && ! str_contains($body, 'new.address@example.org')
-            && ! str_contains(strtolower($body), 'reset')
+            // SCRUM-427: it can stop the change ("This wasn't me"); resetting the password now goes to this address.
+            && str_contains($body, 'stop it now')
             && ! str_contains(serialize($notification), 'new.address@example.org');
     });
     Notification::assertSentOnDemandTimes(EmailChangedNotification::class, 1);
 });
 
-test('an old address that was never verified isn\'t told', function () {
+test('an old address that was never verified isn\'t told (the new one still gets its link)', function () {
     Notification::fake();
     $user = pecUser(['email_verified_at' => null]);
 
     pecSend($this, $user, ['email' => 'new.address@example.org', 'current_password' => 'password'])->assertSessionHasNoErrors();
 
-    expect($user->fresh()->email)->toBe('new.address@example.org');
-    Notification::assertNothingSent();
+    expect($user->fresh()->pending_email)->toBe('new.address@example.org');
+    Notification::assertSentOnDemandTimes(EmailChangedNotification::class, 0);
+    Notification::assertSentOnDemandTimes(ConfirmNewEmailNotification::class, 1);
 });
 
 test('clearing the email or adding a first one needs the password too', function () {
@@ -85,7 +90,8 @@ test('clearing the email or adding a first one needs the password too', function
     $this->flushSession(); // Another person, in their own session.
     pecSend($this, $noEmail, ['email' => 'first@example.com'])->assertSessionHasErrors('current_password');
     pecSend($this, $noEmail, ['email' => 'first@example.com', 'current_password' => 'password'])->assertSessionHasNoErrors();
-    expect($noEmail->fresh()->email)->toBe('first@example.com');
+    // Removing applies at once; a first address waits for confirmation like any other.
+    expect($noEmail->fresh())->email->toBeNull()->pending_email->toBe('first@example.com');
 });
 
 test('other edits never ask for the password, and ignore one that\'s sent anyway', function () {
@@ -146,10 +152,12 @@ test('the warning greets them by the name the account had before, not one set in
     Notification::assertSentOnDemand(EmailChangedNotification::class, fn (EmailChangedNotification $notification) => $notification->name === $before);
 });
 
-test('changing only the letter case counts as a change too (the same test as the page)', function () {
+test('changing only the letter case isn\'t a change (the same mailbox): no password, nothing pending', function () {
     $user = pecUser();
 
-    pecSend($this, $user, ['email' => 'Old.Address@example.com'])->assertSessionHasErrors('current_password');
+    pecSend($this, $user, ['email' => 'Old.Address@example.com'])->assertSessionHasNoErrors();
+
+    expect($user->fresh())->email->toBe('old.address@example.com')->pending_email->toBeNull()->email_verified_at->not->toBeNull();
 });
 
 test('a new email signs the account out on its other devices', function () {

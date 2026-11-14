@@ -32,8 +32,9 @@ class EnsureCanUpdateUserByAdminAction extends Action
             if ($newEmail === null) {
                 throw new UserException('An email can be changed here, but not removed: it\'s how they get back into their account.', 422);
             }
-        } elseif ($verified && ! $target->email_verified_at && ! $admin->isSuperAdmin()) {
-            throw new UserException('Only a super administrator can mark an email verified.', 403);
+        } elseif ($verified !== ($target->email_verified_at !== null) && ! $admin->isSuperAdmin()) {
+            // Unticking too (SCRUM-427 security review): it was a silent first step to an unprotected email change.
+            throw new UserException('Only a super administrator can change whether an email is verified.', 403);
         }
     }
 

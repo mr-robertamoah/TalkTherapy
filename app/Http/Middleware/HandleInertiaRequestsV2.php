@@ -90,7 +90,7 @@ class HandleInertiaRequestsV2 extends Middleware
             'failureAlert' => fn () => $request->hasSession() ? $request->session()->pull('failureAlert') : null,
             // SCRUM-41: the email-verification outcomes the layout's notice and toast show, from any page (a bare shared
             // `status` would collide with the pages that pass their own).
-            'verificationStatus' => fn () => $request->hasSession() && in_array($request->session()->get('status'), ['verification-link-sent', 'verification-throttled', 'email-verified'], true)
+            'verificationStatus' => fn () => $request->hasSession() && in_array($request->session()->get('status'), ['verification-link-sent', 'verification-throttled', 'email-verified', 'email-change-confirmed', 'email-change-waiting', 'email-change-invalid', 'email-change-taken'], true)
                 ? $request->session()->get('status')
                 : null,
             // SCRUM-34d: for an administrator who still has to set up two-factor sign-in -- when it's required from, and

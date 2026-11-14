@@ -80,7 +80,8 @@
                                 {{ user.isAdmin ? 'An administrator changes their own email, from their profile.' : 'Only a super administrator can change someone\'s email.' }}
                             </p>
                             <p v-else-if="changingEmail" class="mt-1 text-xs text-gray-600">
-                                The new address starts unverified — they verify it themselves. They're told in the
+                                The new address only becomes theirs once they open the link sent to it — until then
+                                their current address stays in use. They're told in the
                                 app{{ user.emailVerified ? ', and their current address by email' : '' }}.
                             </p>
 
@@ -211,8 +212,8 @@ const canEditAccount = computed(() => !props.user?.isAdmin || !!usePage().props.
 const changingEmail = computed(() => (userData.value.email || '').trim().toLowerCase() !== (props.user?.email || '').toLowerCase())
 // Typed back to the saved address: the tick comes back as it was (code review: else saving un-verified it).
 watch(changingEmail, (changing) => { userData.value.emailVerified = changing ? false : props.user?.emailVerified })
-// Ticking an unverified address verified is a super administrator's; anyone can untick.
-const canTickVerified = computed(() => !!usePage().props.auth.user?.isSuperAdmin || !!props.user?.emailVerified)
+// Changing whether an address is verified -- either way -- is a super administrator's (SCRUM-427).
+const canTickVerified = computed(() => !!usePage().props.auth.user?.isSuperAdmin)
 
 const computedMaxDOB = computed(() => {
     return subYears(new Date(), 10).toISOString().slice(0, 10)

@@ -40,8 +40,8 @@ class AccountEmailChangedByTeamNotification extends Notification implements Show
         $to = $data['maskedNewEmail'] ?? null;
 
         return new NotificationEntry(
-            'Your account email was changed',
-            ($to ? "The TalkTherapy team changed your account's email to {$to}." : 'The TalkTherapy team removed the email from your account.').' Not something you asked for? Contact support now.',
+            'A change of your account email was requested',
+            ($to ? "The TalkTherapy team asked to change your account's email to {$to}. It takes effect once that address is confirmed." : 'The TalkTherapy team removed the email from your account.').' Not something you asked for? Contact support now.',
             NotificationEntry::link('profile.show', []),
         );
     }

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\ConfirmablePasswordController;
+use App\Http\Controllers\Auth\ConfirmPendingEmailController;
 use App\Http\Controllers\Auth\EmailVerificationNotificationController;
 use App\Http\Controllers\Auth\EmailVerificationPromptController;
 use App\Http\Controllers\Auth\NewPasswordController;
@@ -98,3 +99,17 @@ Route::get('two-factor/resets/{reset}/cancel', [TwoFactorResetCancelController::
     ->where('reset', '[0-9A-Za-z]{26}')->middleware(['signed', 'throttle:30,1,two_factor_reset.cancel.show']);
 Route::post('two-factor/resets/{reset}/cancel', [TwoFactorResetCancelController::class, 'store'])->name('two_factor_reset.cancel')
     ->where('reset', '[0-9A-Za-z]{26}')->middleware(['signed', 'throttle:10,1,two_factor_reset.cancel']);
+
+// SCRUM-427: the links of an email change -- confirming the new address (24 hours) and "This wasn't me" from the
+// current one (4 days). Signed, bound to the exact address, no sign-in needed; opening one only shows its button.
+Route::middleware('signed')->whereNumber('id')->group(function () {
+    Route::get('email/confirm/{id}/{hash}', [ConfirmPendingEmailController::class, 'showConfirm'])->name('email.change.confirm.show')->middleware('throttle:30,1,email.change.confirm.show');
+    Route::post('email/confirm/{id}/{hash}', [ConfirmPendingEmailController::class, 'confirm'])->name('email.change.confirm')->middleware('throttle:6,1,email.change.confirm');
+    Route::get('email/stop/{id}/{hash}', [ConfirmPendingEmailController::class, 'showStop'])->name('email.change.stop.show')->middleware('throttle:30,1,email.change.stop.show');
+    Route::post('email/stop/{id}/{hash}', [ConfirmPendingEmailController::class, 'stop'])->name('email.change.stop')->middleware('throttle:6,1,email.change.stop');
+});
+// From the profile: the link again, or drop the request.
+Route::middleware('auth')->group(function () {
+    Route::post('profile/email/resend', [ConfirmPendingEmailController::class, 'resend'])->name('profile.email.resend')->middleware('throttle:3,1,profile.email.resend');
+    Route::delete('profile/email/pending', [ConfirmPendingEmailController::class, 'cancel'])->name('profile.email.cancel')->middleware('throttle:10,1,profile.email.cancel');
+});

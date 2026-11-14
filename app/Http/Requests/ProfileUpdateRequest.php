@@ -35,7 +35,8 @@ class ProfileUpdateRequest extends FormRequest
     // (strings are trimmed and empty ones made null before this runs). Left out entirely, it isn't filled, so unchanged.
     public function changesEmail(): bool
     {
-        return $this->has('email') && $this->input('email') !== $this->user()->email;
+        // SCRUM-427 (code review): a change of capitals only isn't a new address (the same mailbox; the admin edit agrees).
+        return $this->has('email') && mb_strtolower((string) $this->input('email')) !== mb_strtolower((string) $this->user()->email);
     }
 
     public function messages(): array

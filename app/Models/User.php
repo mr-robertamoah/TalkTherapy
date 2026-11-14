@@ -6,6 +6,7 @@ use App\Enums\ConstantsEnum;
 use App\Enums\FileTagEnum;
 use App\Enums\SuspensionScopeEnum;
 use App\Events\SessionCheckRequestedEvent;
+use App\Notifications\ConfirmNewEmailNotification;
 use App\Notifications\VerifyEmailNotification;
 use App\Traits\HasGuardedDatabaseNotifications;
 use App\Traits\HasTaggedFiles;
@@ -41,6 +42,9 @@ class User extends Authenticatable implements MustVerifyEmailContract
         'password_weak_reason', 'password_checked_at',
         // SCRUM-34
         'two_factor_secret', 'two_factor_recovery_codes', 'two_factor_confirmed_at', 'two_factor_last_used_step',
+        // SCRUM-427
+        'pending_email', 'pending_email_requested_at', 'pending_email_requested_by', 'pending_email_confirmed_at',
+        'last_verified_email', 'last_verified_email_until',
     ];
 
     /**
@@ -79,6 +83,14 @@ class User extends Authenticatable implements MustVerifyEmailContract
         'two_factor_recovery_codes',
         'two_factor_confirmed_at',
         'two_factor_last_used_step',
+        // SCRUM-427: only ever shown to the person themselves and to super administrators.
+        'pending_email',
+        'pending_email_requested_at',
+        'pending_email_requested_by',
+        'pending_email_confirmed_at',
+        'last_verified_email',
+        'last_verified_email_until',
+        'session_version',
     ];
 
     /**
@@ -98,6 +110,10 @@ class User extends Authenticatable implements MustVerifyEmailContract
         'two_factor_secret' => 'encrypted',
         'two_factor_recovery_codes' => 'array',
         'two_factor_confirmed_at' => 'datetime',
+        'pending_email_requested_at' => 'datetime',
+        'pending_email_confirmed_at' => 'datetime',
+        'last_verified_email_until' => 'datetime',
+        'session_version' => 'integer',
     ];
 
     public function getAgeAttribute()
@@ -183,13 +199,67 @@ class User extends Authenticatable implements MustVerifyEmailContract
 
     // SCRUM-423: a change that ends the account's other sessions (EndStaleSessions::fingerprint -- the password or the
     // two-factor state) tells its open pages to check whether they're still signed in.
+    // SCRUM-427 (security review): how long an address stays protected after it stops being the account's verified one.
+    public const PROTECTED_ADDRESS_DAYS = 30;
+
     protected static function booted(): void
     {
+        // SCRUM-427: when a verified address stops being one (removed, replaced, or unticked), remember it a while: a new
+        // address still waits, and it's still warned (with "This wasn't me").
+        static::saving(function (User $user) {
+            $was = $user->getOriginal('email');
+            $wasVerified = $user->getOriginal('email_verified_at') !== null;
+
+            // Never on a closed account being anonymised (security review: it would write the address back).
+            if ($user->exists && $was && $wasVerified && ! $user->anonymised_at && ($user->isDirty('email') || $user->email_verified_at === null)) {
+                $user->last_verified_email = $was;
+                $user->last_verified_email_until = now()->addDays(self::PROTECTED_ADDRESS_DAYS);
+            }
+        });
+
         static::updated(function (User $user) {
-            if ($user->wasChanged(['password', 'two_factor_confirmed_at'])) {
+            if ($user->wasChanged(['password', 'two_factor_confirmed_at', 'session_version'])) {
                 SessionCheckRequestedEvent::after($user->id);
             }
         });
+    }
+
+    // SCRUM-427: no new address waiting any more (confirmed, cancelled, replaced by removal, or taken by someone else).
+    // SCRUM-427: when a confirmed new address becomes the account's (null when none is confirmed and waiting).
+    public function pendingEmailEffectiveAt(): ?\Illuminate\Support\Carbon
+    {
+        return $this->pending_email && $this->pending_email_confirmed_at
+            ? $this->pending_email_confirmed_at->copy()->addHours((int) config('auth.email_change_wait_hours'))
+            : null;
+    }
+
+    // SCRUM-427: the address an email change must be protected for -- the current one when verified, else one that was
+    // verified recently -- or null when there's none (then a confirmed change applies at once).
+    // $asOf: judged when the change was asked for (security review: else ask on day 29, confirm on day 31). While the
+    // account has no email at all, the last verified one stays protected however long ago (else removing it and
+    // waiting 30 days would get round the wait).
+    public function protectedEmail(?\DateTimeInterface $asOf = null): ?string
+    {
+        if ($this->email && $this->email_verified_at) {
+            return $this->email;
+        }
+
+        if (! $this->last_verified_email) {
+            return null;
+        }
+
+        return ! $this->email || $this->last_verified_email_until?->gt($asOf ?? now()) ? $this->last_verified_email : null;
+    }
+
+    // SCRUM-427: what the links of the waiting change carry -- bound to its address and to when it was asked for.
+    public function pendingEmailHash(): ?string
+    {
+        return $this->pending_email ? ConfirmNewEmailNotification::hashOf($this->pending_email, $this->pending_email_requested_at) : null;
+    }
+
+    public function clearPendingEmail(): void
+    {
+        $this->forceFill(['pending_email' => null, 'pending_email_requested_at' => null, 'pending_email_requested_by' => null, 'pending_email_confirmed_at' => null])->save();
     }
 
     // SCRUM-424: a reset of their two-factor sign-in by the team that is still waiting to apply (at most one).

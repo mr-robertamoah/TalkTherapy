@@ -71,6 +71,17 @@ watchEffect(() => {
     });
   }
 
+  // SCRUM-427: back from the link confirming a new email (signed in).
+  const emailChange = {
+    'email-change-confirmed': ['successs', 'Your new email address is confirmed.'],
+    'email-change-waiting': ['successs', 'Confirmed. The new address becomes your email in a couple of days -- your current address has been told.'],
+    'email-change-invalid': ['failed', 'That link is no longer valid -- the change may have been cancelled or replaced.'],
+    'email-change-taken': ['failed', 'That address is now used by another account, so the change was cancelled.'],
+  }[page.props.verificationStatus];
+  if (emailChange) {
+    setAlertData({ show: true, type: emailChange[0], time: 6000, message: emailChange[1] });
+  }
+
   if (page.props.message?.length) {
     setAlertData({
       show: true,
