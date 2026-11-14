@@ -46,7 +46,9 @@ Two things in one PR, because they share the profile form:
    `docker compose exec -u www-data php php artisan tinker --execute='App\Models\User::where("username","payment_demo_client")->update(["pending_email_confirmed_at" => now()->subDays(3)]);'`
    and wait a minute for the scheduler -- the email is the new one, Verified, and the old address is told.
 6. **This wasn't me** — repeat step 3, then open the warning's **This wasn't me** link → **Stop the change** →
-   signed out everywhere; the change is gone. (To undo a change that took effect, change it back the same way.)
+   signed out everywhere; the change is gone. If two-factor was turned on while the change waited, a two-factor reset
+   is scheduled (48 hours, SCRUM-428): both the account's address and the dropped new one get "Two-factor sign-in
+   reset scheduled" with **Cancel this reset** -- whichever holds the real owner's phone cancels it. (To undo a change that took effect, change it back the same way.)
 7. **Edit** → change a field → **Cancel** → **Edit** again: the saved value is back.
 
 ## Where it lives

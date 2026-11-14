@@ -7,6 +7,7 @@ use App\Models\TwoFactorReset;
 use App\Support\NotificationEntry;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Notifications\AnonymousNotifiable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Carbon;
@@ -19,7 +20,7 @@ class TwoFactorResetRequestedNotification extends Notification implements Should
 {
     use Queueable;
 
-    public function __construct(public string $resetId, public string $dueAt)
+    public function __construct(public string $resetId, public string $dueAt, public bool $afterEmailStop = false)
     {
         $this->afterCommit();
     }
@@ -27,14 +28,17 @@ class TwoFactorResetRequestedNotification extends Notification implements Should
     // Ops review: the reset may only apply once this email went out (AppServiceProvider: NotificationSent on mail).
     public static function markSent(object $event): void
     {
-        if ($event->notification instanceof self && $event->channel === 'mail') {
+        // SCRUM-428 (security review): after "This wasn't me", the copy that counts is the one to the dropped new address
+        // -- if the old mailbox is the intruder, it's the only one the owner gets.
+        if ($event->notification instanceof self && $event->channel === 'mail'
+            && (! $event->notification->afterEmailStop || $event->notifiable instanceof AnonymousNotifiable)) {
             TwoFactorReset::query()->whereKey($event->notification->resetId)->whereNull('notified_at')->update(['notified_at' => now()]);
         }
     }
 
     public static function for(TwoFactorReset $reset): self
     {
-        return new self($reset->id, $reset->due_at->toIso8601String());
+        return new self($reset->id, $reset->due_at->toIso8601String(), $reset->source === TwoFactorReset::SOURCE_EMAIL_STOP);
     }
 
     /**
@@ -42,6 +46,11 @@ class TwoFactorResetRequestedNotification extends Notification implements Should
      */
     public function via(object $notifiable): array
     {
+        // Sent straight to an address too (SCRUM-428: the new address of a stopped email change).
+        if ($notifiable instanceof AnonymousNotifiable) {
+            return ['mail'];
+        }
+
         $via = ['database'];
 
         if ($notifiable->email && $notifiable->email_verified_at) {
@@ -56,13 +65,23 @@ class TwoFactorResetRequestedNotification extends Notification implements Should
         // In the app's time zone (QA: parsed from the ISO string it printed "GMT+0000").
         $due = Carbon::parse($this->dueAt)->setTimezone(config('app.timezone'));
 
-        return (new MailMessage)
+        $message = (new MailMessage)
             ->subject('Two-factor sign-in reset scheduled')
-            ->greeting("Hello {$notifiable->name}!")
-            ->line('The TalkTherapy team has scheduled a reset of two-factor sign-in on your account, as someone asked us to.')
-            ->line("It takes effect on {$due->format('j F Y, H:i T')}. After that your account is protected by its password alone until you set two-factor sign-in up again.")
-            ->line('If you asked for this, you needn\'t do anything.')
-            ->line('If you did NOT, cancel it now, then change your password and contact support -- someone may be trying to get into your account. Signing in with your two-factor code also cancels it.')
+            ->greeting($notifiable instanceof AnonymousNotifiable ? 'Hello!' : "Hello {$notifiable->name}!");
+
+        if ($this->afterEmailStop) {
+            // SCRUM-428: the two-factor may be an intruder's phone -- or the owner's, if the old mailbox is the intruder.
+            $message->line('A change of email on a TalkTherapy account was stopped ("This wasn\'t me"). Two-factor sign-in was turned on while that change waited, so it may be on someone else\'s phone: it\'s set to be reset.')
+                ->line("It takes effect on {$due->format('j F Y, H:i T')}.")
+                ->line('If that two-factor sign-in is yours (on your own phone), cancel the reset -- and contact support, as someone else may have this account\'s mailbox.');
+        } else {
+            $message->line('The TalkTherapy team has scheduled a reset of two-factor sign-in on your account, as someone asked us to.')
+                ->line("It takes effect on {$due->format('j F Y, H:i T')}. After that your account is protected by its password alone until you set two-factor sign-in up again.")
+                ->line('If you asked for this, you needn\'t do anything.')
+                ->line('If you did NOT, cancel it now, then change your password and contact support -- someone may be trying to get into your account. Signing in with your two-factor code also cancels it.');
+        }
+
+        return $message
             // Readable for a week after it's due (code review): someone too late learns it applied and to contact support,
             // instead of a bare "invalid signature". The button only ever cancels a reset that's still waiting.
             ->action('Cancel this reset', URL::temporarySignedRoute('two_factor_reset.cancel.show', $due->copy()->addDays(7), ['reset' => $this->resetId]))

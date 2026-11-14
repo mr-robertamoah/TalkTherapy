@@ -28,10 +28,17 @@ use Illuminate\Support\Str;
 // person who already has them is skipped; each person's set is written in one transaction.
 class NotificationCenterSeeder extends Seeder
 {
+    use RefusesOutsideLocal;
+
     private const MARKER = 'scrum39Demo';
 
     public function run(): void
     {
+        // SCRUM-429
+        if ($this->refusedHere()) {
+            return;
+        }
+
         $client = User::query()->where('username', 'maria_garcia')->first();
         $counsellorUser = User::query()->where('username', 'sarah_johnson')->first();
         $therapy = Therapy::query()->where('name', 'Chat Demo Individual Therapy')->first();

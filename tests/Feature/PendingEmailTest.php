@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\TwoFactor\ApplyDueTwoFactorResetsAction;
 use App\Actions\User\AnonymiseClosedAccountAction;
 use App\Actions\User\ApplyDueEmailChangesAction;
 use App\Actions\User\ConfirmPendingEmailAction;
@@ -8,11 +9,15 @@ use App\Enums\AdministratorTypeEnum;
 use App\Exceptions\UserException;
 use App\Http\Middleware\EndStaleSessions;
 use App\Models\Administrator;
+use App\Models\TwoFactorReset;
 use App\Models\User;
 use App\Notifications\ConfirmNewEmailNotification;
 use App\Notifications\EmailChangedNotification;
+use App\Notifications\TwoFactorResetRequestedNotification;
+use App\Support\TwoFactorCodes;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Notifications\AnonymousNotifiable;
+use Illuminate\Notifications\Events\NotificationSent;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
@@ -403,4 +408,67 @@ test('after the email was removed, the profile and the warning say what really h
 
     $this->actingAs($user->fresh(), 'web')->get(route('profile.show'))->assertInertia(fn ($page) => $page->where('auth.user.pendingEmailWaits', true));
     Notification::assertSentOnDemand(EmailChangedNotification::class, fn ($notification, $channels, $notifiable) => str_contains((string) $notification->toMail($notifiable)->render(), 'recently removed from'));
+});
+
+// SCRUM-428: two-factor turned on while the change waited may be the intruder's phone -- or the owner's, if the old
+// mailbox is the intruder. "This wasn't me" schedules the 48-hour reset; both addresses are told, with a cancel link.
+test('"This wasn\'t me" schedules a two-factor reset for two-factor turned on during the wait, telling both addresses', function () {
+    Notification::fake();
+    $user = pndUser();
+    RequestEmailChangeAction::new()->execute($user, 'newplace@example.org');
+    $this->travel(1)->minutes();
+    $user->fresh()->forceFill(['two_factor_secret' => TwoFactorCodes::newSecret(), 'two_factor_confirmed_at' => now()])->save();
+
+    $this->post(pndLink('email.change.stop', $user, 'newplace@example.org', 96));
+
+    $reset = $user->fresh()->pendingTwoFactorReset;
+    expect($user->fresh()->hasTwoFactorEnabled())->toBeTrue()
+        ->and($reset)->not->toBeNull()->source->toBe(TwoFactorReset::SOURCE_EMAIL_STOP);
+    Notification::assertSentTo($user, TwoFactorResetRequestedNotification::class, fn ($notification) => $notification->afterEmailStop);
+    Notification::assertSentOnDemand(TwoFactorResetRequestedNotification::class, function ($notification, $channels, $notifiable) {
+        $mail = (string) $notification->toMail($notifiable)->render();
+
+        return $notifiable->routes['mail'] === 'newplace@example.org' && str_contains($mail, 'Cancel this reset') && str_contains($mail, 'Hello!');
+    });
+});
+
+test('two-factor the owner had before, or a change a super administrator asked for, schedules nothing', function () {
+    Notification::fake();
+    $owner = pndUser(['email' => 'owner@example.com']);
+    $owner->forceFill(['two_factor_secret' => TwoFactorCodes::newSecret(), 'two_factor_confirmed_at' => now()->subWeek()])->save();
+    RequestEmailChangeAction::new()->execute($owner->fresh(), 'elsewhere@example.org');
+    $this->post(pndLink('email.change.stop', $owner, 'elsewhere@example.org', 96));
+
+    $byTeam = pndUser(['email' => 'team@example.com']);
+    RequestEmailChangeAction::new()->execute($byTeam, 'other@example.org', pndSuper());
+    $this->travel(1)->minutes();
+    $byTeam->fresh()->forceFill(['two_factor_secret' => TwoFactorCodes::newSecret(), 'two_factor_confirmed_at' => now()])->save();
+    $this->post(pndLink('email.change.stop', $byTeam, 'other@example.org', 96));
+
+    expect($owner->fresh()->pendingTwoFactorReset)->toBeNull()
+        ->and($byTeam->fresh()->pendingTwoFactorReset)->toBeNull();
+    Notification::assertNotSentTo([$owner, $byTeam], TwoFactorResetRequestedNotification::class);
+});
+
+// Security review: if the old mailbox is the intruder, only the copy to the dropped address reaches the owner -- the
+// reset waits for that one.
+test('a reset after "This wasn\'t me" waits for the copy to the dropped address, not the account\'s own', function () {
+    Notification::fake();
+    $user = pndUser();
+    RequestEmailChangeAction::new()->execute($user, 'newplace@example.org');
+    $this->travel(1)->minutes();
+    $user->fresh()->forceFill(['two_factor_secret' => TwoFactorCodes::newSecret(), 'two_factor_confirmed_at' => now()])->save();
+    $this->post(pndLink('email.change.stop', $user, 'newplace@example.org', 96));
+    $reset = $user->fresh()->pendingTwoFactorReset;
+
+    // The account's own copy going out doesn't count.
+    TwoFactorResetRequestedNotification::markSent(new NotificationSent($user->fresh(), TwoFactorResetRequestedNotification::for($reset), 'mail'));
+    expect($reset->fresh())->mail_required->toBeTrue()->notified_at->toBeNull();
+    $this->travel(49)->hours();
+    expect(ApplyDueTwoFactorResetsAction::new()->execute())->toBe(0);
+
+    // The dropped address's copy does.
+    TwoFactorResetRequestedNotification::markSent(new NotificationSent((new AnonymousNotifiable)->route('mail', 'newplace@example.org'), TwoFactorResetRequestedNotification::for($reset), 'mail'));
+    expect($reset->fresh()->notified_at)->not->toBeNull()
+        ->and(ApplyDueTwoFactorResetsAction::new()->execute())->toBe(1);
 });

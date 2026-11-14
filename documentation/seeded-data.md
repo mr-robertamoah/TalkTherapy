@@ -1,5 +1,9 @@
 # Seeded Test Data
 
+> **Only on local and testing (SCRUM-429):** every seeder refuses to run when `APP_ENV` is anything else (these accounts
+> have known passwords and published two-factor keys), unless `ALLOW_DEMO_SEED=true` is given as a one-off on the
+> command line. The Docker entrypoint never seeds production either.
+
 Reference for what's in the local database after seeding, so you can log in and exercise features
 through the UI without creating accounts by hand. Regenerate at any time with:
 
