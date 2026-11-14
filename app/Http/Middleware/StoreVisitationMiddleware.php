@@ -18,7 +18,8 @@ class StoreVisitationMiddleware
     {
         // SCRUM-373: health checks are a monitor polling every minute, not visits.
         // SCRUM-34b: nor the sign-in's code step (routes/auth.php) -- the visit is recorded once the person is signed in.
-        if (! in_array($request->getPathInfo(), ['/login', '/two-factor-challenge'], true) && ! $request->is('up', 'api/health/*')) {
+        // SCRUM-423: nor an open page asking whether it's still signed in (every open tab, after each nudge).
+        if (! in_array($request->getPathInfo(), ['/login', '/two-factor-challenge', '/session/check'], true) && ! $request->is('up', 'api/health/*')) {
             StoreVisitationJob::dispatch($request->user(), $request->ip());
         }
 
