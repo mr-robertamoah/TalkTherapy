@@ -16,6 +16,10 @@ class MessageNote extends Model
     // SessionNote's identical rule (SCRUM-196 security finding).
     protected $fillable = ['content', 'message_id', 'counsellor_id'];
 
+    // SCRUM-437: a counsellor's private note about a client -- encrypted at rest (existing ones by the
+    // 2026_12_05_100000 migration). Nothing queries by its content.
+    protected $casts = ['content' => 'encrypted'];
+
     public function message()
     {
         // withTrashed: the message (or its counsellor below) may have since been soft-deleted;

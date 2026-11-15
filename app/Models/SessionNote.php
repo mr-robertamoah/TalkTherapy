@@ -17,6 +17,10 @@ class SessionNote extends Model
     // SCRUM-196).
     protected $fillable = ['content', 'session_id', 'counsellor_id'];
 
+    // SCRUM-437: a counsellor's private note about a client -- encrypted at rest (existing ones by the
+    // 2026_12_05_100000 migration). Nothing queries by its content.
+    protected $casts = ['content' => 'encrypted'];
+
     public function session()
     {
         // withTrashed: see Message::from()/to() -- the session (or its counsellor below) may
