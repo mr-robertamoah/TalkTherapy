@@ -278,6 +278,19 @@ class GroupTherapy extends Model
         return $this->showsPaymentStatusCache[$user->id] ??= $this->isCounsellorUser($user) || $user->isAdmin();
     }
 
+    // SCRUM-442: where an in-person session meets -- only for its members, its counsellors (and creator) and
+    // administrators, never a guest or a non-member reading a public group's sessions.
+    private array $showsSessionLocationCache = [];
+
+    public function showsSessionLocationTo(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        return $this->showsSessionLocationCache[$user->id] ??= $user->isAdmin() || $this->isParticipant($user);
+    }
+
     // TT-3.2f-f/SCRUM-323: an ordinary member (not an active counsellor, not the creator) only
     // ever joins this group's video receive-only, and is the only kind of participant hand-raise
     // and grant/revoke apply to -- moved here from JoinVideoSessionAction's own private

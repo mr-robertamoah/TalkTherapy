@@ -50,6 +50,14 @@ Fields: **Key** (Epic-Story) · **Type** · **Priority** (Critical/High/Medium/L
 | TT-2.6b | Counsellor calendar UI: custom-built (no calendar library — architect decision) week/month view, event rendering (time/status/individual-vs-group/therapy name), drill-through only (no in-place mutation), individual-vs-group and upcoming-vs-past filtering, empty state mirroring `TherapyRecentSections.vue` | Story | High | 8 | New split of existing TT-2.6 (SCRUM-25 `/start-feature` review) | TT-2.6a |
 | TT-2.7 | Fix `groupTherapies` channel-name casing mismatch — group-therapy real-time updates may be silently broken | Bug | High | — | New (SCRUM-15 follow-up) | — |
 | TT-2.8 | ✅ **Implemented** (SCRUM-68). Typing indicators in group-therapy and discussion chat: names (two, then "and N others") from the presence member list, matched by the member id Reverb stamps on the whisper (`accept_client_events_from = members`); the whisper carries no identity. One composable (`useTypingIndicator`). Individual therapy unchanged. | Story | Medium | 5 | SCRUM-68 (deferred from SCRUM-20) | TT-2.1 |
+| TT-2.9a | 🔄 **In review**. Hotfix: a session's meeting place (lat/lng/landmark) only for the therapy's or group's participants and administrators -- the guest-readable session list of a public therapy no longer carries it (SCRUM-442) | Bug | Critical | 2 | SCRUM-115 (1 of 6) | — |
+| TT-2.9b | In-person start/end hardened (the second confirmation from the other party); online sessions store no location, switching to online clears it, the edit form reads lat/lng, landmark required; in-person therapies and groups exclude minors, shown when configuring; anonymity warning; "started" copy fix (SCRUM-443) | Story | High | 8 | SCRUM-115 (2 of 6) | — |
+| TT-2.9f | Easier location picker: Google place search on the session forms, directions link for participants, fallback to the plain map (SCRUM-444) | Story | Medium | 3 | SCRUM-115 (3 of 6) | TT-2.9b |
+| TT-2.9c | In-person attendance backend: the counsellor records present/absent per client (start to end+48h), clients see only their own, members by key, all absent → close as failed with no invoice line; never touches payments (SCRUM-445) | Story | High | 8 | SCRUM-115 (4 of 6) | TT-2.9b |
+| TT-2.9d | Attendance UI, no-show notice (no location), seed data, feature doc, two-browser QA (SCRUM-446) | Story | Medium | 5 | SCRUM-115 (5 of 6) | TT-2.9c |
+| TT-2.9e | Daily job clears an in-person session's exact pin 30 days after it ends, keeping the landmark; /privacy and Your data say so (SCRUM-447) | Task | Medium | 3 | SCRUM-115 (6 of 6) | TT-2.9b |
+| TT-2.10 | `TherapyTrait::endSessions()` marks failed/abandoned sessions held, with no ended_at or invoice line (SCRUM-448, found planning SCRUM-115) | Bug | High | — | SCRUM-448 | — |
+| TT-2.11 | Group sessions send no "starting"/"failed" notices: `Session::getUsersAttribute()` is empty for groups (SCRUM-449, found planning SCRUM-115) | Bug | Medium | — | SCRUM-449 | — |
 
 **Sprint:** 2 (unchanged from original plan).
 
@@ -597,6 +605,7 @@ Four PRs into develop, one branch each off a freshly pulled develop. Order: B an
 | Next+4 | Outcome check-ins & notes at rest | TT-5.2, TT-5.7 (SCRUM-37/437) | Boxed together (2026-11-15): counsellors' notes encrypted first, then PHQ-9/GAD-7 check-ins with progress over time and a self-harm safety response, behind a switch until the legal read |
 | Next+5 | Journal days, guardian display, notes PDF | TT-5.8, TT-5.9, TT-5.10 (SCRUM-438/439/440) | The user's TODO (guardian display; journal as searchable day notes) boxed with the follow-up SCRUM-438 (2026-11-15) |
 | Next+6 | Guardians for under-18s, dialog scroll lock | TT-5.11 (SCRUM-441) | The PR #349 follow-ups; SCRUM-421 closed as "still not now" (the user's decision, 2026-11-15) |
+| Next+7 | In-person sessions: location privacy, safer start/end, attendance | TT-2.9a–f (SCRUM-442–447) | SCRUM-115 planned 2026-11-15: the location leak fixed first as a hotfix, then start/end and location fixes with minors excluded, the Google place search, attendance, and the pin cleared after 30 days |
 
 ---
 
