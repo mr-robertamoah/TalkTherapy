@@ -280,6 +280,8 @@ class DatabaseSeeder extends Seeder
         $this->call(JournalDaysAndNotesSeeder::class);
         // SCRUM-433
         $this->call(RestoreGuardSeeder::class);
+        // SCRUM-443: an adult 1:1 and a group that meet in person, each with an in-person session with a place.
+        $this->call(InPersonSessionSeeder::class);
     }
 
     // SCRUM-32 (TT-4.3a): counsellors' safety flags. Passwords: "password". The feature is off by default:

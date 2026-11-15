@@ -1,15 +1,14 @@
 <script setup>
-import { ref, unref, watch, watchEffect } from 'vue';
+import { ref, watch } from 'vue';
 import useScheduleTimes from '@/Composables/useScheduleTimes'
 import TextInput from '@/Components/TextInput.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import InputError from '@/Components/InputError.vue';
+import InPersonPlacePicker from '@/Components/InPersonPlacePicker.vue';
 import TextBox from '@/Components/TextBox.vue';
 import FormLoader from '@/Components/FormLoader.vue';
 import Modal from '@/Components/Modal.vue';
 import useAlert from "@/Composables/useAlert";
-import useLocation from "@/Composables/useLocation";
-import useMap from "@/Composables/useMap";
 import Alert from "./Alert.vue";
 import PrimaryButton from "./PrimaryButton.vue";
 import Select from "./Select.vue";
@@ -17,8 +16,6 @@ import { useForm } from '@inertiajs/vue3';
 import PreferenceItem from './PreferenceItem.vue';
 
 const { alertData, clearAlertData, setAlertData, setFailedAlertData } = useAlert()
-const { getCurrentLocation, currentLocation } = useLocation()
-const { initMap, createMap, mapDetails, addMarker, map, markerPosition } = useMap()
 
 const props = defineProps({
     show: {
@@ -35,7 +32,6 @@ const props = defineProps({
 
 const emits = defineEmits(['closeModal', 'onSuccess'])
 
-const sessionCreationMap = ref(null)
 const loading = ref(false)
 // SCRUM-379: shared start/end handling (resources/js/Composables/useScheduleTimes.js).
 const { startTime, endTime, clearTimes, timesError, computedStartTime, computedEndTime, computedNow, computedDuration } = useScheduleTimes({ defaultsWhen: () => props.show })
@@ -53,23 +49,6 @@ const sessionForm = useForm({
     'cases': []
 })
 
-watchEffect(() => {
-    if (
-        !props.show ||
-        !props.therapy.allowInPerson || 
-        sessionForm.type !== 'IN_PERSON'
-    ) return
-
-    initMap()
-    getCurrentLocation()
-    
-    if (mapDetails.value.Map && sessionCreationMap.value)
-        createMap(sessionCreationMap.value, currentLocation.value)
-})
-watch(() => markerPosition.value.lat || markerPosition.value.lng, () => {
-    sessionForm.lat = markerPosition.value.lat ?? ''
-    sessionForm.lng = markerPosition.value.lng ?? ''
-})
 watch(() => props.therapy.allowInPerson, () => {
     if (props.therapy.allowInPerson)
         sessionForm.type = 'ONLINE'
@@ -195,15 +174,6 @@ function addCaseToSelected(newCase) {
 function removeCaseFromSelected(oldCase) {
     selectedCases.value = [...selectedCases.value.filter((c) => c.id !== oldCase.id)]
 }
-
-function useCurrentLocation() {
-    getCurrentLocation()
-    map.value.setCenter({
-        lat: parseFloat(currentLocation.value.lat),
-        lng: parseFloat(currentLocation.value.lng),
-    })
-    addMarker(unref(map), currentLocation.value)
-}
 </script>
 
 <template>
@@ -327,58 +297,15 @@ function useCurrentLocation() {
 
                         <div class="my-4 p-4 bg-gray-200 rounded shadow-sm" v-if="therapy.allowInPerson && sessionForm.type == 'IN_PERSON'">
                             <div class="font-bold text-start text-gray-600 capitalize my-2">location information</div>
-                            <div class="w-full flex flex-col mt-2 mb-4 p-2">
-                                <div>
-                                    <div class="text-gray-600 text-sm mb-2 text-center">Location data (We recommend you pick location on map by clicking anywhere on the map).</div>
-                                    <div class="w-full h-[300px] bg-blue-200" ref="sessionCreationMap" id="sessionCreationMap"></div>
-                                    <div class="flex justify-start items-center flex-col">
-                                        <TextInput
-                                            placeholder="longitude" 
-                                            type="number"
-                                            id="lng"
-                                            name="lng"
-                                            class="my-2 w-full"
-                                            v-model="sessionForm.lng"
-                                            disabled
-                                            required
-                                        ></TextInput>
-                                        <InputError :message="sessionForm.errors.lng" class="mt-2" />
-
-                                        <TextInput
-                                            placeholder="latitude" 
-                                            type="number"
-                                            id="lat"
-                                            name="lat"
-                                            class="my-2 w-full"
-                                            v-model="sessionForm.lat"
-                                            disabled
-                                            required
-                                        ></TextInput>
-                                        <InputError :message="sessionForm.errors.lat" class="mt-2" />
-                                    <div class="flex justify-end w-full">
-                                        <div 
-                                        @click="useCurrentLocation"
-                                        :class="[
-                                            (currentLocation.lat == sessionForm.lat && currentLocation.lng == sessionForm.lng)
-                                            ? 'bg-blue-700 text-blue-300' 
-                                            : 'text-blue-700 bg-blue-300 hover:bg-blue-700 hover:text-blue-300'
-                                        ]"
-                                        class="mt-2 text-sm py-1 px-2 rounded w-fit float-right cursor-pointer transition duration-75"
-                                        >current location</div>
-                                    </div>
-
-                                    <TextInput
-                                        placeholder="landmark" 
-                                        id="landmark"
-                                        name="landmark"
-                                        class="my-2 w-full"
-                                        v-model="sessionForm.landmark"
-                                    />
-                                    
-                                    <InputError :message="sessionForm.errors.landmark" class="mt-2" />
-                                    </div>
-                                </div>
-                            </div>
+                            <InPersonPlacePicker
+                                class="mt-2 mb-4 p-2"
+                                map-id="sessionCreationMap"
+                                v-model:lat="sessionForm.lat"
+                                v-model:lng="sessionForm.lng"
+                                v-model:landmark="sessionForm.landmark"
+                                :errors="sessionForm.errors"
+                                :anonymous="!!therapy?.anonymous"
+                            />
                         </div>
 
                         <div class="p-4 rounded bg-gray-200 shadow-sm my-4">

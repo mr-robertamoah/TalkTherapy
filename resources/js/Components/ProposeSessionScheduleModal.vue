@@ -8,6 +8,7 @@ import TextBox from '@/Components/TextBox.vue';
 import InputError from '@/Components/InputError.vue';
 import FormLoader from '@/Components/FormLoader.vue';
 import Select from '@/Components/Select.vue';
+import InPersonPlacePicker from '@/Components/InPersonPlacePicker.vue';
 import useErrorHandler from '@/Composables/useErrorHandler';
 
 // SCRUM-208 (TT-2.5c): either participant (client or counsellor) may propose a session time for
@@ -33,6 +34,9 @@ function defaultForm() {
         about: '',
         type: '',
         paymentType: '',
+        lat: '',
+        lng: '',
+        landmark: '',
     }
 }
 
@@ -42,7 +46,7 @@ watch(() => props.show, (show) => {
     errors.value = {}
 })
 
-const FIELD_KEYS = ['startTime', 'endTime', 'name', 'about', 'type', 'paymentType', 'expiryDays']
+const FIELD_KEYS = ['startTime', 'endTime', 'name', 'about', 'type', 'paymentType', 'expiryDays', 'lat', 'lng', 'landmark']
 
 function buildPayload() {
     const payload = {
@@ -58,6 +62,13 @@ function buildPayload() {
     // value here keeps this form's own behavior self-consistent with that one).
     payload.type = props.therapy?.allowInPerson ? (form.value.type || 'ONLINE') : 'ONLINE'
     payload.paymentType = props.therapy?.paymentType === 'PAID' ? form.value.paymentType : 'FREE'
+
+    // SCRUM-443: an in-person proposal carries its place, so accepting it books a session people can find.
+    if (payload.type === 'IN_PERSON') {
+        payload.lat = form.value.lat
+        payload.lng = form.value.lng
+        payload.landmark = form.value.landmark
+    }
 
     return payload
 }
@@ -123,6 +134,18 @@ async function send() {
                         :default-option="'select type'"
                     />
                     <InputError class="mt-2" :message="errors.type" />
+                </div>
+
+                <div v-if="therapy.allowInPerson && form.type === 'IN_PERSON'" class="p-4 rounded bg-gray-100 border border-gray-200">
+                    <div class="font-semibold text-sm text-gray-700 mb-2">Where you'd meet</div>
+                    <InPersonPlacePicker
+                        map-id="proposeSessionMap"
+                        v-model:lat="form.lat"
+                        v-model:lng="form.lng"
+                        v-model:landmark="form.landmark"
+                        :errors="errors"
+                        :anonymous="!!therapy.anonymous"
+                    />
                 </div>
 
                 <div v-if="therapy.paymentType === 'PAID'">

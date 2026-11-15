@@ -34,6 +34,13 @@ class SessionScheduleProposalDTO extends BaseDTO
 
     public ?string $paymentType = null;
 
+    // SCRUM-443: the place of an in-person proposal (a pin and a written landmark).
+    public ?string $landmark = null;
+
+    public ?float $latitude = null;
+
+    public ?float $longitude = null;
+
     // Optional override of config('session_schedule_proposal.default_expiry_days').
     public ?int $expiryDays = null;
 }

@@ -27,6 +27,9 @@ class SessionScheduleProposalController extends Controller
                     'about' => $request->about,
                     'type' => $request->type,
                     'paymentType' => $request->paymentType,
+                    'landmark' => $request->landmark,
+                    'latitude' => $request->filled('lat') ? (float) $request->lat : null,
+                    'longitude' => $request->filled('lng') ? (float) $request->lng : null,
                     'expiryDays' => $request->expiryDays,
                 ])
             );
@@ -52,6 +55,9 @@ class SessionScheduleProposalController extends Controller
                     'about' => $request->about,
                     'type' => $request->type,
                     'paymentType' => $request->paymentType,
+                    'landmark' => $request->landmark,
+                    'latitude' => $request->filled('lat') ? (float) $request->lat : null,
+                    'longitude' => $request->filled('lng') ? (float) $request->lng : null,
                     'expiryDays' => $request->expiryDays,
                 ])
             );

@@ -89,6 +89,10 @@ class RequestResource extends JsonResource
                     'about' => $this->data['about'] ?? null,
                     'type' => $this->data['type'] ?? null,
                     'paymentType' => $this->data['paymentType'] ?? null,
+                    // SCRUM-443: where an in-person proposal would meet (null for online).
+                    'landmark' => $this->data['landmark'] ?? null,
+                    'lat' => $this->data['latitude'] ?? null,
+                    'lng' => $this->data['longitude'] ?? null,
                     'staleReason' => $this->data['staleReason'] ?? null,
                     'reason' => $this->data['reason'] ?? null,
                 ]

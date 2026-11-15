@@ -8,6 +8,7 @@ use App\DTOs\CreateRequestDTO;
 use App\DTOs\SessionScheduleProposalDTO;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
+use App\Enums\SessionTypeEnum;
 use App\Exceptions\SessionException;
 use App\Models\Request;
 use App\Notifications\SessionScheduleProposedNotification;
@@ -43,6 +44,12 @@ class CounterOfferSessionScheduleProposalAction extends Action
 
             $expiryDays = $dto->expiryDays ?? config('session_schedule_proposal.default_expiry_days');
 
+            $type = $dto->type ?: $current->data['type'] ?? null;
+            $inPerson = $type === SessionTypeEnum::in_person->value;
+            // SCRUM-443: the place carries over unless a new one is sent; an online counter-offer has none.
+            $dto->request = $current;
+            [$landmark, $latitude, $longitude] = EnsureSessionScheduleProposalDataIsValidAction::placeOf($dto);
+
             return CreateRequestAction::new()->execute(
                 CreateRequestDTO::new()->fromArray([
                     'for' => $therapy,
@@ -58,8 +65,11 @@ class CounterOfferSessionScheduleProposalAction extends Action
                         // value, not persist as-is (the propose-time bug this mirrors: sessions.type/
                         // payment_type are NOT NULL, and ProposeSessionScheduleAction guarantees
                         // $current->data already holds a valid, non-empty value for both).
-                        'type' => $dto->type ?: $current->data['type'] ?? null,
+                        'type' => $type,
                         'paymentType' => $dto->paymentType ?: $current->data['paymentType'] ?? null,
+                        'landmark' => $inPerson ? $landmark : null,
+                        'latitude' => $inPerson ? $latitude : null,
+                        'longitude' => $inPerson ? $longitude : null,
                         'proposedById' => $dto->user->id,
                     ],
                     'expiresAt' => now()->addDays($expiryDays),

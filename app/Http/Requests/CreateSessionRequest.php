@@ -36,7 +36,7 @@ class CreateSessionRequest extends FormRequest
             // only to confirm guessed session names of any therapy, before any authorization.
             'name' => ['required', 'string', 'max:255'],
             'about' => ['required', 'string'],
-            'landmark' => ['nullable', 'string'],
+            'landmark' => ['nullable', Rule::requiredIf($this->get('type') == SessionTypeEnum::in_person->value), 'string', 'min:3', 'max:255'],
             'lat' => ['nullable', Rule::requiredIf($this->get('type') == SessionTypeEnum::in_person->value), 'numeric', 'between:-90,90'],
             'lng' => ['nullable', Rule::requiredIf($this->get('type') == SessionTypeEnum::in_person->value), 'numeric', 'between:-180,180'],
             'startTime' => ['required', 'date', Rule::prohibitedIf(

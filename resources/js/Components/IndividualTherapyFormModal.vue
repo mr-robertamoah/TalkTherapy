@@ -11,6 +11,7 @@ import useAlert from "@/Composables/useAlert";
 import Alert from "./Alert.vue";
 import PrimaryButton from "./PrimaryButton.vue";
 import Checkbox from "./Checkbox.vue";
+import InPersonNote from "./InPersonNote.vue";
 import Select from "./Select.vue";
 import ProfileCaseSection from "@/Pages/Profile/Partials/ProfileCaseSection.vue";
 import CounsellorComponent from './CounsellorComponent.vue';
@@ -24,6 +25,9 @@ const { alertData, clearAlertData, setFailedAlertData, setSuccessAlertData } = u
 // Inertia), not hardcoded -- previously defaulted to the Cedi symbol 'GHȻ', a free-text value
 // that would fail the backend's new supported-currency validation unless manually overwritten.
 const supportedCurrencies = usePage().props.supportedCurrencies ?? []
+// SCRUM-443: in-person is for adults only -- someone under 18 can't switch it on (they can still switch off one
+// allowed before the rule; the server refuses turning it on either way).
+const inPersonLocked = computed(() => usePage().props.auth.user?.isAdult === false && !therapyData.value.allowInPerson)
 const defaultCurrency = supportedCurrencies.includes('GHS') ? 'GHS' : (supportedCurrencies[0] ?? '')
 const currencyOptions = computed(() => supportedCurrencies.map(code => ({ name: code, value: code })))
 const props = defineProps({
@@ -317,11 +321,13 @@ function closeModal() {
 
                             <div class="mt-4 mx-auto max-w-[400px]">
                                 <label class="flex items-center">
-                                    <Checkbox name="remember" v-model:checked="therapyData.allowInPerson" />
-                                    <span class="ms-2 text-sm text-gray-600">Allow in person sessions.</span>
+                                    <Checkbox name="remember" v-model:checked="therapyData.allowInPerson" :disabled="inPersonLocked" />
+                                    <span class="ms-2 text-sm" :class="inPersonLocked ? 'text-gray-400' : 'text-gray-600'">Allow in person sessions.</span>
                                 </label>
 
                                 <div class="mt-2 text-xs text-gray-500">If you check this box, counsellor can schedule in-person sessions with you.</div>
+                                <p v-if="inPersonLocked" class="mt-2 text-xs text-gray-600">You can't allow in-person sessions: they're for adults (18 and over) only.</p>
+                                <InPersonNote :in-person="!!therapyData.allowInPerson" :anonymous="!!therapyData.anonymous" :show-adults-only="!inPersonLocked" />
                                 <InputError class="mt-2" :message="therapyErrors.allowInPerson" />
                             </div>
                         </div>

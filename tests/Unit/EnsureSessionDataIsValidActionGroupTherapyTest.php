@@ -88,7 +88,7 @@ test('an in-person session cannot be created for a group therapy that does not a
 
     expect(fn () => EnsureSessionDataIsValidAction::new()->execute(aValidGroupTherapySessionDTO($groupTherapy, [
         'type' => SessionTypeEnum::in_person->value,
-    ])))->toThrow(SessionException::class, 'You cannot create an in-persion session for a group therapy that does not allow in-person sessions.');
+    ])))->toThrow(SessionException::class, "In-person sessions aren't allowed for this group therapy.");
 });
 
 test('a session cannot start within another session of the same group therapy', function () {

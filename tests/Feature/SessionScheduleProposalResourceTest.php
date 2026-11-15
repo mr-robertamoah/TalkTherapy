@@ -66,6 +66,9 @@ test('RequestResource exposes a session schedule proposal\'s whitelisted fields'
         'about' => 'Following up on last week.',
         'type' => 'ONLINE',
         'paymentType' => 'FREE',
+        'landmark' => null, // SCRUM-443: an in-person proposal's place
+        'lat' => null,
+        'lng' => null,
         'staleReason' => null,
         'reason' => null,
     ]);

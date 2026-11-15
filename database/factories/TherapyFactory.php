@@ -5,10 +5,11 @@ namespace Database\Factories;
 use App\Enums\TherapyPaymentTypeEnum;
 use App\Enums\TherapySessionTypeEnum;
 use App\Enums\TherapyStatusEnum;
+use App\Models\Therapy;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\Therapy>
+ * @extends Factory<Therapy>
  */
 class TherapyFactory extends Factory
 {
@@ -26,7 +27,7 @@ class TherapyFactory extends Factory
             'name' => $this->faker->name,
             'background_story' => $this->faker->sentences(10, true),
             'public' => true,
-            'allow_in_person' => true,
+            'allow_in_person' => false, // SCRUM-443: in-person excludes minors; tests opt in
             'anonymous' => true,
         ];
     }

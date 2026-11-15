@@ -73,6 +73,11 @@ class AcceptSessionScheduleProposalAction extends Action
                 'for' => $therapy,
                 'type' => $request->data['type'] ?? null,
                 'paymentType' => $request->data['paymentType'] ?? null,
+                // SCRUM-443: an in-person proposal's place; EnsureSessionDataIsValidAction re-checks it
+                // (and that in-person is still allowed, with no client under 18) -- a failure goes stale.
+                'landmark' => $request->data['landmark'] ?? null,
+                'latitude' => $request->data['latitude'] ?? null,
+                'longitude' => $request->data['longitude'] ?? null,
             ]);
 
             try {

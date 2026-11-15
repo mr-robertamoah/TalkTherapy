@@ -636,3 +636,14 @@ skipped once `your_data_demo` exists).
 | `journal_days_demo` | `password` | SCRUM-440 (`JournalDaysAndNotesSeeder`): a journal over 16 days (two pages of day notes), every fourth day with 3 entries; one entry says "anxious" (search). |
 
 The seeded documents are rows only, with no stored file behind them.
+
+## In-person sessions (SCRUM-443, `InPersonSessionSeeder`)
+
+Seeded from existing accounts (password `password`), local and testing only; skipped if any of them is missing or under 18.
+
+| Record | Who | What to try |
+|---|---|---|
+| "In-Person Demo Therapy" | client `john_davis`, counsellor `michael_chen` | Allows in-person. Its "In-Person Demo Session" (IN_PERSON, 3 days out, 10:00–11:00) meets at "Accra Mall, 2nd floor, Room 3 (opposite the bank)". Create or edit an in-person session (a pin and a landmark are required), or propose an in-person time as either side. |
+| "In-Person Demo Group" | created by Dr. Michael Chen; members `john_davis`, `robert_miller` | Allows in-person; private. Its "In-Person Demo Group Session" meets at "Osu Community Centre, main hall (behind the clinic)". |
+
+A minor (for example `your_data_demo_ward`) sees the in-person checkbox on their therapy form disabled, with the reason.

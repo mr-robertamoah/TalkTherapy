@@ -37,6 +37,8 @@ class GroupTherapyMiniResource extends JsonResource
             'name' => $this->name,
             'public' => $this->public,
             'anonymous' => $this->anonymous,
+            // SCRUM-443: the join dialog says an in-person group is for adults (and warns an anonymous one).
+            'allowInPerson' => (bool) $this->allow_in_person,
             'allowAnyone' => $this->allow_anyone,
             'userId' => $isAnonymous
                 ? null

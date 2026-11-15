@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Notifications\GroupTherapyMemberJoinedGuardianNotification;
 use App\Notifications\GroupTherapyMembershipRequestAcceptedNotification;
 use App\Notifications\GroupTherapyMembershipRequestRejectedNotification;
+use App\Support\InPerson;
 use Illuminate\Support\Facades\DB;
 
 class RespondToGroupTherapyMembershipRequestAction extends Action
@@ -22,6 +23,9 @@ class RespondToGroupTherapyMembershipRequestAction extends Action
     private const CLOSED_BECAUSE = [
         AddGroupTherapyMemberAction::ENDED => 'This group therapy has since ended.',
         AddGroupTherapyMemberAction::FULL => 'This group therapy has since reached its maximum number of members.',
+        // SCRUM-443: neutral -- the stored reason goes out in the requester's "declined" notice and sits on a request
+        // row the group's side can reach, so it doesn't spell out that the requester is under 18.
+        InPerson::MINOR_CANNOT_JOIN => 'This group can\'t take this request.',
     ];
 
     public function execute(RequestResponseDTO $requestResponseDTO)
