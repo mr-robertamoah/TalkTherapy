@@ -40,7 +40,7 @@ use Illuminate\Support\Str;
 // SCRUM-50 (TT-8.2): "What we hold about you" (/profile/your-data) with something in every category. Passwords:
 // "password".
 // - your_data_demo: an adult client with a named therapy (a session, messages, a payment), an ended anonymous therapy,
-//   a deleted therapy (still held, counted), an urgent help chat (never counted or listed), a group (joined anonymously), a ward, an accepted age check whose document is waiting to be
+//   a new email waiting for confirmation (masked), a deleted therapy (still held, counted), an urgent help chat (never counted or listed), a group (joined anonymously), a ward, an accepted age check whose document is waiting to be
 //   deleted, notifications, and administrators' opens of their therapy, session and a message -- plus opens that
 //   must NOT be listed (their group's page, their help chat, an urgent-help identity reveal).
 // - your_data_demo_ward: their ward (15).
@@ -64,6 +64,8 @@ class YourDataSeeder extends Seeder
             $client = $this->person('your_data_demo', 'YourData', 'Demo', ['dob' => now()->subYears(32)->toDateString(), 'gender' => 'FEMALE', 'country' => 'Ghana']);
             $ward = $this->person('your_data_demo_ward', 'YourData', 'Ward', ['dob' => now()->subYears(15)->toDateString()]);
             Guardianship::query()->create(['guardian_id' => $client->id, 'ward_id' => $ward->id, 'ward_was_minor_at_creation' => true]);
+            // A new email waiting for its owner to confirm it (shown masked on the page -- SCRUM-50 QA).
+            $client->forceFill(['pending_email' => 'your.data.new@example.com', 'pending_email_requested_at' => now()])->save();
 
             $counsellor = $this->counsellor();
             [$therapy, $session, $message] = $this->therapies($client, $counsellor);
@@ -218,7 +220,7 @@ class YourDataSeeder extends Seeder
         $request->from()->associate($client);
         $request->for()->associate($client);
         $request->save();
-        Request::query()->whereKey($request->id)->update(['responded_at' => now()->subDays(5)]);
+        Request::query()->whereKey($request->id)->update(['created_at' => now()->subDays(6), 'responded_at' => now()->subDays(5)]);
 
         $request->files()->attach($this->file('your-data-demo-id.jpg', 'identity_documents')->id, ['tag' => 'front-id']);
     }

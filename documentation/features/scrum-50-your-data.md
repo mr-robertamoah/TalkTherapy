@@ -42,7 +42,7 @@ From `documentation/seeded-data.md` → "What we hold about you (SCRUM-50, TT-8.
 
 | Account | Password | Use |
 |---|---|---|
-| `your_data_demo` | `password` | A client with something in every category |
+| `your_data_demo` | `password` | A client with something in every category, including a new email waiting for confirmation (shown masked) |
 | `your_data_demo_ward` | `password` | Their ward (15). Sees 1 guardian and none of the guardian's data |
 | `your_data_demo_counsellor` | `password` | A counsellor with licences, a payout and an administrator open of a licence |
 

@@ -137,9 +137,9 @@ const counsellor = computed(() => props.data.counsellor)
 
                 <YourDataSection id="therapies" title="Your therapies">
                     <ul class="space-y-1">
-                        <li>{{ plural(therapies.active, 'therapy', 'therapies') }} going on, and {{ therapies.ended }} ended.</li>
+                        <li>{{ plural(therapies.active + therapies.anonymousActive, 'therapy', 'therapies') }} going on, and {{ therapies.ended + therapies.anonymousEnded }} ended.</li>
                         <li v-if="therapies.anonymousActive || therapies.anonymousEnded">
-                            {{ plural(therapies.anonymousActive + therapies.anonymousEnded, 'anonymous therapy', 'anonymous therapies') }}
+                            Of these, {{ therapies.anonymousActive + therapies.anonymousEnded }} anonymous
                             ({{ therapies.anonymousActive }} going on). Your counsellor sees you as anonymous in these.
                         </li>
                         <li v-if="therapies.deleted">
