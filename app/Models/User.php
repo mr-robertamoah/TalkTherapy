@@ -334,6 +334,12 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return $this->hasMany(OutcomeCheckIn::class, 'client_user_id');
     }
 
+    // SCRUM-445: the person's own attendance at in-person sessions.
+    public function sessionAttendances(): HasMany
+    {
+        return $this->hasMany(SessionAttendance::class);
+    }
+
     // SCRUM-36: the person's private journal -- read only through here, by its writer.
     public function journalEntries(): HasMany
     {

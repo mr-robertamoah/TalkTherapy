@@ -25,4 +25,6 @@ return [
     // SCRUM-438: one export of a counsellor's notes for a therapy -- notes, and characters (line breaks weighted, as above).
     'notes_export_max_notes' => (int) env('NOTES_EXPORT_MAX_NOTES', 500),
     'notes_export_max_characters' => (int) env('NOTES_EXPORT_MAX_CHARACTERS', 150000),
+    // SCRUM-445: how long after an in-person session's end its counsellor can still mark (or correct) attendance.
+    'attendance_window_hours' => max(1, (int) env('ATTENDANCE_WINDOW_HOURS', 48)),
 ];

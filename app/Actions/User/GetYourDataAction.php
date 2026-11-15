@@ -71,6 +71,10 @@ class GetYourDataAction extends Action
             'checkIns' => [
                 'answered' => (int) $row->check_ins_answered_count,
             ],
+            // SCRUM-445: how many of their in-person sessions a counsellor marked their attendance at.
+            'attendance' => [
+                'marked' => (int) $row->session_attendances_count,
+            ],
             'groups' => $this->groups($row),
             'organizations' => $this->organizations($user),
             'guardianship' => [
@@ -135,6 +139,8 @@ class GetYourDataAction extends Action
                 'journalEntries',
                 // SCRUM-37
                 'outcomeCheckIns as check_ins_answered_count' => fn ($q) => $q->where('status', OutcomeCheckIn::COMPLETED),
+                // SCRUM-445
+                'sessionAttendances',
             ])
             ->withMin('journalEntries as journal_first_written_on', 'written_on')
             ->firstOrFail();

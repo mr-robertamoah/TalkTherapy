@@ -32,6 +32,7 @@ use App\Http\Controllers\RequestController;
 use App\Http\Controllers\SafeguardingExceptionRequestController;
 use App\Http\Controllers\SafetyFlagController;
 use App\Http\Controllers\SchedulerHealthController;
+use App\Http\Controllers\SessionAttendanceController;
 use App\Http\Controllers\SessionController;
 use App\Http\Controllers\SessionNoteController;
 use App\Http\Controllers\SessionScheduleProposalController;
@@ -290,6 +291,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/sessions/{sessionId}/notes', [SessionNoteController::class, 'store'])->name('api.session.notes.store')->middleware('throttle:30,1,session-actions');
     Route::patch('/sessions/notes/{noteId}', [SessionNoteController::class, 'update'])->name('api.session.notes.update')->middleware('throttle:30,1,session-actions');
     Route::delete('/sessions/notes/{noteId}', [SessionNoteController::class, 'destroy'])->name('api.session.notes.destroy')->middleware('throttle:30,1,session-actions');
+
+    // SCRUM-445: attendance at an in-person session -- its counsellors mark it (writes share session-actions), a client or
+    // member reads their own mark; closing a session nobody came to as FAILED.
+    Route::get('/sessions/{sessionId}/attendance', [SessionAttendanceController::class, 'index'])->name('api.session.attendance.index')->whereNumber('sessionId')->middleware('throttle:60,1,api.session.attendance.index');
+    Route::post('/sessions/{sessionId}/attendance', [SessionAttendanceController::class, 'store'])->name('api.session.attendance.store')->whereNumber('sessionId')->middleware('throttle:30,1,session-actions');
+    Route::post('/sessions/{sessionId}/close-no-show', [SessionAttendanceController::class, 'closeNoShow'])->name('api.session.attendance.close_no_show')->whereNumber('sessionId')->middleware('throttle:30,1,session-actions');
 
     Route::post('/therapies/{therapyId}/topics', [TherapyTopicController::class, 'createTherapyTopic'])->name('api.topics.create');
     Route::patch('/topics/{topicId}', [TherapyTopicController::class, 'updateTherapyTopic'])->name('api.topics.update');

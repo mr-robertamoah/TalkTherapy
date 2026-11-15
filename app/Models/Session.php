@@ -121,6 +121,12 @@ class Session extends Model
         return $this->hasMany(VideoConsentReminder::class);
     }
 
+    // SCRUM-445: who came to an in-person session (one row per client or member).
+    public function attendances()
+    {
+        return $this->hasMany(SessionAttendance::class);
+    }
+
     public function transactions()
     {
         return $this->morphMany(Transaction::class, 'for');

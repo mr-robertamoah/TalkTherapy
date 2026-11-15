@@ -30,7 +30,8 @@ final class GroupMemberKeys
     }
 
     // SCRUM-32: current and former members (who left -- their membership row is kept, stamped left_at).
-    /** @return Collection<int, array{key: string, user: User, left: bool, leftAt: ?Carbon}> */
+    // SCRUM-445: joinedAt too (null for a creator without a membership row).
+    /** @return Collection<int, array{key: string, user: User, left: bool, leftAt: ?Carbon, joinedAt: ?Carbon}> */
     public static function all(GroupTherapy $group): Collection
     {
         $members = $group->allMemberships()->get()
@@ -38,9 +39,33 @@ final class GroupMemberKeys
             ->map(fn (User $user) => [
                 'key' => (string) $user->pivot->id, 'user' => $user, 'left' => $user->pivot->left_at !== null,
                 'leftAt' => $user->pivot->left_at ? Carbon::parse($user->pivot->left_at) : null,
+                'joinedAt' => $user->pivot->created_at ? Carbon::parse($user->pivot->created_at) : null,
             ]);
 
         return self::withCreator($group, $members);
+    }
+
+    // SCRUM-32/445: how a counsellor of the group sees each of $members (entries from current() or all()), in order --
+    // named as the group shows them (displayNameOf(): an anonymous member stays "Anonymous"); someone who left and is
+    // masked is told apart by when they left, never by name (security review: picking the wrong person is a harm of its
+    // own). A label that repeats is numbered.
+    /** @return Collection<int, string> */
+    public static function labels(GroupTherapy $group, Collection $members): Collection
+    {
+        $labels = $members->values()->map(fn (array $member) => ($member['left'] ?? false) && $group->isMaskedToOthers($member['user'])
+            ? 'Former member, left '.($member['leftAt']?->format('M Y') ?? 'earlier')
+            : $group->displayNameOf($member['user']));
+        $counts = $labels->countBy();
+        $seen = [];
+
+        return $labels->map(function (string $label) use ($counts, &$seen) {
+            if ($counts[$label] > 1) {
+                $seen[$label] = ($seen[$label] ?? 0) + 1;
+                $label .= " ({$seen[$label]})";
+            }
+
+            return $label;
+        });
     }
 
     // The member $key stands for, or null.
@@ -56,7 +81,7 @@ final class GroupMemberKeys
     private static function withCreator(GroupTherapy $group, Collection $members): Collection
     {
         if ($group->addedby_type === User::class && $group->addedby) {
-            $members->prepend(['key' => self::CREATOR, 'user' => $group->addedby, 'left' => false]);
+            $members->prepend(['key' => self::CREATOR, 'user' => $group->addedby, 'left' => false, 'leftAt' => null, 'joinedAt' => null]);
         }
 
         return $members->values();

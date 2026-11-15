@@ -2,6 +2,9 @@
 
 namespace App\Http\Resources;
 
+use App\Actions\SessionAttendance\EnsureCanViewSessionAttendanceAction;
+use App\Actions\SessionAttendance\GetSessionAttendanceRegisterAction;
+use App\Enums\SessionTypeEnum;
 use App\Models\Counsellor;
 use App\Models\Therapy;
 use App\Models\User;
@@ -45,6 +48,9 @@ class SessionResource extends JsonResource
         // SCRUM-442: the meeting place only for the therapy's or group's own participants and administrators --
         // the session list is readable by guests for a public therapy. Asked only when there is a place.
         $showsLocation = $this->hasLocation() && $this->showsLocationTo($request->user());
+        // SCRUM-445: attendance only for an in-person session, and only where the caller loaded it
+        // (SessionService::getSession) -- lists and the calendar never pay for it.
+        $hasAttendance = $this->type === SessionTypeEnum::in_person->value && $this->relationLoaded('attendances');
 
         return [
             'id' => $this->id,
@@ -96,6 +102,15 @@ class SessionResource extends JsonResource
             'transactionId' => $viewerTransaction?->id,
             'refundRequestStatus' => $viewerTransaction?->latestRefundRequest?->status,
             'landmark' => $showsLocation ? $this->landmark : null,
+            // SCRUM-445: the viewer's own mark (never who marked it); the register only for a counsellor of the therapy
+            // or group, or an uninvolved administrator (getSession logs an administrator's read).
+            'viewerAttendance' => $this->when($hasAttendance, fn () => $request->user()
+                ? $this->attendances->firstWhere('user_id', $request->user()->id)?->toOwnView()
+                : null),
+            'attendance' => $this->when(
+                $hasAttendance && EnsureCanViewSessionAttendanceAction::seesRegister($this->resource, $request->user()),
+                fn () => GetSessionAttendanceRegisterAction::new()->execute($this->resource),
+            ),
             'isSession' => true,
             'createdAt' => $this->created_at,
             // SCRUM-212: only present when the caller eager-loaded `for` -- the counsellor
