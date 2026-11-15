@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\HasApiTokens;
 
@@ -44,7 +45,7 @@ class User extends Authenticatable implements MustVerifyEmailContract
         'two_factor_secret', 'two_factor_recovery_codes', 'two_factor_confirmed_at', 'two_factor_last_used_step',
         // SCRUM-427
         'pending_email', 'pending_email_requested_at', 'pending_email_requested_by', 'pending_email_confirmed_at',
-        'last_verified_email', 'last_verified_email_until',
+        'last_verified_email',
     ];
 
     /**
@@ -89,7 +90,6 @@ class User extends Authenticatable implements MustVerifyEmailContract
         'pending_email_requested_by',
         'pending_email_confirmed_at',
         'last_verified_email',
-        'last_verified_email_until',
         'session_version',
     ];
 
@@ -112,7 +112,6 @@ class User extends Authenticatable implements MustVerifyEmailContract
         'two_factor_confirmed_at' => 'datetime',
         'pending_email_requested_at' => 'datetime',
         'pending_email_confirmed_at' => 'datetime',
-        'last_verified_email_until' => 'datetime',
         'session_version' => 'integer',
     ];
 
@@ -199,13 +198,10 @@ class User extends Authenticatable implements MustVerifyEmailContract
 
     // SCRUM-423: a change that ends the account's other sessions (EndStaleSessions::fingerprint -- the password or the
     // two-factor state) tells its open pages to check whether they're still signed in.
-    // SCRUM-427 (security review): how long an address stays protected after it stops being the account's verified one.
-    public const PROTECTED_ADDRESS_DAYS = 30;
-
     protected static function booted(): void
     {
-        // SCRUM-427: when a verified address stops being one (removed, replaced, or unticked), remember it a while: a new
-        // address still waits, and it's still warned (with "This wasn't me").
+        // SCRUM-427: when a verified address stops being one (removed, replaced, or unticked), remember it: a new address
+        // still waits, and it's still warned (with "This wasn't me").
         static::saving(function (User $user) {
             $was = $user->getOriginal('email');
             $wasVerified = $user->getOriginal('email_verified_at') !== null;
@@ -213,7 +209,6 @@ class User extends Authenticatable implements MustVerifyEmailContract
             // Never on a closed account being anonymised (security review: it would write the address back).
             if ($user->exists && $was && $wasVerified && ! $user->anonymised_at && ($user->isDirty('email') || $user->email_verified_at === null)) {
                 $user->last_verified_email = $was;
-                $user->last_verified_email_until = now()->addDays(self::PROTECTED_ADDRESS_DAYS);
             }
         });
 
@@ -224,7 +219,6 @@ class User extends Authenticatable implements MustVerifyEmailContract
         });
     }
 
-    // SCRUM-427: no new address waiting any more (confirmed, cancelled, replaced by removal, or taken by someone else).
     // SCRUM-427: when a confirmed new address becomes the account's (null when none is confirmed and waiting).
     public function pendingEmailEffectiveAt(): ?\Illuminate\Support\Carbon
     {
@@ -233,22 +227,31 @@ class User extends Authenticatable implements MustVerifyEmailContract
             : null;
     }
 
-    // SCRUM-427: the address an email change must be protected for -- the current one when verified, else one that was
-    // verified recently -- or null when there's none (then a confirmed change applies at once).
-    // $asOf: judged when the change was asked for (security review: else ask on day 29, confirm on day 31). While the
-    // account has no email at all, the last verified one stays protected however long ago (else removing it and
-    // waiting 30 days would get round the wait).
-    public function protectedEmail(?\DateTimeInterface $asOf = null): ?string
+    // SCRUM-427: the address an email change must be protected for -- the current one when verified, else the last one
+    // that was verified -- or null when there's none (then a confirmed change applies at once).
+    // SCRUM-431: however long ago (it was 30 days -- unticking "verified" and waiting them out skipped the wait). Once a
+    // new address is verified, that one is protected instead.
+    public function protectedEmail(): ?string
     {
-        if ($this->email && $this->email_verified_at) {
-            return $this->email;
-        }
+        return $this->email && $this->email_verified_at ? $this->email : $this->last_verified_email;
+    }
 
-        if (! $this->last_verified_email) {
+    // SCRUM-431: where the warnings (and their "This wasn't me" link) go -- the protected address, unless it's a
+    // remembered one that another account now has and has verified: that stranger mustn't be able to stop the change and
+    // scramble the password. Verified only (security review: else an intruder registers an account with the remembered
+    // address, unverified, and every warning is silenced). The change still waits (protectedEmail() decides that).
+    public function protectedEmailRecipient(): ?string
+    {
+        $protected = $this->protectedEmail();
+
+        if ($protected && $protected !== $this->email
+            && static::query()->whereKeyNot($this->id)->where('email', $protected)->whereNotNull('email_verified_at')->exists()) {
+            Log::notice('Email change warning not sent: the remembered address is another account\'s', ['user_id' => $this->id]);
+
             return null;
         }
 
-        return ! $this->email || $this->last_verified_email_until?->gt($asOf ?? now()) ? $this->last_verified_email : null;
+        return $protected;
     }
 
     // SCRUM-427: what the links of the waiting change carry -- bound to its address and to when it was asked for.

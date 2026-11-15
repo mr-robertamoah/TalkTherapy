@@ -6,11 +6,15 @@
 import { computed } from 'vue'
 import AdminSearchBox from '@/Components/Admin/AdminSearchBox.vue'
 import { searchPage } from '@/Composables/useAdminSearch'
-import { Head, Link, router } from '@inertiajs/vue3'
+import { Head, router } from '@inertiajs/vue3'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
 import Alert from '@/Components/Alert.vue'
 import Pagination from '@/Components/Pagination.vue'
 import RequestBadge from '@/Components/RequestBadge.vue'
+import AdminTable from '@/Components/Admin/AdminTable.vue'
+import AdminRow from '@/Components/Admin/AdminRow.vue'
+import AdminCell from '@/Components/Admin/AdminCell.vue'
+import AdminActionButton from '@/Components/Admin/AdminActionButton.vue'
 import useAlert from '@/Composables/useAlert'
 import useEnums from '@/Composables/useEnums'
 import { refreshAdminBadges } from '@/Composables/useAdminBadges'
@@ -69,6 +73,15 @@ function responded() {
     refreshAdminBadges({ force: true })
 }
 
+// SCRUM-430: a table -- the request itself (its badge, which answers it) in its own column.
+const columns = [
+    { label: 'Type' },
+    { label: 'Sent' },
+    { label: 'Request', class: 'w-[45%]' },
+    { label: 'Answered' },
+    { label: 'Actions', srOnly: true },
+]
+
 // SCRUM-390: the page's search, kept in the URL with its other filters.
 function searchFor(term) {
     searchPage('administrator.requests', term, { type: props.filters.type ?? undefined, status: props.filters.status === 'PENDING' ? undefined : props.filters.status })
@@ -78,7 +91,7 @@ function searchFor(term) {
 <template>
     <Head title="Requests to resolve" />
 
-    <div class="my-8 w-full max-w-5xl mx-auto space-y-6 px-4">
+    <div class="my-8 w-full max-w-7xl mx-auto space-y-6 px-4">
         <div>
             <h1 class="text-2xl font-bold text-gray-900">Requests to resolve</h1>
             <div class="w-16 h-1 bg-blue-600 mt-2"></div>
@@ -121,45 +134,44 @@ function searchFor(term) {
             </fieldset>
         </div>
 
-        <div class="bg-white shadow-sm border border-gray-200 rounded-lg p-4 sm:p-6">
-            <div v-if="requests.data.length === 0" class="text-sm text-gray-600">
-                Nothing waiting here.
-            </div>
-
-            <ul v-else class="space-y-4">
-                <li
-                    v-for="request in requests.data"
-                    :key="request.id"
-                    class="border-b border-gray-100 pb-4 last:border-b-0 last:pb-0"
-                >
-                    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mb-2 text-xs text-gray-600">
-                        <span v-if="typesByValue[request.type]" class="font-medium text-gray-800">{{ typesByValue[request.type].label }}</span>
-                        <span>#{{ request.id }}</span>
-                        <span>sent {{ request.createdAt }}</span>
-                        <span v-if="rowFor(request).respondedAt">answered {{ formatDate(rowFor(request).respondedAt) }}<template v-if="request.respondedBy"> by {{ request.respondedBy.fullName ?? request.respondedBy.username }}</template></span>
-                    </div>
-
-                    <RequestBadge
-                        :request="request"
-                        class="!max-w-none"
-                        @on-data="responded"
-                        @refused="responded"
-                        @alert="(data) => setAlertData(data)"
-                    />
-
-                    <div class="mt-2 flex flex-wrap items-center gap-3 text-sm">
-                        <span
+        <div class="space-y-4">
+            <AdminTable :columns="columns" caption="Requests to resolve" :empty="requests.data.length === 0" empty-text="Nothing waiting here.">
+                <AdminRow v-for="request in requests.data" :key="request.id">
+                    <AdminCell label="Type">
+                        <div class="font-medium text-gray-900">{{ typesByValue[request.type]?.label ?? request.type }}</div>
+                        <div class="text-xs text-gray-500">#{{ request.id }}</div>
+                    </AdminCell>
+                    <AdminCell label="Sent">
+                        <span class="whitespace-nowrap">{{ request.createdAt }}</span>
+                    </AdminCell>
+                    <AdminCell label="Request">
+                        <RequestBadge
+                            :request="request"
+                            class="!max-w-none !shadow-none !border-0 !p-0 !bg-transparent"
+                            @on-data="responded"
+                            @refused="responded"
+                            @alert="(data) => setAlertData(data)"
+                        />
+                        <p
                             v-if="rowFor(request).ownAgeVerification && request.status === 'PENDING'"
-                            class="px-2 py-1 rounded-md bg-gray-50 border border-gray-200 text-gray-700 text-xs"
-                        >This is your own submission, so another administrator needs to review it.</span>
-                        <Link
+                            class="mt-2 px-2 py-1 rounded-md bg-gray-50 border border-gray-200 text-gray-700 text-xs"
+                        >This is your own submission, so another administrator needs to review it.</p>
+                    </AdminCell>
+                    <AdminCell label="Answered">
+                        <template v-if="rowFor(request).respondedAt">
+                            <div class="whitespace-nowrap">{{ formatDate(rowFor(request).respondedAt) }}</div>
+                            <div v-if="request.respondedBy" class="text-xs text-gray-500">by {{ request.respondedBy.fullName ?? request.respondedBy.username }}</div>
+                        </template>
+                        <span v-else class="text-gray-500">not yet</span>
+                    </AdminCell>
+                    <AdminCell actions>
+                        <AdminActionButton
                             v-if="typesByValue[request.type]?.page"
                             :href="route(typesByValue[request.type].page.route)"
-                            class="inline-flex items-center min-h-[44px] text-blue-700 hover:text-blue-900 underline"
-                        >{{ typesByValue[request.type].page.label }}</Link>
-                    </div>
-                </li>
-            </ul>
+                        >{{ typesByValue[request.type].page.label }}</AdminActionButton>
+                    </AdminCell>
+                </AdminRow>
+            </AdminTable>
 
             <Pagination :meta="requests.meta" @navigate="goToPage" />
         </div>

@@ -12,6 +12,11 @@ import SecondaryButton from '@/Components/SecondaryButton.vue'
 import DangerButton from '@/Components/DangerButton.vue'
 import MiniModal from '@/Components/MiniModal.vue'
 import useAlert from '@/Composables/useAlert'
+import AdminTable from '@/Components/Admin/AdminTable.vue'
+import AdminRow from '@/Components/Admin/AdminRow.vue'
+import AdminCell from '@/Components/Admin/AdminCell.vue'
+import AdminStatusPill from '@/Components/Admin/AdminStatusPill.vue'
+import AdminActionButton from '@/Components/Admin/AdminActionButton.vue'
 
 defineOptions({ layout: AdminLayout })
 
@@ -34,6 +39,14 @@ const removing = ref(null)
 const blank = { countryCode: 'GH', label: '', number: '', notes: '', sourceUrl: '', verifiedBy: '', verifiedAt: '', position: 0 }
 const form = useForm({ ...blank })
 const removeForm = useForm({})
+
+// SCRUM-430: each country's numbers as the shared admin table; actions only for those who can change them.
+const columns = computed(() => [
+    { label: 'Service' },
+    { label: 'Number' },
+    { label: 'Verified' },
+    ...(props.canManage ? [{ label: 'Actions', srOnly: true }] : []),
+])
 
 const today = new Date().toISOString().slice(0, 10)
 
@@ -93,7 +106,7 @@ function remove() {
 <template>
     <Head title="Emergency numbers" />
 
-    <div class="my-8 mx-auto w-full max-w-5xl space-y-6 px-4">
+    <div class="my-8 mx-auto w-full max-w-7xl space-y-6 px-4">
         <div>
             <h1 class="text-2xl font-bold text-gray-900">Emergency numbers</h1>
             <div class="mt-2 h-1 w-16 bg-blue-600"></div>
@@ -117,25 +130,34 @@ function remove() {
             There are no emergency numbers yet, so the dialog tells everyone to contact their local emergency services.
         </p>
 
-        <section v-for="group in grouped" :key="group.code" class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm sm:p-6" :aria-labelledby="`country-${group.code}`">
+        <section v-for="group in grouped" :key="group.code" class="space-y-3" :aria-labelledby="`country-${group.code}`">
             <h2 :id="`country-${group.code}`" class="text-lg font-semibold text-gray-900">{{ group.name }} <span class="text-sm font-normal text-gray-500">({{ group.code }})</span></h2>
-            <ul class="mt-3 divide-y divide-gray-100">
-                <li v-for="number in group.numbers" :key="number.id" class="flex flex-wrap items-start justify-between gap-3 py-3">
-                    <div class="min-w-0">
-                        <div class="font-medium text-gray-900">{{ number.label }}: <span class="tabular-nums">{{ number.number }}</span></div>
-                        <div v-if="number.notes" class="text-sm text-gray-600">{{ number.notes }}</div>
-                        <div class="mt-1 text-xs text-gray-600">
-                            Verified {{ number.verifiedAt }} by {{ number.verifiedBy }} ·
-                            <a :href="number.sourceUrl" target="_blank" rel="noopener noreferrer" class="text-blue-700 underline">source</a>
-                            <span v-if="number.reviewDue" class="ml-2 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 font-medium text-amber-800">Review due</span>
+            <AdminTable :columns="columns" :caption="`Emergency numbers for ${group.name}`">
+                <AdminRow v-for="number in group.numbers" :key="number.id">
+                    <AdminCell label="Service">
+                        <div class="font-medium text-gray-900">{{ number.label }}</div>
+                        <div v-if="number.notes" class="text-gray-600">{{ number.notes }}</div>
+                    </AdminCell>
+                    <AdminCell label="Number" half><span class="font-medium text-gray-900 tabular-nums whitespace-nowrap">{{ number.number }}</span></AdminCell>
+                    <AdminCell label="Verified">
+                        <div class="text-gray-700">
+                            {{ number.verifiedAt }} by {{ number.verifiedBy }} ·
+                            <a
+                                :href="number.sourceUrl"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="text-blue-700 underline"
+                                :aria-label="`Source for ${group.name} ${number.label} (opens in a new tab)`"
+                            >source</a>
                         </div>
-                    </div>
-                    <div v-if="canManage" class="flex shrink-0 gap-2">
-                        <SecondaryButton type="button" @click="startEdit(number)">Edit</SecondaryButton>
-                        <DangerButton type="button" @click="removing = number">Remove</DangerButton>
-                    </div>
-                </li>
-            </ul>
+                        <AdminStatusPill v-if="number.reviewDue" class="mt-1" label="Review due" tone="amber" />
+                    </AdminCell>
+                    <AdminCell v-if="canManage" actions>
+                        <AdminActionButton :aria-label="`Edit ${group.name} ${number.label} (${number.number})`" @click="startEdit(number)">Edit</AdminActionButton>
+                        <AdminActionButton tone="danger" :aria-label="`Remove ${group.name} ${number.label} (${number.number})`" @click="removing = number">Remove</AdminActionButton>
+                    </AdminCell>
+                </AdminRow>
+            </AdminTable>
         </section>
     </div>
 

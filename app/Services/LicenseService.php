@@ -7,9 +7,11 @@ use App\DTOs\CreateLicenseDTO;
 use App\DTOs\FileUploadDTO;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
+use App\Models\Counsellor;
 use App\Models\License;
 use App\Models\LicensingAuthority;
 use App\Models\Request;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 
 class LicenseService extends Service
@@ -61,33 +63,23 @@ class LicenseService extends Service
     // The License rows are always kept. Returns what it removed (or, with $dryRun, would remove).
     public function applyDocumentRetention(bool $dryRun = false): Collection
     {
-        $rejectedCutoff = now()->subDays(config('counsellor.license_rejected_retention_days'));
-        $nationalIdCutoff = now()->subDays(config('counsellor.national_id_retention_days'));
-
         $citations = $this->licenseCitations();
         $abandoned = $this->abandonedLicenses($citations->keys());
         $licenses = License::query()->with(['files', 'licensingAuthority'])->findMany($citations->keys())->keyBy('id')
             ->union($abandoned->keyBy('id'));
 
         return $citations
-            ->map(function (Collection $citations, $licenseId) use ($licenses, $rejectedCutoff, $nationalIdCutoff) {
+            ->map(function (Collection $citations, $licenseId) use ($licenses) {
                 $license = $licenses->get($licenseId);
 
-                if (! $license || $citations->contains('status', RequestStatusEnum::pending->value)) {
+                if (! $license) {
                     return null;
                 }
 
-                $isNationalId = $license->isNationalId();
-                $accepted = $citations->where('status', RequestStatusEnum::accepted->value);
-
-                $item = match (true) {
-                    $accepted->isNotEmpty() => $isNationalId && $accepted->max('decidedAt') <= $nationalIdCutoff
-                        ? ['license' => $licenseId, 'clearNumber' => true, 'reason' => 'accepted national ID']
-                        : null,
-                    default => $citations->max('decidedAt') <= $rejectedCutoff
-                        ? ['license' => $licenseId, 'clearNumber' => $isNationalId, 'reason' => 'rejected']
-                        : null,
-                };
+                $rule = $this->documentRetentionFor($license, $citations);
+                $item = $rule && $rule['at'] <= now()
+                    ? ['license' => $licenseId, 'clearNumber' => $rule['clearNumber'], 'reason' => $rule['reason']]
+                    : null;
 
                 // Nothing left to remove -- already purged (and number cleared, if it had to be).
                 $pending = $item && ($license->files->isNotEmpty()
@@ -97,7 +89,11 @@ class LicenseService extends Service
                 return $pending ? $item : null;
             })
             ->filter()
-            ->merge($abandoned->map(fn (License $license) => ['license' => $license->id, 'clearNumber' => $license->isNationalId(), 'reason' => 'abandoned upload']))
+            ->merge($abandoned->map(function (License $license) {
+                $rule = $this->documentRetentionFor($license, collect());
+
+                return ['license' => $license->id, 'clearNumber' => $rule['clearNumber'], 'reason' => $rule['reason']];
+            }))
             ->each(function (array $item) use ($licenses, $dryRun) {
                 if (! $dryRun) {
                     PurgeLicenseDocumentsAction::new()->execute($licenses->get($item['license']), $item['clearNumber']);
@@ -131,16 +127,84 @@ class LicenseService extends Service
         return ['licenses' => $licenses->pluck('id')->all(), 'authorities' => $authorities];
     }
 
-    // SCRUM-362: licenses no verification request cites, with documents still to remove.
+    // SCRUM-50: the policy above for one license, given the verification requests citing it ([{status, decidedAt}],
+    // licenseCitations()) -- when its documents go and what goes with them: ['at', 'clearNumber', 'reason'], or null
+    // while they are kept (a pending request, or an accepted professional license). applyDocumentRetention() removes
+    // them once 'at' has passed; "What we hold about you" shows 'at', so the two can't disagree.
+    /**
+     * @param  Collection<int, array{license: int, status: string, decidedAt: ?CarbonInterface}>  $citations
+     * @return array{at: CarbonInterface, clearNumber: bool, reason: string}|null
+     */
+    public function documentRetentionFor(License $license, Collection $citations): ?array
+    {
+        $isNationalId = $license->isNationalId();
+
+        // SCRUM-362: never cited -- an abandoned upload, unless an administrator validated it.
+        if ($citations->isEmpty()) {
+            return $license->validated ? null : [
+                'at' => ($license->created_at?->copy() ?? now())->addDays((int) config('counsellor.license_abandoned_retention_days')),
+                'clearNumber' => $isNationalId,
+                'reason' => 'abandoned upload',
+            ];
+        }
+
+        if ($citations->contains('status', RequestStatusEnum::pending->value)) {
+            return null;
+        }
+
+        $accepted = $citations->where('status', RequestStatusEnum::accepted->value);
+
+        if ($accepted->isNotEmpty()) {
+            return $isNationalId ? [
+                'at' => $this->decidedPlusDays($accepted->max('decidedAt'), 'counsellor.national_id_retention_days'),
+                'clearNumber' => true,
+                'reason' => 'accepted national ID',
+            ] : null;
+        }
+
+        return [
+            'at' => $this->decidedPlusDays($citations->max('decidedAt'), 'counsellor.license_rejected_retention_days'),
+            'clearNumber' => $isNationalId,
+            'reason' => 'rejected',
+        ];
+    }
+
+    // SCRUM-50: documentRetentionFor() for each of $counsellor's own licenses, keyed by license id -- from their own
+    // verification requests only (a license is only ever cited by its counsellor's requests).
+    public function documentRetentionForCounsellor(Counsellor $counsellor, Collection $licenses): Collection
+    {
+        $citations = $this->collectCitations(Request::query()
+            ->where('type', RequestTypeEnum::counsellor->value)
+            ->where('from_type', $counsellor->getMorphClass())
+            ->where('from_id', $counsellor->getKey())
+            ->select(['id', 'status', 'data', 'responded_at', 'updated_at'])
+            ->get());
+
+        return $licenses->mapWithKeys(fn (License $license) => [
+            $license->id => $this->documentRetentionFor($license, $citations->get($license->id, collect())),
+        ]);
+    }
+
+    // A request decided without a recorded time has always counted as due (as comparing nothing to the cutoff did).
+    private function decidedPlusDays(?CarbonInterface $decidedAt, string $configKey): CarbonInterface
+    {
+        return $decidedAt ? $decidedAt->copy()->addDays((int) config($configKey)) : now();
+    }
+
+    // SCRUM-362: licenses no verification request cites, with documents still to remove, whose time has come under
+    // documentRetentionFor()'s abandoned-upload rule -- the one place that rule lives (SCRUM-50: the page shows it).
     private function abandonedLicenses(Collection $citedIds): Collection
     {
         return License::query()
             ->with(['files', 'licensingAuthority'])
             ->whereNotIn('id', $citedIds)
-            ->where('validated', false)
-            ->where('created_at', '<=', now()->subDays(config('counsellor.license_abandoned_retention_days')))
             ->whereHas('files')
-            ->get();
+            // Only narrows what's loaded each night (SCRUM-50 code review); documentRetentionFor() still decides.
+            ->where('validated', false)
+            ->where('created_at', '<=', now()->subDays((int) config('counsellor.license_abandoned_retention_days')))
+            ->get()
+            ->filter(fn (License $license) => ($rule = $this->documentRetentionFor($license, collect())) && $rule['at'] <= now())
+            ->values();
     }
 
     // licenseId => [{status, decidedAt}, ...] across every counsellor verification request,
@@ -148,19 +212,23 @@ class LicenseService extends Service
     // request was decided (SCRUM-362: responded_at, set once); updated_at only for a row without it.
     private function licenseCitations(): Collection
     {
-        $citations = collect();
-
-        Request::query()
+        return $this->collectCitations(Request::query()
             ->where('type', RequestTypeEnum::counsellor->value)
             ->select(['id', 'status', 'data', 'responded_at', 'updated_at'])
-            ->lazyById()
-            ->each(function (Request $request) use ($citations) {
-                foreach (['nationalIdLicense', 'otherLicense'] as $key) {
-                    if (! empty($request->data[$key] ?? null)) {
-                        $citations->push(['license' => (int) $request->data[$key], 'status' => $request->status, 'decidedAt' => $request->responded_at ?? $request->updated_at]);
-                    }
+            ->lazyById());
+    }
+
+    private function collectCitations(iterable $requests): Collection
+    {
+        $citations = collect();
+
+        foreach ($requests as $request) {
+            foreach (['nationalIdLicense', 'otherLicense'] as $key) {
+                if (! empty($request->data[$key] ?? null)) {
+                    $citations->push(['license' => (int) $request->data[$key], 'status' => $request->status, 'decidedAt' => $request->responded_at ?? $request->updated_at]);
                 }
-            });
+            }
+        }
 
         return $citations->groupBy('license');
     }

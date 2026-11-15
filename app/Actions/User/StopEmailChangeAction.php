@@ -18,8 +18,9 @@ use Illuminate\Support\Str;
 // change knows it, and would only start again. The owner sets a new one with "Forgot your password?" (it goes to the
 // address this link came to). Only for the change the link was sent about, and only before it has taken effect.
 //
-// SCRUM-428: two-factor turned on while the change waited may be the intruder's phone -- or the owner's, if the old
-// mailbox is the intruder (the app can't tell). It isn't removed at once: a two-factor reset is scheduled (the 48-hour
+// SCRUM-428/431: two-factor turned on while the change waited -- or in the days before it was asked for (an intruder
+// can turn it on first) -- may be the intruder's phone, or the owner's if the old mailbox is the intruder (the app
+// can't tell). It isn't removed at once: a two-factor reset is scheduled (the 48-hour
 // SCRUM-424 path), and both addresses are told with a cancel link. Never for a change a super administrator asked for
 // (no intruder session there).
 class StopEmailChangeAction extends Action
@@ -38,8 +39,10 @@ class StopEmailChangeAction extends Action
             $restore = ! $user->email && $user->last_verified_email
                 && ! User::query()->whereKeyNot($user->id)->where('email', $user->last_verified_email)->exists();
 
+            // SCRUM-431: or in the days before it was asked for -- an intruder can turn it on first.
             $twoFactorDuringWait = $user->pending_email_requested_at && $user->pending_email_requested_by === null
-                && $user->hasTwoFactorEnabled() && $user->two_factor_confirmed_at?->gte($user->pending_email_requested_at);
+                && $user->hasTwoFactorEnabled() && $user->two_factor_confirmed_at?->gte(
+                    $user->pending_email_requested_at->copy()->subDays((int) config('auth.email_stop_two_factor_lookback_days')));
             $droppedEmail = $user->pending_email;
 
             $user->forceFill([
@@ -74,7 +77,7 @@ class StopEmailChangeAction extends Action
     private function scheduleTwoFactorReset(User $user, string $droppedEmail): void
     {
         try {
-            $reset = RequestTwoFactorResetAction::new()->execute($user, null, TwoFactorReset::SOURCE_EMAIL_STOP, 'Email change stopped ("This wasn\'t me") with two-factor turned on while it waited');
+            $reset = RequestTwoFactorResetAction::new()->execute($user, null, TwoFactorReset::SOURCE_EMAIL_STOP, 'Email change stopped ("This wasn\'t me") with two-factor turned on shortly before or while it waited');
             // It applies only once the copy to the dropped address went out (security review), whatever the account's
             // own address is.
             $reset->forceFill(['mail_required' => true])->save();

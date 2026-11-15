@@ -257,7 +257,7 @@ test('removing the email drops a waiting request too', function () {
 });
 
 test('a closed account forgets a waiting address', function () {
-    expect(User::ANONYMISED_ATTRIBUTES)->toContain('pending_email', 'pending_email_requested_at', 'pending_email_requested_by', 'pending_email_confirmed_at', 'last_verified_email', 'last_verified_email_until');
+    expect(User::ANONYMISED_ATTRIBUTES)->toContain('pending_email', 'pending_email_requested_at', 'pending_email_requested_by', 'pending_email_confirmed_at', 'last_verified_email');
 });
 
 // Security review (re-review): removing the email, or unticking it, mustn't make a change skip the wait.
@@ -285,15 +285,50 @@ test('an address unticked by an admin is still protected: the change waits', fun
     Notification::assertSentOnDemand(EmailChangedNotification::class, fn ($notification, $channels, $notifiable) => $notifiable->routes['mail'] === 'current@example.com');
 });
 
-test('an address unverified for longer than 30 days no longer holds a change back', function () {
+// SCRUM-431: it was 30 days -- a super administrator could untick "verified", wait them out, and change it at once.
+test('an address unticked long ago still holds a change back, and is still warned', function () {
     Notification::fake();
+    $super = pndSuper();
     $user = pndUser();
-    $user->forceFill(['email_verified_at' => null])->save();
-    $this->travel(31)->days();
+    $this->actingAs($super)->postJson(route('admin.users.update', ['userId' => $user->id]), ['emailVerified' => false])->assertOk();
+    $this->travel(400)->days();
+    $this->actingAs($super)->postJson(route('admin.users.update', ['userId' => $user->id]), ['email' => 'late@example.org'])->assertOk();
 
-    RequestEmailChangeAction::new()->execute($user->fresh(), 'new@example.org');
+    Notification::assertSentOnDemand(EmailChangedNotification::class, fn ($notification, $channels, $notifiable) => $notification->stage === EmailChangedNotification::REQUESTED && $notifiable->routes['mail'] === 'current@example.com');
+    expect(ConfirmPendingEmailAction::new()->execute($user->id, pndHash($user)))->toBe(ConfirmPendingEmailAction::WAITING)
+        ->and($user->fresh()->email)->toBe('current@example.com');
+});
+
+test('an account that never had a verified address takes a confirmed change at once', function () {
+    Notification::fake();
+    $user = pndUser(['email_verified_at' => null]);
+    RequestEmailChangeAction::new()->execute($user, 'first@example.org');
 
     expect(ConfirmPendingEmailAction::new()->execute($user->id, pndHash($user)))->toBe(ConfirmPendingEmailAction::CONFIRMED);
+    Notification::assertSentOnDemandTimes(EmailChangedNotification::class, 0);
+});
+
+test('once a new address is verified, it is the one protected', function () {
+    $user = pndUser();
+    $user->forceFill(['email' => 'second@example.com', 'email_verified_at' => now()])->save();
+
+    expect($user->fresh())->protectedEmail()->toBe('second@example.com')->last_verified_email->toBe('current@example.com');
+});
+
+test('a remembered address another account now has gets no warning, and the change still waits', function () {
+    Notification::fake();
+    Log::spy();
+    $user = pndUser();
+    $user->forceFill(['email' => null, 'email_verified_at' => null])->save();
+    User::factory()->create(['email' => 'current@example.com', 'email_verified_at' => now()]);
+
+    RequestEmailChangeAction::new()->execute($user->fresh(), 'mine@example.org');
+
+    expect(ConfirmPendingEmailAction::new()->execute($user->id, pndHash($user)))->toBe(ConfirmPendingEmailAction::WAITING);
+    expect(pndPastTheWait($this))->toBe(1)
+        ->and($user->fresh()->email)->toBe('mine@example.org');
+    Notification::assertSentOnDemandTimes(EmailChangedNotification::class, 0);
+    Log::shouldHaveReceived('notice')->withArgs(fn ($message) => str_contains($message, 'another account'))->atLeast()->once();
 });
 
 test('"This wasn\'t me" also stops the password working -- whoever made the change knows it', function () {
@@ -336,18 +371,7 @@ test('the person\'s own change also ends "remember me" elsewhere', function () {
 });
 
 // Security confirmation review.
-test('protection is judged when the change was asked for, not when it is confirmed', function () {
-    Notification::fake();
-    $user = pndUser(['email' => 'current@example.com']);
-    $user->forceFill(['email_verified_at' => null])->save(); // unticked: protected for 30 days
-    $this->travel(29)->days();
-    RequestEmailChangeAction::new()->execute($user->fresh(), 'late@example.org');
-    $this->travel(2)->days();
-
-    expect(ConfirmPendingEmailAction::new()->execute($user->id, pndHash($user)))->toBe(ConfirmPendingEmailAction::WAITING);
-});
-
-test('with no email at all, the last verified address stays protected past 30 days', function () {
+test('with no email at all, the last verified address is still protected long after', function () {
     Notification::fake();
     $user = pndUser();
     $user->forceFill(['email' => null, 'email_verified_at' => null])->save();
@@ -432,10 +456,55 @@ test('"This wasn\'t me" schedules a two-factor reset for two-factor turned on du
     });
 });
 
-test('two-factor the owner had before, or a change a super administrator asked for, schedules nothing', function () {
+// Security review: an intruder removes the email, registers an account with it (unverified) -- the warnings still go.
+test('an unverified account holding the remembered address doesn\'t silence the warnings', function () {
+    Notification::fake();
+    $user = pndUser();
+    $user->forceFill(['email' => null, 'email_verified_at' => null])->save();
+    User::factory()->create(['email' => 'current@example.com', 'email_verified_at' => null]);
+
+    RequestEmailChangeAction::new()->execute($user->fresh(), 'attacker@example.org');
+
+    Notification::assertSentOnDemand(EmailChangedNotification::class, fn ($notification, $channels, $notifiable) => $notifiable->routes['mail'] === 'current@example.com' && $notification->stage === EmailChangedNotification::REQUESTED);
+});
+
+// SCRUM-431: an intruder can turn two-factor on first, then ask for the change.
+test('two-factor turned on in the days before the change was asked for is reset too', function () {
+    Notification::fake();
+    $user = pndUser();
+    $user->forceFill(['two_factor_secret' => TwoFactorCodes::newSecret(), 'two_factor_confirmed_at' => now()->subDays(3)])->save();
+    RequestEmailChangeAction::new()->execute($user->fresh(), 'attacker@example.org');
+
+    $this->post(pndLink('email.change.stop', $user, 'attacker@example.org', 96));
+
+    expect($user->fresh()->pendingTwoFactorReset)->source->toBe(TwoFactorReset::SOURCE_EMAIL_STOP);
+    Notification::assertSentOnDemand(TwoFactorResetRequestedNotification::class, fn ($notification, $channels, $notifiable) => $notifiable->routes['mail'] === 'attacker@example.org');
+});
+
+test('the look-back is read from the configuration', function () {
+    Notification::fake();
+    config(['auth.email_stop_two_factor_lookback_days' => 30]);
+    $user = pndUser();
+    $user->forceFill(['two_factor_secret' => TwoFactorCodes::newSecret(), 'two_factor_confirmed_at' => now()->subDays(20)])->save();
+    RequestEmailChangeAction::new()->execute($user->fresh(), 'attacker@example.org');
+
+    $this->post(pndLink('email.change.stop', $user, 'attacker@example.org', 96));
+
+    expect($user->fresh()->pendingTwoFactorReset)->not->toBeNull();
+});
+
+test('the look-back stays between 7 and 90 days', function (string $value, int $expected) {
+    putenv("EMAIL_STOP_TWO_FACTOR_LOOKBACK_DAYS={$value}");
+    $config = require base_path('config/auth.php');
+    putenv('EMAIL_STOP_TWO_FACTOR_LOOKBACK_DAYS');
+
+    expect($config['email_stop_two_factor_lookback_days'])->toBe($expected);
+})->with([['30', 30], ['3', 14], ['365', 14], ['soon', 14]]);
+
+test('two-factor the owner had long before, or a change a super administrator asked for, schedules nothing', function () {
     Notification::fake();
     $owner = pndUser(['email' => 'owner@example.com']);
-    $owner->forceFill(['two_factor_secret' => TwoFactorCodes::newSecret(), 'two_factor_confirmed_at' => now()->subWeek()])->save();
+    $owner->forceFill(['two_factor_secret' => TwoFactorCodes::newSecret(), 'two_factor_confirmed_at' => now()->subDays(15)])->save();
     RequestEmailChangeAction::new()->execute($owner->fresh(), 'elsewhere@example.org');
     $this->post(pndLink('email.change.stop', $owner, 'elsewhere@example.org', 96));
 

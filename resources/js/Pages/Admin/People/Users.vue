@@ -1,5 +1,5 @@
 <script setup>
-// SCRUM-387: the old /administrator "users" tab as its own page. AdminUsersComponent keeps its own
+// SCRUM-387: the old /administrator "users" tab as its own page (SCRUM-430: a table). AdminUsersComponent keeps its own
 // "get more" paging over the admin.users API, so there is no page number to put in the URL.
 import { Head } from '@inertiajs/vue3'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
@@ -18,7 +18,7 @@ defineProps({
 <template>
     <Head title="Users" />
 
-    <div class="my-8 w-full max-w-5xl mx-auto space-y-6 px-4">
+    <div class="my-8 w-full max-w-7xl mx-auto space-y-6 px-4">
         <div>
             <h1 class="text-2xl font-bold text-gray-900">Users</h1>
             <div class="w-16 h-1 bg-blue-600 mt-2"></div>
@@ -27,8 +27,6 @@ defineProps({
 
         <AdminSearchBox :model-value="search" label="Search by name, username or email" @search="(term) => searchPage('administrator.users', term)" />
 
-        <div class="bg-white shadow-sm border border-gray-200 rounded-lg p-4 sm:p-6">
-            <AdminUsersComponent :show="true" :search="search" class="w-full" />
-        </div>
+        <AdminUsersComponent :show="true" :search="search" class="w-full" />
     </div>
 </template>

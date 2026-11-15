@@ -47,7 +47,7 @@ class UserResource extends JsonResource
             'pendingEmail' => $request->user()?->is($this->resource) ? $this->pending_email : null,
             'pendingEmailEffectiveAt' => $request->user()?->is($this->resource) ? $this->pendingEmailEffectiveAt() : null,
             // Whether it will wait two days once confirmed (QA: judged by the server's rule, not the current tick).
-            'pendingEmailWaits' => $request->user()?->is($this->resource) && $this->pending_email ? $this->protectedEmail($this->pending_email_requested_at) !== null : null,
+            'pendingEmailWaits' => $request->user()?->is($this->resource) && $this->pending_email ? $this->protectedEmail() !== null : null,
             // SCRUM-424: when a reset the team scheduled applies -- only about themselves (their profile can cancel it).
             'twoFactorResetDueAt' => $request->user()?->is($this->resource) && $this->hasTwoFactorEnabled() ? $this->pendingTwoFactorReset?->due_at : null,
         ];

@@ -4,6 +4,9 @@ import AdminSearchBox from '@/Components/Admin/AdminSearchBox.vue'
 import { searchPage } from '@/Composables/useAdminSearch'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
 import Pagination from '@/Components/Pagination.vue'
+import AdminTable from '@/Components/Admin/AdminTable.vue'
+import AdminRow from '@/Components/Admin/AdminRow.vue'
+import AdminCell from '@/Components/Admin/AdminCell.vue'
 
 // SCRUM-387: the admin area's shell (sidebar inside AuthenticatedLayout), kept across admin pages.
 defineOptions({ layout: AdminLayout })
@@ -42,6 +45,15 @@ function filter(changes) {
     router.get(route('administrator.content-accesses'), query, { preserveScroll: true })
 }
 
+// SCRUM-430: the shared admin table.
+const columns = [
+    { label: 'When' },
+    { label: 'Administrator' },
+    { label: 'Read' },
+    { label: 'Of' },
+    { label: 'From' },
+]
+
 function goToPage(url) {
     if (url) router.get(url, {}, { preserveScroll: true })
 }
@@ -60,7 +72,7 @@ function searchFor(term) {
     <Head title="Read log" />
 
     <div>
-        <div class="my-8 w-full max-w-6xl mx-auto space-y-8 px-4">
+        <div class="my-8 w-full max-w-7xl mx-auto space-y-8 px-4">
             <div>
                 <div class="text-2xl font-bold text-gray-900">Admin read log</div>
                 <div class="w-16 h-1 bg-blue-600 mt-2"></div>
@@ -97,47 +109,36 @@ function searchFor(term) {
                 >show everything read, not just {{ filters.subjectLabel ?? `this ${filters.subject}` }}</button>
             </div>
 
-            <div class="bg-white shadow-sm border border-gray-200 sm:rounded-lg p-6">
-                <div v-if="accesses.data.length === 0" class="text-sm text-gray-500 italic">Nothing recorded.</div>
-
-                <div v-else class="overflow-x-auto">
-                    <table class="w-full text-sm text-left">
-                        <thead>
-                            <tr class="text-gray-500 border-b border-gray-200">
-                                <th class="py-2 pr-4">When</th>
-                                <th class="py-2 pr-4">Administrator</th>
-                                <th class="py-2 pr-4">Read</th>
-                                <th class="py-2 pr-4">Of</th>
-                                <th class="py-2">From</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="access in accesses.data" :key="access.id" class="border-b border-gray-100 align-top">
-                                <td class="py-3 pr-4 whitespace-nowrap">{{ formatDate(access.at) }}</td>
-                                <td class="py-3 pr-4">
-                                    <button type="button" class="underline text-gray-800 hover:text-gray-900" @click="() => filter({ admin: access.admin.id })">
-                                        {{ access.admin.name }}
-                                    </button>
-                                </td>
-                                <td class="py-3 pr-4">
-                                    {{ labels[access.resource] ?? access.resource }}
-                                    <span v-if="access.page && access.page > 1" class="text-gray-500">(page {{ access.page }})</span>
-                                </td>
-                                <td class="py-3 pr-4">
-                                    <button
-                                        v-if="access.subjectKey"
-                                        type="button"
-                                        class="underline text-gray-800 hover:text-gray-900"
-                                        @click="() => filter({ subject: access.subjectKey, subject_id: access.subjectId })"
-                                    >{{ access.subject }}</button>
-                                    <template v-else>{{ access.subject }}</template>
-                                    <span v-if="access.fileId" class="text-gray-500">· {{ access.fileName ?? 'an attachment' }}</span>
-                                </td>
-                                <td class="py-3 text-gray-500">{{ access.ip ?? '--' }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+            <div class="space-y-4">
+                <AdminTable :columns="columns" caption="Admin read log" :empty="accesses.data.length === 0" empty-text="Nothing recorded.">
+                    <AdminRow v-for="access in accesses.data" :key="access.id">
+                        <AdminCell label="When" half><span class="whitespace-nowrap">{{ formatDate(access.at) }}</span></AdminCell>
+                        <AdminCell label="Administrator">
+                            <button
+                                type="button"
+                                class="underline text-gray-800 hover:text-gray-900 text-left"
+                                :aria-label="`Show only what ${access.admin.name} read`"
+                                @click="() => filter({ admin: access.admin.id })"
+                            >{{ access.admin.name }}</button>
+                        </AdminCell>
+                        <AdminCell label="Read">
+                            {{ labels[access.resource] ?? access.resource }}
+                            <span v-if="access.page && access.page > 1" class="text-gray-500">(page {{ access.page }})</span>
+                        </AdminCell>
+                        <AdminCell label="Of">
+                            <button
+                                v-if="access.subjectKey"
+                                type="button"
+                                class="underline text-gray-800 hover:text-gray-900 text-left"
+                                :aria-label="`Show only what was read of ${access.subject}`"
+                                @click="() => filter({ subject: access.subjectKey, subject_id: access.subjectId })"
+                            >{{ access.subject }}</button>
+                            <template v-else>{{ access.subject }}</template>
+                            <span v-if="access.fileId" class="text-gray-500">· {{ access.fileName ?? 'an attachment' }}</span>
+                        </AdminCell>
+                        <AdminCell label="From" half><span class="text-gray-500">{{ access.ip ?? '--' }}</span></AdminCell>
+                    </AdminRow>
+                </AdminTable>
 
                 <Pagination :meta="accesses" @navigate="goToPage" />
             </div>

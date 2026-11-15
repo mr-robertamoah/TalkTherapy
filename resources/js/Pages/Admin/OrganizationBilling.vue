@@ -3,7 +3,11 @@ import Alert from '@/Components/Alert.vue';
 import AdminSearchBox from '@/Components/Admin/AdminSearchBox.vue'
 import { searchPage } from '@/Composables/useAdminSearch'
 import Pagination from '@/Components/Pagination.vue';
-import PrimaryButton from '@/Components/PrimaryButton.vue';
+import AdminTable from '@/Components/Admin/AdminTable.vue'
+import AdminRow from '@/Components/Admin/AdminRow.vue'
+import AdminCell from '@/Components/Admin/AdminCell.vue'
+import AdminStatusPill from '@/Components/Admin/AdminStatusPill.vue'
+import AdminActionButton from '@/Components/Admin/AdminActionButton.vue'
 import useAlert from '@/Composables/useAlert';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
@@ -23,6 +27,16 @@ const props = defineProps({
 })
 
 const { alertData, clearAlertData, setFailedAlertData, setSuccessAlertData } = useAlert()
+
+// SCRUM-430: the shared admin table.
+const columns = [
+    { label: 'Organization' },
+    { label: 'Suspended since' },
+    { label: 'Reason' },
+    { label: 'Latest failed invoice' },
+    { label: 'Payment method' },
+    { label: 'Actions', srOnly: true },
+]
 
 const retryForm = useForm({})
 const liftForm = useForm({})
@@ -73,7 +87,7 @@ function searchFor(term) {
     <Head title="Organization Billing" />
 
     <div>
-        <div class="my-8 w-full max-w-6xl mx-auto space-y-8 px-4">
+        <div class="my-8 w-full max-w-7xl mx-auto space-y-8 px-4">
             <div>
                 <div class="text-2xl font-bold text-gray-900">Organization Billing</div>
                 <div class="w-16 h-1 bg-blue-600 mt-2"></div>
@@ -85,62 +99,46 @@ function searchFor(term) {
             </div>
             <AdminSearchBox :model-value="search" label="Search by organisation name" @search="searchFor" />
 
-            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg p-6">
-                <div v-if="organizations.data.length === 0" class="text-sm text-gray-500 italic">
-                    No organizations are billing-suspended or have a failed invoice.
-                </div>
-
-                <div v-else class="overflow-x-auto">
-                    <table class="w-full text-sm text-left">
-                        <thead>
-                            <tr class="text-gray-500 border-b border-gray-200">
-                                <th class="py-2 pr-4">Organization</th>
-                                <th class="py-2 pr-4">Suspended Since</th>
-                                <th class="py-2 pr-4">Reason</th>
-                                <th class="py-2 pr-4">Latest Failed Invoice</th>
-                                <th class="py-2 pr-4">Payment Method</th>
-                                <th class="py-2 pr-4">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="organization in organizations.data" :key="organization.id" class="border-b border-gray-100 align-top">
-                                <td class="py-2 pr-4 font-medium">{{ organization.name }}</td>
-                                <td class="py-2 pr-4">
-                                    <template v-if="organization.billingSuspendedAt">{{ formatDate(organization.billingSuspendedAt) }}</template>
-                                    <span v-else class="text-gray-500">not suspended</span>
-                                </td>
-                                <td class="py-2 pr-4 max-w-[240px] text-gray-600">{{ organization.billingSuspensionReason ?? '--' }}</td>
-                                <td class="py-2 pr-4">
-                                    <template v-if="organization.latestFailedInvoice">
-                                        {{ formatDate(organization.latestFailedInvoice.periodStart) }} &ndash;
-                                        {{ formatDate(organization.latestFailedInvoice.periodEnd) }}
-                                        ({{ formatMoney(organization.latestFailedInvoice.amount, organization.latestFailedInvoice.currency) }})
-                                    </template>
-                                    <span v-else class="text-gray-400">none</span>
-                                </td>
-                                <td class="py-2 pr-4">
-                                    <span :class="organization.hasPaymentInstrument ? 'text-green-700' : 'text-red-700'">
-                                        {{ organization.hasPaymentInstrument ? 'on file' : 'missing' }}
-                                    </span>
-                                </td>
-                                <td class="py-2 pr-4 space-y-2">
-                                    <PrimaryButton
-                                        v-if="organization.latestFailedInvoice"
-                                        :disabled="retryForm.processing"
-                                        :class="{ 'opacity-25': retryForm.processing }"
-                                        @click="retrySettlement(organization.latestFailedInvoice.id)"
-                                    >retry settlement</PrimaryButton>
-                                    <PrimaryButton
-                                        v-if="organization.billingSuspendedAt"
-                                        :disabled="liftForm.processing"
-                                        :class="{ 'opacity-25': liftForm.processing }"
-                                        @click="liftSuspension(organization.id)"
-                                    >lift suspension</PrimaryButton>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+            <div class="space-y-4">
+                <AdminTable :columns="columns" caption="Organizations with a billing problem" :empty="organizations.data.length === 0" empty-text="No organizations are billing-suspended or have a failed invoice.">
+                    <AdminRow v-for="organization in organizations.data" :key="organization.id">
+                        <AdminCell label="Organization"><span class="font-medium text-gray-900">{{ organization.name }}</span></AdminCell>
+                        <AdminCell label="Suspended since" half>
+                            <template v-if="organization.billingSuspendedAt">{{ formatDate(organization.billingSuspendedAt) }}</template>
+                            <span v-else class="text-gray-500">not suspended</span>
+                        </AdminCell>
+                        <AdminCell label="Reason"><div class="md:max-w-[240px] text-gray-600">{{ organization.billingSuspensionReason ?? '--' }}</div></AdminCell>
+                        <AdminCell label="Latest failed invoice">
+                            <template v-if="organization.latestFailedInvoice">
+                                {{ formatDate(organization.latestFailedInvoice.periodStart) }} &ndash;
+                                {{ formatDate(organization.latestFailedInvoice.periodEnd) }}
+                                ({{ formatMoney(organization.latestFailedInvoice.amount, organization.latestFailedInvoice.currency) }})
+                            </template>
+                            <span v-else class="text-gray-400">none</span>
+                        </AdminCell>
+                        <AdminCell label="Payment method" half>
+                            <AdminStatusPill
+                                :label="organization.hasPaymentInstrument ? 'on file' : 'missing'"
+                                :tone="organization.hasPaymentInstrument ? 'green' : 'red'"
+                            />
+                        </AdminCell>
+                        <AdminCell actions>
+                            <AdminActionButton
+                                v-if="organization.latestFailedInvoice"
+                                tone="primary"
+                                :disabled="retryForm.processing"
+                                :aria-label="`Retry the failed settlement for ${organization.name}`"
+                                @click="retrySettlement(organization.latestFailedInvoice.id)"
+                            >Retry settlement</AdminActionButton>
+                            <AdminActionButton
+                                v-if="organization.billingSuspendedAt"
+                                :disabled="liftForm.processing"
+                                :aria-label="`Lift the billing suspension of ${organization.name}`"
+                                @click="liftSuspension(organization.id)"
+                            >Lift suspension</AdminActionButton>
+                        </AdminCell>
+                    </AdminRow>
+                </AdminTable>
 
                 <Pagination :meta="organizations.meta" @navigate="goToPage" />
             </div>

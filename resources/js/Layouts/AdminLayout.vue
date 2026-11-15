@@ -1,6 +1,6 @@
 <script setup>
-// SCRUM-387: the admin area's shell -- a grouped sidebar (static from lg up, a slide-out drawer
-// below it) around every admin page. It sits inside AuthenticatedLayout, so the alerts, the live
+// SCRUM-387: the admin area's shell -- a grouped sidebar (from lg up, staying in view as the page
+// scrolls -- SCRUM-430; a slide-out drawer below it) around every admin page. It sits inside AuthenticatedLayout, so the alerts, the live
 // suspension redirect and the guardian listeners keep working. Pages use it as a persistent layout
 // (`defineOptions({ layout: AdminLayout })`), so both stay mounted -- and the users.{id} channel
 // stays joined -- while moving between admin pages.
@@ -121,11 +121,16 @@ onBeforeUnmount(() => {
             class="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:m-2 focus:px-4 focus:py-3 focus:bg-white focus:text-gray-900 focus:rounded-md focus:shadow-lg focus:border focus:border-gray-300"
         >Skip to main content</a>
 
-        <div class="lg:flex lg:items-start">
-            <!-- Desktop: a static sidebar. -->
+        <div class="lg:flex">
+            <!-- Desktop: the sidebar runs the page's full height (its border reaching the footer); its menu
+                 stays in view while the page scrolls (SCRUM-430), scrolls on its own when taller than the
+                 window, and stops above the footer -- sticky stays inside this row. top-0: the top nav
+                 isn't fixed, it scrolls away. -->
             <!-- While the drawer is open, everything behind it is inert (no focus, no clicks). -->
-            <aside :inert="drawerOpen || null" class="hidden lg:block w-64 shrink-0 bg-white border-r border-gray-200 lg:min-h-[calc(100vh-4rem)]">
-                <AdminNavList :groups="groups" :badges="badges" />
+            <aside :inert="drawerOpen || null" class="hidden lg:block w-64 shrink-0 bg-white border-r border-gray-200">
+                <div class="sticky top-0 max-h-screen overflow-y-auto">
+                    <AdminNavList :groups="groups" :badges="badges" />
+                </div>
             </aside>
 
             <!-- Below lg: a toggle for the drawer. -->

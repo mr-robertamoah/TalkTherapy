@@ -1,10 +1,14 @@
 <script setup>
-import { Head, Link, router } from '@inertiajs/vue3'
+import { Head, router } from '@inertiajs/vue3'
 import AdminSearchBox from '@/Components/Admin/AdminSearchBox.vue'
 import { searchPage } from '@/Composables/useAdminSearch'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
 import Pagination from '@/Components/Pagination.vue'
 import ReportStatusBadge from '@/Components/ReportStatusBadge.vue'
+import AdminTable from '@/Components/Admin/AdminTable.vue'
+import AdminRow from '@/Components/Admin/AdminRow.vue'
+import AdminCell from '@/Components/Admin/AdminCell.vue'
+import AdminActionButton from '@/Components/Admin/AdminActionButton.vue'
 
 // SCRUM-387: the admin area's shell (sidebar inside AuthenticatedLayout), kept across admin pages.
 defineOptions({ layout: AdminLayout })
@@ -29,6 +33,17 @@ function filterBy(status) {
     router.get(route('administrator.reports'), status ? { status } : {}, { preserveScroll: true })
 }
 
+// SCRUM-430: the shared admin table.
+const columns = [
+    { label: '#' },
+    { label: 'About' },
+    { label: 'Reported by' },
+    { label: 'Reported person' },
+    { label: 'Status' },
+    { label: 'Submitted' },
+    { label: 'Actions', srOnly: true },
+]
+
 function goToPage(url) {
     if (url) router.get(url, {}, { preserveScroll: true })
 }
@@ -47,7 +62,7 @@ function searchFor(term) {
     <Head title="Reports" />
 
     <div>
-        <div class="my-8 w-full max-w-6xl mx-auto space-y-8 px-4">
+        <div class="my-8 w-full max-w-7xl mx-auto space-y-8 px-4">
             <div>
                 <div class="text-2xl font-bold text-gray-900">Reports</div>
                 <div class="w-16 h-1 bg-blue-600 mt-2"></div>
@@ -71,59 +86,44 @@ function searchFor(term) {
                 >{{ filter.label }}</button>
             </div>
 
-            <div class="bg-white shadow-sm border border-gray-200 sm:rounded-lg p-6">
-                <div v-if="reports.data.length === 0" class="text-sm text-gray-500 italic">
-                    No reports here.
-                </div>
-
-                <div v-else class="overflow-x-auto">
-                    <table class="w-full text-sm text-left">
-                        <thead>
-                            <tr class="text-gray-500 border-b border-gray-200">
-                                <th class="py-2 pr-4">#</th>
-                                <th class="py-2 pr-4">About</th>
-                                <th class="py-2 pr-4">Reported by</th>
-                                <th class="py-2 pr-4">Reported person</th>
-                                <th class="py-2 pr-4">Status</th>
-                                <th class="py-2 pr-4">Submitted</th>
-                                <th class="py-2"></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="report in reports.data" :key="report.id" class="border-b border-gray-100 align-top">
-                                <td class="py-3 pr-4 text-gray-500">{{ report.id }}</td>
-                                <template v-if="report.involved">
-                                    <td colspan="3" class="py-3 pr-4 text-gray-600 italic">
-                                        You are part of this report, so another administrator reviews it.
-                                    </td>
-                                    <td class="py-3 pr-4"><ReportStatusBadge :status="report.status" /></td>
-                                    <td class="py-3 pr-4 whitespace-nowrap">{{ formatDate(report.createdAt) }}</td>
-                                    <td class="py-3"></td>
-                                </template>
-                                <template v-else>
-                                    <td class="py-3 pr-4">
-                                        <div class="font-medium text-gray-900 capitalize">{{ report.subject.type }}</div>
-                                        <div v-if="report.therapy" class="text-gray-500">{{ report.therapy.name }}</div>
-                                        <div class="text-gray-600 mt-1 line-clamp-2 max-w-[280px]">{{ report.description }}</div>
-                                    </td>
-                                    <td class="py-3 pr-4">{{ report.reporter?.name ?? '--' }}</td>
-                                    <td class="py-3 pr-4">
-                                        <span v-if="report.reportedPerson">{{ report.reportedPerson.name }}</span>
-                                        <span v-else class="text-amber-700">not recorded</span>
-                                    </td>
-                                    <td class="py-3 pr-4"><ReportStatusBadge :status="report.status" /></td>
-                                    <td class="py-3 pr-4 whitespace-nowrap">{{ formatDate(report.createdAt) }}</td>
-                                    <td class="py-3 text-right">
-                                        <Link
-                                            :href="route('administrator.reports.show', { report: report.id })"
-                                            class="inline-flex items-center px-3 py-1 rounded-md bg-gray-800 text-white text-xs uppercase tracking-wider hover:bg-gray-700"
-                                        >review</Link>
-                                    </td>
-                                </template>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+            <div class="space-y-4">
+                <AdminTable :columns="columns" caption="Reports" :empty="reports.data.length === 0" empty-text="No reports here.">
+                    <AdminRow v-for="report in reports.data" :key="report.id">
+                        <AdminCell label="#" half><span class="text-gray-500">{{ report.id }}</span></AdminCell>
+                        <template v-if="report.involved">
+                            <!-- AdminCell can't span columns: the note sits in "About" and the two cells after it stay empty (hidden when stacked). -->
+                            <AdminCell label="About">
+                                <span class="text-gray-600 italic">You are part of this report, so another administrator reviews it.</span>
+                            </AdminCell>
+                            <AdminCell class="hidden md:table-cell" />
+                            <AdminCell class="hidden md:table-cell" />
+                            <AdminCell label="Status" half><ReportStatusBadge :status="report.status" /></AdminCell>
+                            <AdminCell label="Submitted" half><span class="whitespace-nowrap">{{ formatDate(report.createdAt) }}</span></AdminCell>
+                            <AdminCell actions />
+                        </template>
+                        <template v-else>
+                            <AdminCell label="About">
+                                <div class="font-medium text-gray-900 capitalize">{{ report.subject.type }}</div>
+                                <div v-if="report.therapy" class="text-gray-500">{{ report.therapy.name }}</div>
+                                <div class="text-gray-600 mt-1 line-clamp-2 md:max-w-[280px]">{{ report.description }}</div>
+                            </AdminCell>
+                            <AdminCell label="Reported by">{{ report.reporter?.name ?? '--' }}</AdminCell>
+                            <AdminCell label="Reported person">
+                                <span v-if="report.reportedPerson">{{ report.reportedPerson.name }}</span>
+                                <span v-else class="text-amber-700">not recorded</span>
+                            </AdminCell>
+                            <AdminCell label="Status" half><ReportStatusBadge :status="report.status" /></AdminCell>
+                            <AdminCell label="Submitted" half><span class="whitespace-nowrap">{{ formatDate(report.createdAt) }}</span></AdminCell>
+                            <AdminCell actions>
+                                <AdminActionButton
+                                    tone="primary"
+                                    :href="route('administrator.reports.show', { report: report.id })"
+                                    :aria-label="`Review report #${report.id}`"
+                                >Review</AdminActionButton>
+                            </AdminCell>
+                        </template>
+                    </AdminRow>
+                </AdminTable>
 
                 <Pagination :meta="reports.meta" @navigate="goToPage" />
             </div>

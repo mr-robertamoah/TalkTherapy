@@ -15,7 +15,7 @@ class ApplyEmailChangeAction extends Action
 {
     public function execute(User $locked): void
     {
-        $previous = $locked->protectedEmail($locked->pending_email_requested_at);
+        $previous = $locked->protectedEmailRecipient();
         $byTeam = $locked->pending_email_requested_by !== null;
         $new = $locked->pending_email;
 

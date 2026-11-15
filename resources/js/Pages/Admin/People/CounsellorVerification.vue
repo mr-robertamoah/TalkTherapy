@@ -6,13 +6,15 @@
 // SCRUM-31: ?view=renewals lists verifications ending soon, ended or revoked instead, each with its
 // history and (while current) a revoke action.
 import { Head, router } from '@inertiajs/vue3'
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
 import Alert from '@/Components/Alert.vue'
 import FormLoader from '@/Components/FormLoader.vue'
 import PrimaryButton from '@/Components/PrimaryButton.vue'
-import VerificationRequest from '@/Components/VerificationRequest.vue'
-import Avatar from '@/Components/Avatar.vue'
+import Modal from '@/Components/Modal.vue'
+import AdminTable from '@/Components/Admin/AdminTable.vue'
+import AdminVerificationRequestRow from '@/Components/Admin/AdminVerificationRequestRow.vue'
+import AdminRenewalRow from '@/Components/Admin/AdminRenewalRow.vue'
 import CounsellorVerificationPanel from '@/Components/Admin/CounsellorVerificationPanel.vue'
 import AdminSearchBox from '@/Components/Admin/AdminSearchBox.vue'
 import { searchPage } from '@/Composables/useAdminSearch'
@@ -132,6 +134,26 @@ function respond(requestId, response) {
 
 onMounted(() => props.view === 'renewals' ? getRenewals() : getRequests())
 
+// SCRUM-430: both lists are tables; a renewal's history and revoke open in a dialog.
+const requestColumns = [
+    { label: 'Counsellor' },
+    { label: 'Status' },
+    { label: 'Sent' },
+    { label: 'Actions', srOnly: true },
+]
+const renewalColumns = [
+    { label: 'Counsellor' },
+    { label: 'Verification' },
+    { label: 'Re-verification' },
+    { label: 'Actions', srOnly: true },
+]
+const openRenewalId = ref(null)
+const openRenewal = computed(() => renewals.value.find((c) => c.id === openRenewalId.value) ?? null)
+
+function revoked(verification) {
+    if (openRenewal.value) openRenewal.value.verification = verification
+}
+
 // SCRUM-390: a new search (in the URL) lists from the first page again.
 function searchFor(term) {
     const keep = props.view === 'renewals'
@@ -153,7 +175,7 @@ watch(() => props.search, () => {
 <template>
     <Head title="Counsellor verification" />
 
-    <div class="my-8 w-full max-w-5xl mx-auto space-y-6 px-4">
+    <div class="my-8 w-full max-w-7xl mx-auto space-y-6 px-4">
         <div>
             <h1 class="text-2xl font-bold text-gray-900">Counsellor verification</h1>
             <div class="w-16 h-1 bg-blue-600 mt-2"></div>
@@ -200,51 +222,65 @@ watch(() => props.search, () => {
             >{{ option.label }}</button>
         </div>
 
-        <div v-if="view === 'renewals'" class="relative bg-white shadow-sm border border-gray-200 rounded-lg p-4 sm:p-6 space-y-3">
+        <div v-if="view === 'renewals'" class="relative space-y-4">
             <FormLoader class="mx-auto" :show="renewalsLoading" :text="'getting renewals'" />
 
-            <div v-if="!renewalsLoading && renewals.length === 0" class="text-sm text-gray-600">{{ renewalFilter === 'ended' ? 'No verifications have ended or been revoked.' : `No verifications end in the next ${renewalWindowDays} days.` }}</div>
-
-            <div v-for="counsellor in renewals" :key="counsellor.id" class="border border-gray-100 rounded-lg p-3 space-y-2">
-                <div class="flex flex-wrap items-center gap-3">
-                    <Avatar :size="40" :src="counsellor.avatar ?? ''" class="shrink-0" />
-                    <div class="min-w-0">
-                        <div class="font-medium text-gray-900 capitalize truncate">{{ counsellor.name }}</div>
-                        <div class="text-xs text-gray-600">{{ counsellor.username ? `@${counsellor.username}` : '' }}</div>
-                    </div>
-                    <span v-if="counsellor.hasPendingRequest" class="ml-auto text-xs font-medium text-blue-800 bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5">Re-verification asked for</span>
-                </div>
-                <CounsellorVerificationPanel
-                    :counsellor-id="counsellor.id"
-                    :verification="counsellor.verification"
-                    @alert="(data) => setAlertData({ time: 5000, ...data })"
+            <AdminTable
+                :columns="renewalColumns"
+                caption="Verification renewals"
+                :empty="!renewalsLoading && renewals.length === 0"
+                :empty-text="renewalFilter === 'ended' ? 'No verifications have ended or been revoked.' : `No verifications end in the next ${renewalWindowDays} days.`"
+            >
+                <AdminRenewalRow
+                    v-for="counsellor in renewals"
+                    :key="counsellor.id"
+                    :counsellor="counsellor"
+                    @open="(c) => openRenewalId = c.id"
                 />
-            </div>
+            </AdminTable>
 
             <div v-if="renewalsNextPage && renewals.length && !renewalsLoading" class="flex justify-center pt-2">
                 <PrimaryButton @click="getRenewals">get more</PrimaryButton>
             </div>
         </div>
 
-        <div v-else class="relative bg-white shadow-sm border border-gray-200 rounded-lg p-4 sm:p-6 space-y-3">
+        <div v-else class="relative space-y-4">
             <FormLoader class="mx-auto" :show="loading" :text="'getting verification requests'" />
 
-            <div v-if="!loading && requests.length === 0" class="text-sm text-gray-600">Nothing here.</div>
-
-            <div class="flex flex-wrap gap-3">
-                <VerificationRequest
+            <AdminTable
+                :columns="requestColumns"
+                caption="Counsellor verification requests"
+                :empty="!loading && requests.length === 0"
+                empty-text="Nothing here."
+            >
+                <AdminVerificationRequestRow
                     v-for="request in requests"
                     :key="request.id"
                     :request="request"
                     @on-response="(response) => respond(request.id, response)"
                 />
-            </div>
+            </AdminTable>
 
             <div v-if="nextPage && requests.length && !loading" class="flex justify-center pt-2">
                 <PrimaryButton @click="getRequests">get more</PrimaryButton>
             </div>
         </div>
     </div>
+
+    <Modal :show="!!openRenewal" max-width="2xl" labelledby="renewal-dialog-title" @close="() => openRenewalId = null">
+        <div v-if="openRenewal" class="p-4 sm:p-6 space-y-3">
+            <h2 id="renewal-dialog-title" class="text-lg font-semibold text-gray-900 capitalize">{{ openRenewal.name }}'s verification</h2>
+            <CounsellorVerificationPanel
+                :counsellor-id="openRenewal.id"
+                :verification="openRenewal.verification"
+                @revoked="revoked"
+                @alert="(data) => setAlertData({ time: 5000, ...data })"
+            />
+            <div class="flex justify-end">
+                <button type="button" class="min-h-[44px] px-4 rounded-md border border-gray-300 bg-white text-sm text-gray-700 hover:bg-gray-50" @click="() => openRenewalId = null">Close</button>
+            </div>
+        </div>
+    </Modal>
 
     <Alert
         :show="alertData.show"

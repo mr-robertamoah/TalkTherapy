@@ -54,10 +54,9 @@ class ConfirmPendingEmailAction extends Action
                 return self::TAKEN;
             }
 
-            // Nothing to protect (no address verified now or recently): at once. Else it waits, and that address is told.
-            $protected = $user->protectedEmail($user->pending_email_requested_at);
-
-            if (! $protected) {
+            // Nothing to protect (no address ever verified): at once. Else it waits, and that address is told -- unless
+            // another account has it now (SCRUM-431: it still waits).
+            if (! $user->protectedEmail()) {
                 ApplyEmailChangeAction::new()->execute($user);
 
                 return self::CONFIRMED;
@@ -65,7 +64,7 @@ class ConfirmPendingEmailAction extends Action
 
             $user->forceFill(['pending_email_confirmed_at' => now()])->save();
 
-            EmailChangedNotification::sendTo($protected, $user->name ?: $user->username, $user->pending_email,
+            EmailChangedNotification::sendTo($user->protectedEmailRecipient(), $user->name ?: $user->username, $user->pending_email,
                 byTeam: $user->pending_email_requested_by !== null, stage: EmailChangedNotification::CONFIRMED,
                 userId: $user->id, effectiveAt: $user->pendingEmailEffectiveAt()->format('j F Y, H:i T'),
                 pendingHash: $user->pendingEmailHash(), accountHasEmail: (bool) $user->email);

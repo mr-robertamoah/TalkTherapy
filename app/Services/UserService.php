@@ -29,9 +29,13 @@ use App\Enums\SuspensionScopeEnum;
 use App\Http\Resources\AdminUserResource;
 use App\Http\Resources\GuardianshipResource;
 use App\Http\Resources\UserMiniResource;
+use App\Models\Counsellor;
 use App\Models\Guardianship;
+use App\Models\HelpRequest;
+use App\Models\Session;
 use App\Models\User;
 use App\Support\AdminSearch;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 
 class UserService extends Service
 {
@@ -110,9 +114,7 @@ class UserService extends Service
             return [];
         }
 
-        // SCRUM-193: avatarFile eager-loaded -- AdminUserResource shows each user's avatar.
-        // SCRUM-424: and a scheduled two-factor reset (shown to super administrators).
-        $query = User::query()->with(['administrator', 'avatarFile', 'pendingTwoFactorReset']);
+        $query = User::query();
 
         $query->whereNot('id', $getModelsForAdminDTO->user->id);
 
@@ -129,9 +131,37 @@ class UserService extends Service
             });
         });
 
-        return AdminUserResource::collection($query->paginate(
-            PaginationEnum::preferencesPagination->value
-        )->withQueryString());
+        $users = $query->paginate(PaginationEnum::preferencesPagination->value)->withQueryString();
+        self::loadForAdminRows($users->getCollection());
+
+        return AdminUserResource::collection($users);
+    }
+
+    // SCRUM-430: everything a row of the admin users list shows (AdminUserResource), loaded for a page of them at once --
+    // and for the one person an admin action sends back, so the row keeps showing the same. SCRUM-193: the avatar;
+    // SCRUM-424: a scheduled two-factor reset; the role and whether the account is suspended; and, for the few that are
+    // (security review), the suspensions behind it with what Suspension::involves reads, so the resource can hide it
+    // from an administrator involved in one -- as the suspensions list does. That check still asks a few questions of
+    // its own per suspended row (a therapy's members: TherapyTrait::involvesInOversight), as on the suspensions list
+    // -- a page at most; other rows add none.
+    public static function loadForAdminRows(EloquentCollection $users): EloquentCollection
+    {
+        $suspended = fn ($q) => $q->active()->covering(SuspensionScopeEnum::account);
+
+        $users->load(['administrator', 'avatarFile', 'pendingTwoFactorReset'])
+            ->loadExists(['counsellor', 'suspensions as account_suspended' => $suspended]);
+
+        $users->where('account_suspended', true)->values()->load(['suspensions' => fn ($q) => $suspended($q)->with([
+            'report.addedby' => fn ($morph) => $morph->morphWith([Counsellor::class => ['user']]),
+            'report.reportable' => fn ($morph) => $morph->morphWith([Session::class => ['for'], HelpRequest::class => ['user']]),
+        ])]);
+
+        return $users;
+    }
+
+    public static function forAdminRow(User $user): User
+    {
+        return self::loadForAdminRows(new EloquentCollection([$user]))->first();
     }
 
     public function getUsers(GetUsersDTO $getUsersDTO)
