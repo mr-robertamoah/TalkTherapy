@@ -22,4 +22,7 @@ return [
     // 7 seconds); past either, the person picks a date range.
     'journal_export_max_entries' => (int) env('JOURNAL_EXPORT_MAX_ENTRIES', 500),
     'journal_export_max_characters' => (int) env('JOURNAL_EXPORT_MAX_CHARACTERS', 150000),
+    // SCRUM-438: one export of a counsellor's notes for a therapy -- notes, and characters (line breaks weighted, as above).
+    'notes_export_max_notes' => (int) env('NOTES_EXPORT_MAX_NOTES', 500),
+    'notes_export_max_characters' => (int) env('NOTES_EXPORT_MAX_CHARACTERS', 150000),
 ];

@@ -5,6 +5,7 @@ namespace App\Http\Resources;
 use App\Actions\GroupTherapy\GetGroupTherapyPaymentRosterAction;
 use App\Actions\SafeguardingException\GetPausedGroupMembersAction;
 use App\Actions\Safety\EnsureCanFlagClientAction;
+use App\Actions\User\ConfirmItsYouAction;
 use App\Actions\Video\EnsureVideoIsAvailableForSessionAction;
 use App\Actions\VideoConsent\HasValidVideoConsentForSessionAction;
 use App\Enums\ConstantsEnum;
@@ -180,6 +181,12 @@ class GroupTherapyResource extends JsonResource
             // SCRUM-384: the request form's limit (SafeguardingExceptionRequestModal), for the same
             // counsellors, from the model rather than a copy in the UI.
             'safeguardingExceptionMaxDays' => $this->when($seesPausedMembers, SafeguardingException::MAX_DAYS),
+            // SCRUM-438: only for its counsellor -- what exporting their notes as a PDF asks for
+            // (never while their counsellor role is suspended).
+            'notesExport' => $this->when(
+                $user && $this->isCounsellorUser($user) && ! $user->isSuspendedAsCounsellor(),
+                fn () => [...ConfirmItsYouAction::new()->requirements($user), 'maxNotes' => (int) config('limits.notes_export_max_notes')],
+            ),
             // SCRUM-32: only for its counsellors, while the feature is on -- whether they can raise a safety
             // flag for a member now.
             'canRaiseSafetyFlag' => $this->when(

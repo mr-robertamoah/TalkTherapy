@@ -1,6 +1,7 @@
 <script setup>
 // SCRUM-38 (TT-5.3): export the journal as a PDF -- all of it or a date range -- after the password (and the
 // two-step sign-in code when it's on), as "Download a copy" asks. Fetched, so a wrong password shows here.
+// SCRUM-438: shared with a counsellor's notes export (code review: a component, not a page partial; ids per use).
 import { nextTick, ref } from 'vue'
 import { Link } from '@inertiajs/vue3'
 import InputError from '@/Components/InputError.vue'
@@ -11,6 +12,16 @@ import TextInput from '@/Components/TextInput.vue'
 
 const props = defineProps({
     gate: { type: Object, required: true },
+    idPrefix: { type: String, required: true },
+    // SCRUM-438: the same form exports a counsellor's notes on a therapy.
+    url: { type: String, default: () => route('profile.journal.export') },
+    withDateRange: { type: Boolean, default: true },
+    openLabel: { type: String, default: 'Export as PDF' },
+    title: { type: String, default: 'Export your journal as a PDF' },
+    intro: { type: String, default: "The file has your entries' full text, so keep it somewhere safe." },
+    what: { type: String, default: 'your journal' },
+    fallbackName: { type: String, default: 'talktherapy-journal.pdf' },
+    doneText: { type: String, default: "Your journal has downloaded as a PDF. We've let you know on your account." },
 })
 
 const open = ref(false)
@@ -39,12 +50,12 @@ async function exportPdf() {
     errors.value = {}
 
     try {
-        const response = await axios.post(route('profile.journal.export'), {
+        const response = await axios.post(props.url, {
             ...form.value,
             from: form.value.from || null,
             to: form.value.to || null,
         }, { responseType: 'blob' })
-        const name = /filename="?([^";]+)"?/.exec(response.headers['content-disposition'] ?? '')?.[1] ?? 'talktherapy-journal.pdf'
+        const name = /filename="?([^";]+)"?/.exec(response.headers['content-disposition'] ?? '')?.[1] ?? props.fallbackName
         const url = URL.createObjectURL(response.data)
         const link = document.createElement('a')
         link.href = url
@@ -76,41 +87,41 @@ async function exportPdf() {
 <template>
     <div class="w-full sm:w-auto">
         <p v-if="!gate.passwordSet" class="text-sm text-gray-600">
-            To export your journal, <Link :href="`${route('privacy')}#contact`" class="underline">contact us</Link> -- your account has no password to confirm it's you.
+            To export {{ what }}, <Link :href="`${route('privacy')}#contact`" class="underline">contact us</Link> -- your account has no password to confirm it's you.
         </p>
         <p v-else-if="gate.emailChangeWaiting" class="text-sm text-amber-900">
-            A new email address is waiting on your account. You can export your journal once that change is finished or stopped.
+            A new email address is waiting on your account. You can export {{ what }} once that change is finished or stopped.
         </p>
         <template v-else>
-            <p role="status" class="text-sm text-green-800" :class="{ 'mb-2': done }">{{ done ? "Your journal has downloaded as a PDF. We've let you know on your account." : '' }}</p>
-            <SecondaryButton v-if="!open" ref="openButton" type="button" @click="show">Export as PDF</SecondaryButton>
+            <p role="status" class="text-sm text-green-800" :class="{ 'mb-2': done }">{{ done ? doneText : '' }}</p>
+            <SecondaryButton v-if="!open" ref="openButton" type="button" @click="show">{{ openLabel }}</SecondaryButton>
 
-            <form v-else class="mt-2 w-full sm:w-96 space-y-3 bg-white shadow-sm border border-gray-200 rounded-lg p-4" aria-labelledby="journal-export-title" @submit.prevent="exportPdf">
-                <h4 id="journal-export-title" class="font-semibold text-gray-900">Export your journal as a PDF</h4>
+            <form v-else class="mt-2 w-full sm:w-96 space-y-3 bg-white shadow-sm border border-gray-200 rounded-lg p-4" :aria-labelledby="`${idPrefix}-title`" @submit.prevent="exportPdf">
+                <h4 :id="`${idPrefix}-title`" class="font-semibold text-gray-900">{{ title }}</h4>
                 <p class="text-sm text-gray-700">
-                    The file has your entries' full text, so keep it somewhere safe. Confirm it's you{{ gate.twoFactorEnabled ? ' with your password and a two-step sign-in code' : ' with your password' }}.
-                    Leave the dates empty for every entry (up to {{ gate.maxEntries }}).
+                    {{ intro }} Confirm it's you{{ gate.twoFactorEnabled ? ' with your password and a two-step sign-in code' : ' with your password' }}.
+                    <template v-if="withDateRange">Leave the dates empty for every entry (up to {{ gate.maxEntries }}).</template>
                 </p>
-                <div class="grid grid-cols-2 gap-3">
+                <div v-if="withDateRange" class="grid grid-cols-2 gap-3">
                     <div>
-                        <InputLabel for="journal-export-from" value="From (optional)" />
-                        <TextInput id="journal-export-from" v-model="form.from" type="date" class="mt-1 block w-full" />
+                        <InputLabel :for="`${idPrefix}-from`" value="From (optional)" />
+                        <TextInput :id="`${idPrefix}-from`" v-model="form.from" type="date" class="mt-1 block w-full" />
                         <InputError role="alert" class="mt-1" :message="errors.from" />
                     </div>
                     <div>
-                        <InputLabel for="journal-export-to" value="To (optional)" />
-                        <TextInput id="journal-export-to" v-model="form.to" type="date" class="mt-1 block w-full" />
+                        <InputLabel :for="`${idPrefix}-to`" value="To (optional)" />
+                        <TextInput :id="`${idPrefix}-to`" v-model="form.to" type="date" class="mt-1 block w-full" />
                         <InputError role="alert" class="mt-1" :message="errors.to" />
                     </div>
                 </div>
                 <div>
-                    <InputLabel for="journal-export-password" value="Password" />
-                    <TextInput id="journal-export-password" ref="passwordInput" v-model="form.current_password" type="password" class="mt-1 block w-full" autocomplete="current-password" required />
-                    <InputError role="alert" class="mt-1" :message="errors.current_password" />
+                    <InputLabel :for="`${idPrefix}-password`" value="Password" />
+                    <TextInput :id="`${idPrefix}-password`" ref="passwordInput" v-model="form.current_password" type="password" :aria-invalid="errors.current_password ? 'true' : undefined" :aria-describedby="errors.current_password ? `${idPrefix}-password-error` : undefined" class="mt-1 block w-full" autocomplete="current-password" required />
+                    <InputError :id="`${idPrefix}-password-error`" role="alert" class="mt-1" :message="errors.current_password" />
                 </div>
                 <div v-if="gate.twoFactorEnabled">
-                    <InputLabel for="journal-export-code" value="Two-step sign-in code (or a recovery code)" />
-                    <TextInput id="journal-export-code" v-model="form.code" type="text" class="mt-1 block w-full" autocomplete="one-time-code" required />
+                    <InputLabel :for="`${idPrefix}-code`" value="Two-step sign-in code (or a recovery code)" />
+                    <TextInput :id="`${idPrefix}-code`" v-model="form.code" type="text" class="mt-1 block w-full" autocomplete="one-time-code" required />
                     <InputError role="alert" class="mt-1" :message="errors.code" />
                 </div>
                 <InputError role="alert" :message="errors.form" />
