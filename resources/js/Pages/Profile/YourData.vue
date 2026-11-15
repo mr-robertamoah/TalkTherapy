@@ -279,7 +279,11 @@ const counsellor = computed(() => props.data.counsellor)
                 <YourDataSection id="messages" title="Messages you sent">
                     <p>
                         {{ plural(data.messages.sent, 'message', 'messages') }}<template v-if="data.messages.sentAsCounsellor !== null">, and
-                        {{ plural(data.messages.sentAsCounsellor, 'message', 'messages') }} as a counsellor</template>.
+                        {{ plural(data.messages.sentAsCounsellor, 'message', 'messages') }} as a counsellor in sessions</template>.
+                    </p>
+                    <!-- SCRUM-436: counted on their own line, never shown or given. -->
+                    <p v-if="data.messages.inCaseDiscussions" class="mt-1">
+                        As a counsellor you also wrote {{ plural(data.messages.inCaseDiscussions, 'message', 'messages') }} in case discussions with other counsellors.
                     </p>
                     <template #why>So the people you talk to can read them.</template>
                     <template #kept>

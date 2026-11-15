@@ -298,3 +298,32 @@ test('after a recent email change, the replaced address is told of a download to
     Notification::assertNotSentTo(new AnonymousNotifiable, DataCopyDownloadedNotification::class);
     Notification::assertSentTo($me, DataCopyDownloadedNotification::class);
 });
+
+// SCRUM-436: the counts follow the same rule as the list and team access.
+test('a counsellor\'s case-discussion messages are counted apart from their session messages', function () {
+    Notification::fake();
+    $counsellor = ydeCounsellor();
+    $therapy = ydeTherapy(ydeUser(), $counsellor);
+    ydeMessage($counsellor, ydeSession($therapy), 'yde in a session');
+    ydeMessage($counsellor, Discussion::factory()->create(['for_type' => Therapy::class, 'for_id' => $therapy->id]), 'yde in a discussion');
+
+    $data = ydeJson(ydeDownload($this, $counsellor->user)->assertOk());
+
+    expect($data['summary']['messages']['sentAsCounsellor'])->toBe(1)
+        ->and($data['summary']['messages']['inCaseDiscussions'])->toBe(1)
+        ->and(json_encode($data))->not->toContain('yde in a discussion');
+});
+
+test('a deleted session is still held: listed, marked, and counted', function () {
+    Notification::fake();
+    $me = ydeUser();
+    $therapy = ydeTherapy($me);
+    ydeSession($therapy);
+    ydeSession($therapy)->delete();
+
+    $data = ydeJson(ydeDownload($this, $me)->assertOk());
+
+    expect($data['sessions'])->toHaveCount(2)
+        ->and(collect($data['sessions'])->where('deleted', true))->toHaveCount(1)
+        ->and($data['summary']['sessions']['count'])->toBe(2);
+});
