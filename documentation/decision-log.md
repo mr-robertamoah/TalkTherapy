@@ -12890,3 +12890,25 @@ Part of SCRUM-115 (its plan and the user's decisions are logged with the SCRUM-4
 - **Factories:** `allow_in_person` defaults to false; tests opt in.
 - **Development:** the vite container reads `.env`, not `.env.docker`, so `VITE_GOOGLE_API_KEY` must be in `.env` for
   the map to load locally (QA found it missing there).
+## SCRUM-115 — in-person sessions: plan and the user's decisions (2026-11-15)
+
+Planned with the product-owner, architect and project-manager; split into SCRUM-442–447 (TT-2.9a–f), with two bugs
+found on the way filed separately (SCRUM-448 `endSessions()`, SCRUM-449 group session notices).
+
+- **Attendance (the user's choice):** the counsellor marks each client present or absent, from the start until 48
+  hours after; the client sees their own mark and can still ask for a refund. Attendance never moves money.
+- **Minors (the user's choice):** a therapy or group that allows in-person excludes under-18s, and the settings say
+  so when it's configured; guardian consent for in-person is left for later.
+- **Anonymous therapies and groups (the user's choice):** in-person is allowed, with a clear warning that others will
+  see you.
+- **Location (the user's choice):** no GPS check; the exact pin is cleared 30 days after the session, the written
+  landmark kept. The picker keeps Google Maps and gains place search (the Places API must be on for the key).
+- **Not asked, my defaults:** in a group, the second start/end confirmation must come from a different person than
+  the first (in a 1:1, the other side); a late "absent" never changes a session already billed.
+- **SCRUM-442 (hotfix, first):** the guest-readable session list of a public therapy carried every in-person
+  session's exact coordinates and landmark. They now go only to the therapy's or group's participants (its client or
+  members, its counsellors and creator) and administrators -- not guardians, not pending-request counsellors.
+  Excluding guardians costs nothing for safety here: in-person therapies and groups exclude minors (above). The raw
+  model hides the three fields too, so nothing outside `SessionResource` can send them. Administrators reading the
+  session list aren't logged per read (as for the rest of the list today); a paused participant still sees their own
+  session's place.

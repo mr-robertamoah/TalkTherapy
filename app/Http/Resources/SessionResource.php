@@ -42,6 +42,9 @@ class SessionResource extends JsonResource
         // see Session::showsPaymentStatusTo().
         // Only asked when there is a status to show (most sessions are free, with no transaction).
         $showsPaymentStatus = $this->latestTransaction && $this->showsPaymentStatusTo($request->user());
+        // SCRUM-442: the meeting place only for the therapy's or group's own participants and administrators --
+        // the session list is readable by guests for a public therapy. Asked only when there is a place.
+        $showsLocation = $this->hasLocation() && $this->showsLocationTo($request->user());
 
         return [
             'id' => $this->id,
@@ -50,8 +53,8 @@ class SessionResource extends JsonResource
             'name' => $this->name,
             'about' => $this->about,
             'type' => $this->type,
-            'lng' => $this->longitude,
-            'lat' => $this->latitude,
+            'lng' => $showsLocation ? $this->longitude : null,
+            'lat' => $showsLocation ? $this->latitude : null,
             'status' => $this->status,
             'topics' => TherapyTopicMiniResource::collection($this->topics),
             'currentTopic' => $currentTopic ? new TherapyTopicMiniResource($currentTopic) : null,
@@ -92,7 +95,7 @@ class SessionResource extends JsonResource
             // TT-7.7b/SCRUM-250
             'transactionId' => $viewerTransaction?->id,
             'refundRequestStatus' => $viewerTransaction?->latestRefundRequest?->status,
-            'landmark' => $this->landmark,
+            'landmark' => $showsLocation ? $this->landmark : null,
             'isSession' => true,
             'createdAt' => $this->created_at,
             // SCRUM-212: only present when the caller eager-loaded `for` -- the counsellor

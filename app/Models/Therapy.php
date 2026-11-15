@@ -92,6 +92,19 @@ class Therapy extends Model
         return $this->showsPaymentStatusCache[$user->id] ??= $this->isParticipant($user) || $user->isAdmin();
     }
 
+    // SCRUM-442: where an in-person session meets -- only for the client, the counsellor and administrators,
+    // never a guest or anyone else reading a public therapy's sessions. Remembered per viewer, as above.
+    private array $showsSessionLocationCache = [];
+
+    public function showsSessionLocationTo(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        return $this->showsSessionLocationCache[$user->id] ??= $user->isAdmin() || $this->isParticipant($user);
+    }
+
     public function isNotParticipant(User $user)
     {
         return ! $this->isParticipant($user);

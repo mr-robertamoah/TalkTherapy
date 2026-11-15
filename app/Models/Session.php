@@ -19,6 +19,10 @@ class Session extends Model
         Starreable,
         Timeable;
 
+    // SCRUM-442 (security review): never on the wire from a raw model -- only through SessionResource, which shows
+    // the place to the therapy's own participants and administrators (showsLocationTo()).
+    protected $hidden = ['latitude', 'longitude', 'landmark'];
+
     protected $fillable = [
         'name', 'about', 'start_time', 'end_time', 'ended_at', 'payment_type',
         'type', 'status', 'longitude', 'latitude', 'landmark', 'therapy_id',
@@ -136,6 +140,18 @@ class Session extends Model
     public function latestTransactionFor(User $user)
     {
         return $this->transactions()->where('user_id', $user->id)->latest('created_at')->first();
+    }
+
+    // SCRUM-442: see Therapy:: and GroupTherapy::showsSessionLocationTo(). Only asked when there is a place to
+    // show, so an online session never loads its therapy for this.
+    public function showsLocationTo(?User $user): bool
+    {
+        return $user !== null && (bool) $this->for?->showsSessionLocationTo($user);
+    }
+
+    public function hasLocation(): bool
+    {
+        return ! is_null($this->latitude) || ! is_null($this->longitude) || filled($this->landmark);
     }
 
     // SCRUM-263/368: see Therapy:: and GroupTherapy::showsPaymentStatusTo(). For a group, the cheap
