@@ -12681,3 +12681,36 @@ alert afterwards.
     link.
   - **Follow-ups**: SCRUM-435 (password confirmation fails for accounts with no email -- not used by this feature),
     SCRUM-436 (the counsellor message count's session-only rule; whether deleted sessions are listed).
+
+---
+
+## SCRUM-434 + SCRUM-435 + SCRUM-436 — the PR #345 follow-ups (2026-11-15)
+
+Boxed into one PR at the user's request. Small fixes with their scope set in the tickets, so no planning round; the
+judgement calls are below.
+
+- **SCRUM-434, warnings to a long-remembered address**: when the address warnings go to is a remembered one that isn't
+  recent (`User::lastVerifiedEmailIsRecent()`, the same test "This wasn't me" uses to put it back -- one helper now,
+  for the restore, the download alert and this), the warning names no one, gives no new address (not even masked) and
+  has no "This wasn't me" link: it says a change was asked for (or made) on "a TalkTherapy account this address was
+  once used for", and to contact support. The account name isn't even queued with it. No warning when the new address
+  is confirmed (code review: a second, near-identical email); the first says when the change would take effect.
+  - **Why a limited warning, not none**: the owner, if it is still theirs, keeps a way to hear of it and go to
+    support. Accepted (security, Low): it still tells whoever holds the mailbox that it was once on a TalkTherapy
+    account.
+  - **Never the account's own address** (code review, fixed): an address the team unticked is remembered too, but
+    while it is still the account's email its warnings stay full -- password resets go to it anyway.
+  - **Accepted (security, Low)**: a stop link sent while the address was still recent keeps working for its 4 days,
+    even if the window runs out meanwhile -- it stops the change and scrambles the password without putting the
+    address back (support then). Links sent to old addresses before this deploy behave the same for up to 4 days.
+  - **Support** (security, Medium -- process): a request from a long-remembered address is not proof of identity
+    (production checklist).
+- **SCRUM-435**: password confirmation checks the signed-in account's own password (`Hash::check`). The old lookup by
+  email matched `email IS NULL` for an account with no email -- possibly another account's password (security review).
+- **SCRUM-436, "What we hold about you" counts**:
+  - Messages sent are those sent in sessions, outside urgent help chats, deleted ones too -- the rule team access and
+    the copy's list follow (`YourDataScope::sentInSessions`). A counsellor's case-discussion messages are held, so
+    they are still counted, on their own line ("in case discussions with other counsellors"), never listed or given.
+  - Deleted sessions are still held: counted on the page and listed in the copy, marked `deleted` (as therapies and
+    messages already were).
+- **Also (QA)**: the profile's email hint no longer promises to tell "your current address" when the account has none.

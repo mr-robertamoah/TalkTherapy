@@ -42,7 +42,11 @@ class GetYourDataAction extends Action
     {
         $row = $this->userRow($user);
         $counsellor = Counsellor::query()->where('user_id', $user->id)
-            ->withCount(['sentMessages' => fn (Builder $q) => YourDataScope::outsideHelpChats($q->withTrashed()), 'notifications'])
+            ->withCount([
+                'sentMessages' => fn (Builder $q) => YourDataScope::sentInSessions($q),
+                'sentMessages as discussion_messages_count' => fn (Builder $q) => YourDataScope::sentInDiscussions($q),
+                'notifications',
+            ])
             ->first();
 
         return [
@@ -53,6 +57,8 @@ class GetYourDataAction extends Action
             'messages' => [
                 'sent' => (int) $row->sent_messages_count,
                 'sentAsCounsellor' => $counsellor ? (int) $counsellor->sent_messages_count : null,
+                // SCRUM-436: in case discussions, apart from the sessions (the rule team access and the copy follow).
+                'inCaseDiscussions' => $counsellor ? (int) $counsellor->discussion_messages_count : null,
             ],
             'groups' => $this->groups($row),
             'organizations' => $this->organizations($user),
@@ -100,7 +106,7 @@ class GetYourDataAction extends Action
                 'groupTherapies as groups_anonymous_count' => fn ($q) => $q->where('group_therapy_user.anonymous', true),
                 'allGroupTherapyMemberships as groups_left_count' => fn ($q) => $q->whereNotNull('group_therapy_user.left_at'),
                 'addedGroupTherapies as groups_started_count',
-                'sentMessages' => fn (Builder $q) => YourDataScope::outsideHelpChats($q->withTrashed()),
+                'sentMessages' => fn (Builder $q) => YourDataScope::sentInSessions($q),
                 'guardians as active_guardians_count' => fn ($q) => $q->active(),
                 'wards as active_wards_count' => fn ($q) => $q->active(),
                 'notifications',

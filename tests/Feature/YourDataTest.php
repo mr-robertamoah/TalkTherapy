@@ -269,7 +269,7 @@ test('a counsellor\'s notes are never counted, and clients are a number', functi
 
     $data = ydtData($counsellor->user);
 
-    expect($data['messages'])->toBe(['sent' => 0, 'sentAsCounsellor' => 1])
+    expect($data['messages'])->toBe(['sent' => 0, 'sentAsCounsellor' => 1, 'inCaseDiscussions' => 0])
         ->and($data['counsellor']['clients'])->toBe(1)
         ->and($data['counsellor']['verification'])->toBe('verified')
         ->and($data['therapies']['active'])->toBe(0)
@@ -477,8 +477,9 @@ test('team access never lists a counsellor\'s case-discussion messages', functio
     $data = ydtData($counsellor->user);
 
     expect($data['teamAccess']['total'])->toBe(1)
-        // Held, so still counted among what they sent.
-        ->and($data['messages']['sentAsCounsellor'])->toBe(2);
+        // Held, so still counted -- on their own line (SCRUM-436), apart from the sessions.
+        ->and($data['messages']['sentAsCounsellor'])->toBe(1)
+        ->and($data['messages']['inCaseDiscussions'])->toBe(1);
 });
 
 test('a group they left counts only the sessions from before they left', function () {

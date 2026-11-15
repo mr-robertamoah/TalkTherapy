@@ -67,7 +67,7 @@ class ConfirmPendingEmailAction extends Action
             EmailChangedNotification::sendTo($user->protectedEmailRecipient(), $user->name ?: $user->username, $user->pending_email,
                 byTeam: $user->pending_email_requested_by !== null, stage: EmailChangedNotification::CONFIRMED,
                 userId: $user->id, effectiveAt: $user->pendingEmailEffectiveAt()->format('j F Y, H:i T'),
-                pendingHash: $user->pendingEmailHash(), accountHasEmail: (bool) $user->email);
+                pendingHash: $user->pendingEmailHash(), accountHasEmail: (bool) $user->email, stale: $user->protectedEmailIsStale());
 
             Log::notice('Account email change confirmed, waiting', ['user_id' => $user->id]);
 

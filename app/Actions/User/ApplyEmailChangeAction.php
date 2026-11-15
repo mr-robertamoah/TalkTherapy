@@ -16,6 +16,7 @@ class ApplyEmailChangeAction extends Action
     public function execute(User $locked): void
     {
         $previous = $locked->protectedEmailRecipient();
+        $stale = $locked->protectedEmailIsStale();
         $byTeam = $locked->pending_email_requested_by !== null;
         $new = $locked->pending_email;
 
@@ -29,7 +30,7 @@ class ApplyEmailChangeAction extends Action
             ...($byTeam ? ['session_version' => (int) $locked->session_version + 1, 'remember_token' => Str::random(60)] : []),
         ])->save();
 
-        EmailChangedNotification::sendTo($previous, $locked->name ?: $locked->username, $new, byTeam: $byTeam, stage: EmailChangedNotification::APPLIED);
+        EmailChangedNotification::sendTo($previous, $locked->name ?: $locked->username, $new, byTeam: $byTeam, stage: EmailChangedNotification::APPLIED, stale: $stale);
 
         Log::notice('Account email change applied', ['user_id' => $locked->id, 'requested_by_team' => $byTeam]);
     }

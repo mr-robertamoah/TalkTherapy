@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Enums\RequestTypeEnum;
 use App\Models\AdminContentAccess;
 use App\Models\Counsellor;
+use App\Models\Discussion;
 use App\Models\GroupTherapy;
 use App\Models\License;
 use App\Models\Message;
@@ -63,10 +64,11 @@ class YourDataScope
     }
 
     // Sessions in the person's own therapies (not urgent help chats) and in groups while they were in them: from when they
-    // joined and, for a group they left, until they left.
+    // joined and, for a group they left, until they left. Deleted ones too: still held (SCRUM-436).
     public static function sessions(User $user): Builder
     {
         return Session::query()
+            ->withTrashed()
             ->where(fn (Builder $q) => $q
                 ->where(fn (Builder $q) => $q->where('for_type', (new Therapy)->getMorphClass())->whereIn('for_id', self::ownTherapyIds($user)))
                 ->orWhere(fn (Builder $q) => $q->where('for_type', (new GroupTherapy)->getMorphClass())->whereExists(fn (QueryBuilder $q) => $q
@@ -85,16 +87,18 @@ class YourDataScope
             ->whereIn('topicable_id', self::ownTherapyIds($user));
     }
 
-    // Messages counted as the person's: all but those in urgent help chats. Callers include deleted ones (still held).
-    public static function outsideHelpChats(Builder $messages): Builder
+    // Messages counted as the person's: the ones sent in sessions, outside urgent help chats, deleted ones too (still
+    // held) -- never in a case discussion (SCRUM-436: the same rule as team access and the copy's list).
+    public static function sentInSessions(Builder $messages): Builder
     {
-        return $messages->whereNot(fn (Builder $q) => $q
+        return $messages->withTrashed()
             ->where('for_type', (new Session)->getMorphClass())
-            ->whereIn('for_id', self::helpChatSessionIds()));
+            ->whereNotIn('for_id', self::helpChatSessionIds());
     }
 
     // Messages the person sent in sessions, as themselves or as a counsellor -- never in a case discussion (a
-    // counsellor's discussion about a client) or an urgent help chat (see ownTherapyIds()).
+    // counsellor's discussion about a client) or an urgent help chat (see ownTherapyIds()). The same rule as
+    // sentInSessions(), as ids for a subquery: keep the two in step.
     private static function sentMessageIds(User $user, ?Counsellor $counsellor): QueryBuilder
     {
         return DB::table('messages')->select('id')
@@ -106,17 +110,21 @@ class YourDataScope
             ->whereNotIn('for_id', self::helpChatSessionIds());
     }
 
+    // SCRUM-436: a counsellor's messages in case discussions (about a client, with other counsellors) -- held, so counted
+    // on their own line, never listed or given.
+    public static function sentInDiscussions(Builder $messages): Builder
+    {
+        return $messages->withTrashed()->where('for_type', (new Discussion)->getMorphClass());
+    }
+
     // SCRUM-432: what the copy of their data gives in full -- the messages they sent as themselves (never as a
     // counsellor: those are about clients, counted only), in sessions, outside urgent help chats; deleted ones too
     // (still held).
     public static function ownClientMessages(User $user): Builder
     {
-        return Message::query()
-            ->withTrashed()
+        return self::sentInSessions(Message::query()
             ->where('from_type', $user->getMorphClass())
-            ->where('from_id', $user->id)
-            ->where('for_type', (new Session)->getMorphClass())
-            ->whereNotIn('for_id', self::helpChatSessionIds());
+            ->where('from_id', $user->id));
     }
 
     private static function identityRequestIds(User $user): QueryBuilder

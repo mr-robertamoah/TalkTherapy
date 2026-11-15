@@ -629,3 +629,86 @@ test('the restore-guard demo accounts seed once: one remembered recently, one wi
         ->and(User::query()->where('username', 'restore_guard_recent')->first())->email->toBeNull()->last_verified_email_at->not->toBeNull()
         ->and(User::query()->where('username', 'restore_guard_old')->first())->last_verified_email->toBe('restore.guard.old@example.com')->last_verified_email_at->toBeNull();
 });
+
+// SCRUM-434: a long-remembered mailbox may be someone else's -- its warning carries nothing to act on.
+test('a warning to an address remembered too long ago has no stop link, no new address and no name', function () {
+    Notification::fake();
+    $user = pndUser(['firstName' => 'Pndstale']);
+    $user->forceFill(['email' => null, 'email_verified_at' => null])->save();
+    $this->travel((int) config('auth.email_stop_restore_days') + 1)->days();
+
+    RequestEmailChangeAction::new()->execute($user->fresh(), 'patient@example.org');
+
+    Notification::assertSentOnDemand(EmailChangedNotification::class, function ($notification, $channels, $notifiable) {
+        $mail = (string) $notification->toMail($notifiable)->render();
+
+        return $notifiable->routes['mail'] === 'current@example.com'
+            && ! str_contains($mail, 'email-change/stop') && ! str_contains($mail, 'This wasn')
+            && ! str_contains($mail, 'example.org') && ! str_contains($mail, 'Pndstale')
+            && str_contains($mail, 'contact TalkTherapy support');
+    });
+    // The change still waits for its owner to confirm it.
+    expect(ConfirmPendingEmailAction::new()->execute($user->id, pndHash($user)))->toBe(ConfirmPendingEmailAction::WAITING);
+});
+
+test('a remembered address with no date gets the same limited warning when asked and when applied -- not when confirmed', function () {
+    Notification::fake();
+    $user = pndUser();
+    $user->forceFill(['email' => null, 'email_verified_at' => null])->save();
+    $user->forceFill(['last_verified_email_at' => null])->save();
+
+    RequestEmailChangeAction::new()->execute($user->fresh(), 'patient@example.org');
+    ConfirmPendingEmailAction::new()->execute($user->id, pndHash($user));
+    pndPastTheWait($this);
+
+    Notification::assertSentOnDemandTimes(EmailChangedNotification::class, 2);
+    foreach ([EmailChangedNotification::REQUESTED, EmailChangedNotification::APPLIED] as $stage) {
+        Notification::assertSentOnDemand(EmailChangedNotification::class, function ($notification, $channels, $notifiable) use ($stage) {
+            $mail = (string) $notification->toMail($notifiable)->render();
+
+            return $notification->stage === $stage && $notification->stale && $notification->name === ''
+                && $notification->pendingHash === null && $notification->maskedNewEmail === null
+                && ! str_contains($mail, 'This wasn') && ! str_contains($mail, 'example.org') && str_contains($mail, 'contact TalkTherapy support');
+        });
+    }
+});
+
+test('inside the restore window the remembered address still gets the full warning with its stop link', function () {
+    Notification::fake();
+    $user = pndUser();
+    $user->forceFill(['email' => null, 'email_verified_at' => null])->save();
+
+    RequestEmailChangeAction::new()->execute($user->fresh(), 'patient@example.org');
+
+    Notification::assertSentOnDemand(EmailChangedNotification::class, fn ($notification, $channels, $notifiable) => ! $notification->stale
+        && str_contains((string) $notification->toMail($notifiable)->render(), 'This wasn'));
+});
+
+test('a verified current address is never treated as stale', function () {
+    $user = pndUser();
+    $user->forceFill(['last_verified_email' => 'old@example.com', 'last_verified_email_at' => null])->save();
+
+    expect($user->fresh()->protectedEmailIsStale())->toBeFalse();
+});
+
+test('an address unticked long ago is still the account\'s own: its warnings stay full, with the stop link', function () {
+    Notification::fake();
+    $user = pndUser();
+    $user->forceFill(['email_verified_at' => null])->save();
+    $this->travel((int) config('auth.email_stop_restore_days') + 1)->days();
+
+    expect($user->fresh()->protectedEmailIsStale())->toBeFalse();
+    RequestEmailChangeAction::new()->execute($user->fresh(), 'patient@example.org');
+
+    Notification::assertSentOnDemand(EmailChangedNotification::class, fn ($notification, $channels, $notifiable) => ! $notification->stale
+        && $notifiable->routes['mail'] === 'current@example.com' && str_contains((string) $notification->toMail($notifiable)->render(), 'This wasn'));
+});
+
+test('an unverified different address with a long-remembered one: the remembered one is stale', function () {
+    $user = pndUser();
+    $user->forceFill(['email' => 'second@example.com', 'email_verified_at' => null])->save();
+    $this->travel((int) config('auth.email_stop_restore_days') + 1)->days();
+
+    expect($user->fresh())->protectedEmail()->toBe('current@example.com')
+        ->and($user->fresh()->protectedEmailIsStale())->toBeTrue();
+});

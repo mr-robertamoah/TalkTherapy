@@ -61,7 +61,7 @@ class ExportYourDataAction extends Action
         yield $this->field('therapies', $this->therapies($user)).',';
         yield $this->field('groups', $this->groups($user)).',';
         yield '"sessions":';
-        yield from $this->list(YourDataScope::sessions($user)->select(['id', 'for_type', 'for_id', 'type', 'status', 'start_time', 'end_time', 'ended_at']), fn (Session $session) => [
+        yield from $this->list(YourDataScope::sessions($user)->select(['id', 'for_type', 'for_id', 'type', 'status', 'start_time', 'end_time', 'ended_at', 'deleted_at']), fn (Session $session) => [
             'id' => $session->id,
             'for' => $session->for_type === $groupMorph ? 'group' : 'therapy',
             'forId' => $session->for_id,
@@ -70,6 +70,8 @@ class ExportYourDataAction extends Action
             'startsAt' => $session->start_time?->toIso8601String(),
             'endsAt' => $session->end_time?->toIso8601String(),
             'endedAt' => $session->ended_at?->toIso8601String(),
+            // SCRUM-436: deleted, still held.
+            'deleted' => $session->deleted_at !== null,
         ]);
         yield ',"messages":';
         yield from $this->list(YourDataScope::ownClientMessages($user)
