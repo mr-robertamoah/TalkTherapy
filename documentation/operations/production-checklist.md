@@ -110,6 +110,10 @@ Check every item before going live.
     in Docker `docker compose up -d --force-recreate php queue`). Before deploying, count the accounts that will go
     to support instead (remembered before SCRUM-433, so no date) and brief support:
     `SELECT COUNT(*) FROM users WHERE email IS NULL AND last_verified_email IS NOT NULL AND last_verified_email_at IS NULL;`
+  - SCRUM-434, support: someone writing from an account's long-remembered address (warnings there now say only to
+    contact support) is **not** proof they own the account -- that mailbox may have passed to someone else. Check who
+    they are another way (`two-factor-reset-identity-check.md`; the account's identity-check records) before setting
+    an address or a password on it.
   - Rolling back SCRUM-433: roll back the code, not the migration -- older code ignores `last_verified_email_at`. The
     SCRUM-431 drop (`2026_12_02_100000`) and this add (`2026_12_03_100000`) reach production in the same deploy, so
     they share a migrate batch: never a plain `migrate:rollback` -- `--step=1` undoes only this one (and loses every
