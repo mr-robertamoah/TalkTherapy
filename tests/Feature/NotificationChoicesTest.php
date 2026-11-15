@@ -31,7 +31,7 @@ const NCH_ALWAYS_SENT = [
     Notifications\SafetyFlagWithdrawnNotification::class, Notifications\HelpRequestWaitingNotification::class,
     Notifications\HelpTherapyInviteNotification::class, Notifications\SafeguardingExceptionRequestedNotification::class,
     Notifications\SafeguardingExceptionRequestDecidedNotification::class, Notifications\SafeguardingExceptionEndingSoonNotification::class,
-    Notifications\CounsellorUnavailableNotification::class,
+    Notifications\CounsellorUnavailableNotification::class, Notifications\OutcomeCheckInAttentionNotification::class,
     // Account standing
     Notifications\SuspensionAppliedNotification::class, Notifications\SuspensionEndedNotification::class,
     Notifications\SuspensionAppealDecidedNotification::class, Notifications\WardSuspendedNotification::class,

@@ -12763,3 +12763,43 @@ nothing.
   - **Both off is allowed** (the user's choice), with a warning in the form.
   - Accepted (security, Low): someone holding only a session can switch off session notices without a password -- they
     could already act on the sessions directly, and security notices can't be switched off.
+
+---
+
+## SCRUM-37 + SCRUM-437 — outcome check-ins (PHQ-9, GAD-7), and counsellors' notes encrypted (2026-11-15)
+
+The next set after PR #347: TT-5's last clinical item, boxed with SCRUM-437 (both clinical records). One PR; the notes
+encryption is its own first commit. The user's answers: a self-harm answer gets the client urgent help at once and the
+counsellor an alert (no admin alert, no automatic safety flag); minors may answer, guardians see nothing; notes are
+encrypted now and their PDF export waits; check-ins ship behind a switch kept off until the legal read.
+
+- **Attached to a `Therapy`, not a `TherapyCase`** (deviates from the ticket's wording): a TherapyCase is a shared topic
+  label, so a check-in on it would belong to every client with that label. 1:1 therapies only; groups and urgent help
+  chats are out.
+- **The questionnaires live in code**, word for word with the published text and attribution, versioned on each row
+  (changing a word changes what scores mean). PHQ-9's unscored 10th "how difficult" question is left out (it isn't
+  part of the score). Not a diagnosis -- the page and /privacy say so; levels are shaded grey, never alarm red.
+- **One open per questionnaire per therapy** (a unique `open_key`, as safety flags have); an expired one makes way.
+  7 days to answer; a daily limit per counsellor, counted as it's checked (security review).
+- **Self-harm answer (PHQ-9 item 9 above 0):**
+  - the client sees the emergency number and "I need help now" the moment they choose it (in the browser, before
+    anything is sent) and again after; told the counsellor will see it, but not straight away;
+  - the counsellor gets `OutcomeCheckInAttentionNotification` -- always sent (not in `NotificationCategories`),
+    content-free, to the therapy's **current** counsellor; sent first and on its own, so another notice failing
+    never stops it (security review); nobody to send it to is logged;
+  - a self-harm answer that arrives too late to be saved (expired, withdrawn, the therapy ended) still sends it and is
+    logged (security review: otherwise it was silently dropped) -- my call, the safe default;
+  - no automatic safety flag (a flag is the counsellor's judgement, and flags are switched off pending the legal read);
+    no admin alert.
+- **Privacy:** answers, score and level encrypted; `needs_attention` plain (accepted, security review: the counsellor's
+  unacknowledged alerts must be queryable; a database reader learns that an answer needed attention -- as safety flags'
+  status already shows). No guardian, organisation or admin path (not in `AdminContentAccess`). Notifications never
+  name the questionnaire. The client's own check-ins are on "What we hold about you" and in full in their data copy.
+- **Erasure:** anonymising the client clears answers, score and level; the counsellor's record keeps that one was sent
+  and whether an answer needed attention (a safety record, like a safety flag's) -- /privacy and the data page say so.
+  The counsellor then sees it as "no longer kept", never a score of 0 (code review).
+- **Switched off** outside local/testing (`CHECK_INS_ENABLED`), every route a 404.
+- **SCRUM-437:** notes' `content` gets the `encrypted` cast; the migration widens it to `mediumText` (headroom -- 5,000
+  four-byte characters encrypt to ~36 KB, under TEXT's 64 KB) and encrypts existing rows, soft-deleted too, in chunks,
+  skipping ones that already decrypt (safe to re-run), reversibly. Nothing searched note content. The PDF export of a
+  counsellor's notes is left for later (a data-protection read first).

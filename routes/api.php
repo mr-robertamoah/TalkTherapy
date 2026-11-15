@@ -22,6 +22,7 @@ use App\Http\Controllers\LinkController;
 use App\Http\Controllers\MessageAttachmentController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\MessageNoteController;
+use App\Http\Controllers\OutcomeCheckInController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\ProfessionController;
 use App\Http\Controllers\ReligionController;
@@ -253,6 +254,15 @@ Route::middleware('auth:sanctum')->group(function () {
     // client (1:1) or group member.
     Route::post('/therapies/{therapyId}/safeguarding-exception-requests', [SafeguardingExceptionRequestController::class, 'storeForTherapy'])->name('api.safeguarding_exception_requests.therapy')->whereNumber('therapyId')->middleware('throttle:10,1,api.safeguarding_exception_requests.therapy');
     Route::post('/group-therapies/{groupTherapyId}/safeguarding-exception-requests', [SafeguardingExceptionRequestController::class, 'storeForGroup'])->name('api.safeguarding_exception_requests.group')->whereNumber('groupTherapyId')->middleware('throttle:10,1,api.safeguarding_exception_requests.group');
+    // SCRUM-37: outcome check-ins on a 1:1 therapy -- its counsellor sends, its client answers. All a 404 while
+    // CHECK_INS_ENABLED is off (the user's decision).
+    Route::middleware('check_ins')->group(function () {
+        Route::get('/therapies/{therapyId}/check-ins', [OutcomeCheckInController::class, 'index'])->name('api.check_ins.index')->whereNumber('therapyId')->middleware('throttle:60,1,api.check_ins.index');
+        Route::post('/therapies/{therapyId}/check-ins', [OutcomeCheckInController::class, 'store'])->name('api.check_ins.store')->whereNumber('therapyId')->middleware('throttle:10,1,api.check_ins.store');
+        Route::post('/check-ins/{checkIn}/answers', [OutcomeCheckInController::class, 'answer'])->name('api.check_ins.answer')->whereNumber('checkIn')->middleware('throttle:10,1,api.check_ins.answer');
+        Route::post('/check-ins/{checkIn}/cancel', [OutcomeCheckInController::class, 'cancel'])->name('api.check_ins.cancel')->whereNumber('checkIn')->middleware('throttle:10,1,api.check_ins.cancel');
+        Route::post('/check-ins/{checkIn}/acknowledge', [OutcomeCheckInController::class, 'acknowledge'])->name('api.check_ins.acknowledge')->whereNumber('checkIn')->middleware('throttle:30,1,api.check_ins.acknowledge');
+    });
     // SCRUM-32: a counsellor raises a safety flag for their 1:1 client or a group member (by key). Not
     // open to a suspended account (the user's decision); a suspended counsellor role doesn't stop it.
     Route::middleware('safety_flags')->group(function () {

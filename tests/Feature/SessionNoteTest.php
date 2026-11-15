@@ -73,11 +73,10 @@ test('a counsellor can create a note on their own in-session therapy session', f
 
     $response->assertOk();
     $response->assertJsonPath('note.content', 'Client presented as withdrawn today.');
-    $this->assertDatabaseHas('session_notes', [
-        'session_id' => $session->id,
-        'counsellor_id' => $counsellor->id,
-        'content' => 'Client presented as withdrawn today.',
-    ]);
+    // SCRUM-437: stored encrypted -- read back through the model.
+    $stored = SessionNote::query()->where(['session_id' => $session->id, 'counsellor_id' => $counsellor->id])->sole();
+    expect($stored->content)->toBe('Client presented as withdrawn today.')
+        ->and(DB::table('session_notes')->where('id', $stored->id)->value('content'))->not->toContain('withdrawn');
 });
 
 test('a counsellor can list only their own notes for a session', function () {
@@ -121,7 +120,7 @@ test('a counsellor cannot see another counsellor notes on a shared group therapy
         ]);
 
     $updateResponse->assertStatus(422);
-    $this->assertDatabaseHas('session_notes', ['id' => $noteA->id, 'content' => $noteA->content]);
+    expect(SessionNote::find($noteA->id)->content)->toBe($noteA->content);
 
     $deleteResponse = $this
         ->actingAs($counsellorB->user)
@@ -231,7 +230,7 @@ test('the author can no longer edit or delete their note once the grace window h
         ->deleteJson(route('api.session.notes.destroy', ['noteId' => $note->id]))
         ->assertStatus(422);
 
-    $this->assertDatabaseHas('session_notes', ['id' => $note->id, 'content' => $note->content, 'deleted_at' => null]);
+    expect(SessionNote::find($note->id))->not->toBeNull()->content->toBe($note->content);
 });
 
 test('replaying a session status-transition endpoint does not reset or extend the note edit grace window', function () {

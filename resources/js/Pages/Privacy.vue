@@ -43,6 +43,7 @@ defineProps({
                             <li><a href="#sharing" class="underline hover:text-gray-900">Who sees it</a></li>
                             <li><a href="#confidential-messages" class="underline hover:text-gray-900">Confidential messages</a></li>
                             <li><a href="#journal" class="underline hover:text-gray-900">Your journal</a></li>
+                            <li><a href="#check-ins" class="underline hover:text-gray-900">Check-ins</a></li>
                             <li><a href="#urgent-help" class="underline hover:text-gray-900">Urgent help</a></li>
                             <li><a href="#safety-flags" class="underline hover:text-gray-900">Safety concerns</a></li>
                             <li><a href="#administrator-access" class="underline hover:text-gray-900">Administrators</a></li>
@@ -145,6 +146,21 @@ defineProps({
                         We keep it until you delete it. When you close your account, it is deleted straight away. You can
                         export it as a PDF (we ask for your password first, and tell you each time), and it is in the copy of
                         your data.
+                    </p>
+                </section>
+
+                <!-- SCRUM-37 -->
+                <section id="check-ins" class="space-y-2">
+                    <h2 class="text-lg font-semibold text-gray-900">Check-ins</h2>
+                    <p>
+                        Your counsellor may send you a short, standard questionnaire (the PHQ-9 or GAD-7) about how you've been.
+                        Your answers and score are seen only by you and that counsellor -- not a guardian, an organisation or
+                        the TalkTherapy team -- and stored encrypted. They are not a diagnosis.
+                    </p>
+                    <p>
+                        If an answer suggests you may be thinking of hurting yourself, we show you how to get urgent help straight
+                        away and tell your counsellor that an answer needs their attention (the notice never says what it was). Nobody watches the
+                        answers live. When your account is erased, your answers and scores are deleted; your counsellor's record keeps that a check-in was sent, and whether an answer needed their attention.
                     </p>
                 </section>
 

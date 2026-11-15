@@ -304,6 +304,14 @@ const counsellor = computed(() => props.data.counsellor)
                     <template #who>Only you. Not your counsellor, a guardian, an organisation or the TalkTherapy team -- it is stored encrypted and there is no way to open it in the app but yours.</template>
                 </YourDataSection>
 
+                <!-- SCRUM-37 -->
+                <YourDataSection v-if="data.checkIns.answered" id="check-ins" title="Check-ins you answered">
+                    <p>{{ plural(data.checkIns.answered, 'check-in', 'check-ins') }} (short questionnaires your counsellor sent).</p>
+                    <template #why>So you and your counsellor can see how things change over time.</template>
+                    <template #kept>While your account is open. When it is erased, your answers and scores are deleted; your counsellor's record keeps that one was sent, and whether an answer needed their attention.</template>
+                    <template #who>You and that therapy's counsellor. Not a guardian, an organisation or the TalkTherapy team.</template>
+                </YourDataSection>
+
                 <YourDataSection id="groups" title="Groups and organisations">
                     <ul class="space-y-1">
                         <li>

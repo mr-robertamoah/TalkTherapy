@@ -149,6 +149,11 @@
         <SafetyFlagPanel :therapy-id="computedTherapy.id" :is-group="therapyType === 'group'" :client-name="therapyType === 'group' ? '' : (computedTherapy.user?.fullName ?? '')" />
       </div>
 
+      <!-- SCRUM-37: a 1:1 therapy's outcome check-ins, for its counsellor and its client (the server decides). -->
+      <div v-if="therapyType !== 'group' && computedTherapy.checkInsEnabled" class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
+        <OutcomeCheckInsPanel :therapy-id="computedTherapy.id" />
+      </div>
+
       <!-- Therapy Actions -->
       <TherapyActions
         v-if="computedIsParticipant"
@@ -183,6 +188,7 @@ import PrimaryButton from '@/Components/PrimaryButton.vue'
 import SecondaryButton from '@/Components/SecondaryButton.vue'
 import TherapyPausedBanner from '@/Components/TherapyPausedBanner.vue'
 import SafetyFlagPanel from '@/Components/Safety/SafetyFlagPanel.vue'
+import OutcomeCheckInsPanel from '@/Components/CheckIns/OutcomeCheckInsPanel.vue'
 import TherapyActiveHeader from '@/Components/TherapyActiveHeader.vue'
 import TherapyRecentSections from '@/Components/TherapyRecentSections.vue'
 import TherapyDiscussions from '@/Components/TherapyDiscussions.vue'

@@ -9,6 +9,7 @@ use App\Models\Discussion;
 use App\Models\GroupTherapy;
 use App\Models\License;
 use App\Models\Message;
+use App\Models\OutcomeCheckIn;
 use App\Models\Request;
 use App\Models\Session;
 use App\Models\Therapy;
@@ -131,6 +132,12 @@ class YourDataScope
     public static function journalEntries(User $user): Builder
     {
         return $user->journalEntries()->getQuery();
+    }
+
+    // SCRUM-37: the outcome check-ins the person answered or was sent -- theirs, given in full in the copy.
+    public static function outcomeCheckIns(User $user): Builder
+    {
+        return OutcomeCheckIn::query()->where('client_user_id', $user->id);
     }
 
     private static function identityRequestIds(User $user): QueryBuilder

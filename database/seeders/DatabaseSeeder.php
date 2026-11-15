@@ -274,6 +274,8 @@ class DatabaseSeeder extends Seeder
         $this->call(YourDataSeeder::class);
         // SCRUM-36
         $this->call(JournalSeeder::class);
+        // SCRUM-37
+        $this->call(CheckInSeeder::class);
         // SCRUM-433
         $this->call(RestoreGuardSeeder::class);
     }

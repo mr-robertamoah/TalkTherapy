@@ -77,7 +77,9 @@ const maxWidthClass = computed(() => {
 <template>
     <Teleport to="body">
         <Transition leave-active-class="duration-200">
-            <div v-show="show" class="fixed inset-0 overflow-y-auto px-4 py-6 sm:px-0 z-50 w-full h-full flex items-center justify-center" scroll-region>
+            <!-- SCRUM-37 (QA): items-start + the panel's my-auto -- a short dialog is still centred, but one taller than the
+                 window starts at the top and scrolls (centring pushed its top out of reach). -->
+            <div v-show="show" class="fixed inset-0 overflow-y-auto px-4 py-6 sm:px-0 z-50 w-full h-full flex items-start justify-center" scroll-region>
                 <Transition
                     enter-active-class="ease-out duration-300"
                     enter-from-class="opacity-0"
@@ -101,7 +103,7 @@ const maxWidthClass = computed(() => {
                 >
                     <div
                         v-show="show"
-                        class="mb-6 bg-white rounded-lg overflow-hidden shadow-xl transform transition-all focus:outline-none sm:mx-auto w-[80%] sm:w-[70%] md:w-[50%] p-6"
+                        class="my-auto bg-white rounded-lg overflow-hidden shadow-xl transform transition-all focus:outline-none sm:mx-auto w-[80%] sm:w-[70%] md:w-[50%] p-6"
                         :class="maxWidthClass"
                         ref="dialog"
                         tabindex="-1"

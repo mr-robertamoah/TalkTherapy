@@ -99,11 +99,10 @@ test('a counsellor can create a note on a message from their own therapy session
 
     $response->assertOk();
     $response->assertJsonPath('note.content', 'Client hesitated before answering this.');
-    $this->assertDatabaseHas('message_notes', [
-        'message_id' => $message->id,
-        'counsellor_id' => $counsellor->id,
-        'content' => 'Client hesitated before answering this.',
-    ]);
+    // SCRUM-437: stored encrypted -- read back through the model.
+    $stored = MessageNote::query()->where(['message_id' => $message->id, 'counsellor_id' => $counsellor->id])->sole();
+    expect($stored->content)->toBe('Client hesitated before answering this.')
+        ->and(DB::table('message_notes')->where('id', $stored->id)->value('content'))->not->toContain('hesitated');
 });
 
 test('a counsellor can create a note on a message from a shared group therapy session', function () {
@@ -161,7 +160,7 @@ test('a counsellor cannot see another counsellor note on a shared group therapy 
     $this->actingAs($counsellorB->user)
         ->patchJson(route('api.message.notes.update', ['noteId' => $noteA->id]), ['content' => 'attempted takeover'])
         ->assertStatus(422);
-    $this->assertDatabaseHas('message_notes', ['id' => $noteA->id, 'content' => $noteA->content]);
+    expect(MessageNote::find($noteA->id)->content)->toBe($noteA->content);
 
     $this->actingAs($counsellorB->user)
         ->deleteJson(route('api.message.notes.destroy', ['noteId' => $noteA->id]))
@@ -203,7 +202,7 @@ test('a counsellor can add a new note after deleting their previous one on the s
     $response->assertOk();
     $response->assertJsonPath('note.content', 'a fresh note');
     expect(MessageNote::where('message_id', $message->id)->where('counsellor_id', $counsellor->id)->count())->toBe(1);
-    $this->assertDatabaseHas('message_notes', ['id' => $original->id, 'content' => 'a fresh note', 'deleted_at' => null]);
+    expect(MessageNote::find($original->id))->not->toBeNull()->content->toBe('a fresh note');
 });
 
 test('a co-counsellor cannot update or delete another counsellor note by guessing its id', function () {
@@ -216,7 +215,7 @@ test('a co-counsellor cannot update or delete another counsellor note by guessin
     $this->actingAs($counsellorB->user)
         ->patchJson(route('api.message.notes.update', ['noteId' => $noteA->id]), ['content' => 'idor attempt'])
         ->assertStatus(422);
-    $this->assertDatabaseHas('message_notes', ['id' => $noteA->id, 'content' => $noteA->content]);
+    expect(MessageNote::find($noteA->id)->content)->toBe($noteA->content);
 
     $this->actingAs($counsellorB->user)
         ->deleteJson(route('api.message.notes.destroy', ['noteId' => $noteA->id]))
