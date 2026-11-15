@@ -8,6 +8,7 @@
         "php": "^8.2",
         "aws/aws-sdk-php": "^3.394",
         "bacon/bacon-qr-code": "^3.0",
+        "barryvdh/laravel-dompdf": "^3.1.2",
         "guzzlehttp/guzzle": "^7.2",
         "inertiajs/inertia-laravel": "^2.0",
         "laravel/breeze": "^2.3",

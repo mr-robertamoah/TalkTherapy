@@ -22,6 +22,8 @@ use App\Http\Controllers\GroupVideoConsentController;
 use App\Http\Controllers\HelpController;
 use App\Http\Controllers\HelpRequestController;
 use App\Http\Controllers\HomeController;
+use App\Http\Controllers\JournalController;
+use App\Http\Controllers\JournalExportController;
 use App\Http\Controllers\LinkController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OrganizationAdminController;
@@ -124,6 +126,8 @@ Route::middleware('auth')->prefix('notifications')->name('notifications.')->grou
     Route::post('/read-all', [NotificationController::class, 'readAll'])->name('read_all')->middleware('throttle:30,1,notifications.read_all');
     // TT-5.4d: how long the person's notifications are kept (their profile).
     Route::post('/retention', [NotificationController::class, 'retention'])->name('retention')->middleware('throttle:10,1,notifications.retention');
+    // SCRUM-40: email and in-app, per kind of notification.
+    Route::post('/channels', [NotificationController::class, 'channels'])->name('channels')->middleware('throttle:10,1,notifications.channels');
     Route::post('/{notification}/read', [NotificationController::class, 'read'])->name('read')->whereUuid('notification')->middleware('throttle:60,1,notifications.read');
 });
 
@@ -450,6 +454,15 @@ Route::middleware('auth')->group(function () {
     Route::get('/profile/your-data', YourDataController::class)->name('profile.your-data')->middleware('throttle:30,1,profile.your-data');
     // SCRUM-432: a copy of it -- password (and two-factor code) each time; 3 an hour.
     Route::post('/profile/your-data/download', YourDataDownloadController::class)->name('profile.your-data.download')->middleware('throttle:3,60,profile.your-data.download');
+    // SCRUM-36: the private journal -- the signed-in person's own only (no user in any route).
+    Route::get('/profile/journal', [JournalController::class, 'index'])->name('profile.journal')->middleware('throttle:60,1,profile.journal');
+    Route::get('/profile/journal/entries', [JournalController::class, 'entries'])->name('profile.journal.entries')->middleware('throttle:60,1,profile.journal.entries');
+    Route::post('/profile/journal', [JournalController::class, 'store'])->name('profile.journal.store')->middleware('throttle:20,1,profile.journal.store');
+    Route::patch('/profile/journal/{entry}', [JournalController::class, 'update'])->whereNumber('entry')->name('profile.journal.update')->middleware('throttle:30,1,profile.journal.update');
+    Route::delete('/profile/journal/{entry}', [JournalController::class, 'destroy'])->whereNumber('entry')->name('profile.journal.destroy')->middleware('throttle:30,1,profile.journal.destroy');
+    Route::delete('/profile/journal', [JournalController::class, 'destroyAll'])->name('profile.journal.destroy-all')->middleware('throttle:5,1,profile.journal.destroy-all');
+    // SCRUM-38: the journal as a PDF -- password (and two-factor code) each time; 3 an hour.
+    Route::post('/profile/journal/export', JournalExportController::class)->name('profile.journal.export')->middleware('throttle:3,60,profile.journal.export');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update')->middleware('throttle:10,1,profile.update'); // SCRUM-422: it checks the password when the email changes
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy')->middleware('throttle:6,1,profile.destroy'); // SCRUM-422: checks the password
     // Self-service only -- always operates on $request->user(), never a route-supplied user id,

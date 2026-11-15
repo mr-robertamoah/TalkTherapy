@@ -7,6 +7,7 @@ use App\Models\AdminContentAccess;
 use App\Models\Counsellor;
 use App\Models\CounsellorPayout;
 use App\Models\GroupTherapy;
+use App\Models\JournalEntry;
 use App\Models\Message;
 use App\Models\Session;
 use App\Models\Therapy;
@@ -30,6 +31,7 @@ use Illuminate\Support\Facades\DB;
 //    Messages sent as a counsellor are about clients: counted (in the summary), never given (the user's decision);
 //  - their payments and (a counsellor's) payouts -- never a breakdown, transfer code or who started it, nor the amount
 //    of a charge an organisation paid;
+//  - their journal, in full (SCRUM-36);
 //  - every time the team opened their content: when and what, never who;
 //  - urgent help and safety records: the one fixed sentence (YourDataWording), nothing else.
 //
@@ -102,7 +104,17 @@ class ExportYourDataAction extends Action
                 ->map(fn (CounsellorPayout $p) => ['reference' => $p->reference, 'amount' => (int) $p->amount, 'currency' => $p->currency, 'status' => $p->status, 'at' => $p->created_at?->toIso8601String()])
                 ->all() : null,
         ]).',';
-        yield '"teamAccess":';
+        // SCRUM-36: their journal, in full -- it's theirs.
+        yield '"journal":';
+        yield from $this->list(YourDataScope::journalEntries($user)->select(['id', 'title', 'content', 'written_on', 'created_at', 'updated_at']), fn (JournalEntry $entry) => [
+            'id' => $entry->id,
+            'writtenOn' => $entry->written_on?->toDateString(),
+            'title' => $entry->title,
+            'content' => $entry->content,
+            'createdAt' => $entry->created_at?->toIso8601String(),
+            'updatedAt' => $entry->updated_at?->toIso8601String(),
+        ]);
+        yield ',"teamAccess":';
         yield from $this->list(YourDataScope::teamAccess($user, $counsellor)->select(['id', 'resource', 'created_at']), fn (AdminContentAccess $access) => [
             'at' => $access->created_at?->toIso8601String(),
             'what' => $access->resource,

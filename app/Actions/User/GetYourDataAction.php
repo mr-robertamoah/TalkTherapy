@@ -6,6 +6,7 @@ use App\Actions\Action;
 use App\Actions\Notification\PruneNotificationsAction;
 use App\Actions\Request\DeleteExpiredIdentityDocumentsAction;
 use App\Enums\CounsellorPayoutStatusEnum;
+use App\Enums\NotificationCategoryEnum;
 use App\Enums\RequestTypeEnum;
 use App\Enums\TherapyStatusEnum;
 use App\Enums\TransactionStatusEnum;
@@ -60,6 +61,11 @@ class GetYourDataAction extends Action
                 // SCRUM-436: in case discussions, apart from the sessions (the rule team access and the copy follow).
                 'inCaseDiscussions' => $counsellor ? (int) $counsellor->discussion_messages_count : null,
             ],
+            // SCRUM-36: how many, and since when -- never the words (those are in the copy, for its owner only).
+            'journal' => [
+                'entries' => (int) $row->journal_entries_count,
+                'since' => $row->journal_first_written_on ? Carbon::parse($row->journal_first_written_on)->toDateString() : null,
+            ],
             'groups' => $this->groups($row),
             'organizations' => $this->organizations($user),
             'guardianship' => [
@@ -79,6 +85,16 @@ class GetYourDataAction extends Action
                 'counsellorCount' => $counsellor ? (int) $counsellor->notifications_count : null,
                 // As the profile page shows it (ProfileController): their own choice, else the default.
                 'retentionDays' => $user->notification_retention_days ?? PruneNotificationsAction::defaultDays(),
+                // SCRUM-40: the kinds they switched off, and how.
+                'switchedOff' => collect(NotificationCategoryEnum::cases())
+                    ->map(fn (NotificationCategoryEnum $category) => [
+                        'kind' => $category->label(),
+                        'email' => ! $user->wantsNotification($category, 'mail'),
+                        'inApp' => ! $user->wantsNotification($category, 'database'),
+                    ])
+                    ->filter(fn (array $choice) => $choice['email'] || $choice['inApp'])
+                    ->values()
+                    ->all(),
             ],
             'teamAccess' => $this->teamAccess($user, $counsellor),
             'counsellor' => $counsellor ? $this->counsellor($counsellor) : null,
@@ -110,7 +126,10 @@ class GetYourDataAction extends Action
                 'guardians as active_guardians_count' => fn ($q) => $q->active(),
                 'wards as active_wards_count' => fn ($q) => $q->active(),
                 'notifications',
+                // SCRUM-36
+                'journalEntries',
             ])
+            ->withMin('journalEntries as journal_first_written_on', 'written_on')
             ->firstOrFail();
     }
 
