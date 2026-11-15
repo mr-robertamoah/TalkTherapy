@@ -12714,3 +12714,52 @@ judgement calls are below.
   - Deleted sessions are still held: counted on the page and listed in the copy, marked `deleted` (as therapies and
     messages already were).
 - **Also (QA)**: the profile's email hint no longer promises to tell "your current address" when the account has none.
+
+---
+
+## SCRUM-36 + SCRUM-38 + SCRUM-40 — a private journal, its PDF export, and choosing your notifications (2026-11-15)
+
+The next set after PR #346: the rest of TT-5's personal tools (TT-5.2's outcome check-ins are clinical and get their
+own set). One PR. The user's answers: a real PDF file (dompdf); journal only (counsellors' session notes later,
+SCRUM-437); email **and** in-app switchable per kind of notification; minors may keep a journal and their guardians see
+nothing.
+
+- **Journal: only its writer, ever.** No counsellor, guardian, organisation or administrator path -- not even an audited
+  one (it is not in `AdminContentAccess::RESOURCES`); anyone else gets a 404. Encrypted at rest (title and text,
+  `mediumText` for the ciphertext); no scanning of the text (nobody reads it, so it can't promise to notice) -- the page
+  says so beside the urgent-help link. This reverses SCRUM-50's "no journal category (there is no journal feature)".
+  - **Delete is for good** (no soft delete: a soft-deleted entry would be "still held" and need counting and a purge);
+    the page asks first. The whole journal goes **when the account is closed** (there is no restore), and again on
+    anonymisation as a backstop.
+  - **Dates:** the person's own day, so up to tomorrow (code review: ahead of UTC, "today" is tomorrow here for a few
+    hours); not before 1900.
+  - **Entries never ride on the page's props** (code review): fetched as JSON (no-store) when the page opens, so Back
+    can't show deleted ones.
+  - **Limits:** 10,000 characters, 120 for a title, 5,000 entries per person (security review).
+  - **Suspended accounts** can't open it while suspended -- the same as every page behind the suspension check and the
+    data copy. Accepted; noted for the product owner.
+- **Export: the data copy's gate, shared.** Password, and the two-factor code when it's on; never while a new email
+  waits; one answer for a wrong password or code -- moved into `ConfirmItsYouAction`, now used by both. 3 an hour, one
+  at a time per person (a lock taken before the code is checked, so a parallel request can't burn a one-time code), and
+  the account is told only once the PDF exists (code review).
+  - **dompdf, locked down:** chroot to `resources/views/pdf`, `file://` only, remote, PHP and JavaScript off; the
+    template escapes every value. Version 3.1.6 (July 2026), audit clean.
+  - **Size:** dompdf takes about half a second per 10,000 characters (measured), so a PDF is capped
+    at 500 entries **and** 150,000 characters (~7 s); past either, a shorter date range (security review: big journals
+    could hold a php-fpm worker for minutes).
+- **Notification choices: one check, one list.** `ApplyNotificationChoices` (a `NotificationSending` listener) stops
+  `mail` or `database` for a kind the person switched off -- no `via()` method changes. Choices are stored as only what
+  is off (`users.notification_channels`), so everyone starts with everything on.
+  - **Kinds:** sessions and reminders; therapies and groups; your refunds; for counsellors, case discussions and
+    organisation pay changes.
+  - **Always sent**, not switchable: safety and urgent help, security (two-factor, email, data copy, journal export),
+    suspensions and access pauses, guardianship and **everything a guardian is told about a ward** (security review:
+    a ward starting a therapy or being taken on by a counsellor has child-protection weight -- the "updates about your
+    wards" kind was dropped), verification and age checks, staff alerts (an organisation's refund needing manual
+    follow-up included), and mail-only notices (switching off their email would leave nothing).
+  - **Unlisted means always sent**, and a test fails until a new notification is decided.
+  - **"In the app" covers the pop-ups too** (code review): the session/discussion reminders and session status alerts
+    arrive as live messages, so switching off in-app stops those broadcasts as well; other live page updates continue.
+  - **Both off is allowed** (the user's choice), with a warning in the form.
+  - Accepted (security, Low): someone holding only a session can switch off session notices without a password -- they
+    could already act on the sessions directly, and security notices can't be switched off.

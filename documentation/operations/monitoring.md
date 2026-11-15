@@ -273,6 +273,20 @@ these server-side waits on a Reverb terminate API that works with private channe
 - `DataCopyDownloadedNotification` in `failed_jobs`: the owner wasn't told of a download -- it needs the queue worker
   (`default`); retry with `queue:retry`.
 
+## Journal export (SCRUM-38) and notification choices (SCRUM-40)
+
+- `Journal exported` (notice; `user_id`, `entries`): the password (and two-factor code) passed and the PDF was made. At
+  most 3 per account an hour (429s on `profile.journal.export` are expected). A burst across accounts, or one soon after
+  an `Account email change requested`, suggests a takeover.
+- `Maximum execution time`, `Allowed memory size` or a 504 on `POST /profile/journal/export`: an export outgrew the
+  host's limits (production checklist); that person is held off for up to 2 minutes by the lock. Lower
+  `JOURNAL_EXPORT_MAX_CHARACTERS` if it repeats.
+- `JournalExportedNotification` in `failed_jobs`: the owner (or the address a recent email change replaced) wasn't told
+  of an export -- it needs the `default` worker; `queue:retry`.
+- `DecryptException` on `/profile/journal` or the data copy: `APP_KEY` changed without `APP_PREVIOUS_KEYS`.
+- "I never got X": check `users.notification_channels` first (null means everything is sent; only what is off is
+  stored). A switched-off notice is simply not sent -- no log line.
+
 ## Signed-out tabs (SCRUM-423)
 
 - `GET /session/check` answers 401 to an ended session by design -- leave it out of any 4xx-rate alert. A burst of
