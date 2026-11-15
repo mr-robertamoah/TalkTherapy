@@ -127,6 +127,7 @@ const opened = {
     therapy: 'Your therapy page and background story',
     session: "A session's details",
     session_messages: 'The messages in one of your sessions',
+    session_attendance: 'The attendance for one of your sessions',
     topic_messages: 'The messages in one of your topics',
     message: 'A message you sent',
     message_replies: 'The replies to a message you sent',

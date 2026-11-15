@@ -24,22 +24,9 @@ class GetFlaggableMembersAction extends Action
             ->reject(fn (array $member) => $member['user']->is($viewer) || $group->isCounsellorUser($member['user']))
             ->values();
 
-        // Someone who left is masked (they're no longer a member to unmask) -- told apart by when they
-        // left, never by name (security review: picking the wrong person is a harm of its own).
-        $labels = $members->map(fn (array $member) => $member['left'] && $group->isMaskedToOthers($member['user'])
-            ? 'Former member, left '.($member['leftAt']?->format('M Y') ?? 'earlier')
-            : $group->displayNameOf($member['user']));
-        $counts = $labels->countBy();
-        $seen = [];
+        // Labelled by the shared rule (GroupMemberKeys::labels(): a former member by when they left, never by name).
+        $labels = GroupMemberKeys::labels($group, $members);
 
-        return $members->map(function (array $member, int $i) use ($labels, $counts, &$seen) {
-            $label = $labels[$i];
-            if ($counts[$label] > 1) {
-                $seen[$label] = ($seen[$label] ?? 0) + 1;
-                $label .= " ({$seen[$label]})";
-            }
-
-            return ['key' => $member['key'], 'name' => $label, 'left' => $member['left']];
-        })->all();
+        return $members->map(fn (array $member, int $i) => ['key' => $member['key'], 'name' => $labels[$i], 'left' => $member['left']])->all();
     }
 }

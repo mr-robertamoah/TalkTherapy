@@ -26,6 +26,7 @@ const labels = {
     therapy: 'therapy page',
     session: 'session details',
     session_messages: 'session messages',
+    session_attendance: 'session attendance',
     topic_messages: 'topic messages',
     message: 'a message',
     message_replies: 'message replies',

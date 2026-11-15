@@ -12930,3 +12930,29 @@ stays.
 - The session view now shows the landmark on its own once the pin is gone (code review: the whole location card
   used to hide without a pin, so "the landmark is kept" would have been invisible).
 - The first run clears every in-person pin older than 30 days at once; rolling back doesn't bring them back.
+## SCRUM-445 — in-person attendance backend (2026-11-15)
+
+Part of SCRUM-115 (the user's decision: the counsellor marks attendance; it never moves money).
+
+- **Register:** one row per person per in-person session (PRESENT/ABSENT, who marked it, when), no free text. The
+  counsellor of the therapy or group marks it from the start until 48 hours after the end (`ATTENDANCE_WINDOW_HOURS`,
+  at least 1). People left out of a submission keep what they had; an unchanged mark keeps its time. Admins read (each
+  read logged, at most once in 10 minutes, and only an admin not involved in the therapy) but never write.
+- **Who's on it:** everyone who was a client or member at the time of the session -- including someone who left
+  afterwards (so they can still be marked, and count for a no-show close). Group members are referred to by membership
+  keys, never user ids; the 1:1 client by `client`.
+- **Masking (not asked, the stricter rule):** the register names people as safety flags do (`displayNameOf`), so an
+  anonymous member is masked to the counsellor too, numbered when labels repeat, and a masked former member is
+  "Former member, left M Y" -- the payment roster's looser rule would name everyone in an anonymous group.
+- **Each client sees only their own mark;** members never see each other's.
+- **Closing as a no-show (security review, the safer option, not asked):** when everyone is marked absent, the
+  counsellor can close the session as FAILED (no invoice line) -- only after its end time, and never once a client or
+  member has asked to start it (that says they were there). Once FAILED or ABANDONED its register is final; marking on
+  a HELD session stays possible and never changes its status or money. Starting, ending and failing now lock the
+  session row, so a start confirmation can't cross a no-show close.
+- **Your data:** the person's own marks are in the copy (session, status, time -- never the place or the counsellor);
+  showing the count on the page comes with the attendance UI (SCRUM-446).
+- **The scheduled fail waits for in-person sessions:** `FailUnheldSessionsAction` (every 4 hours) leaves an unstarted
+  in-person session alone until its attendance window has closed, so the counsellor can still mark it and close it as
+  a no-show; online sessions fail as before.
+- **Follow-up filed:** `/fail` lets any participant fail any session after its end, even a held one (pre-existing) -- SCRUM-450.

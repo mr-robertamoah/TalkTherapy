@@ -4,6 +4,7 @@ namespace App\Actions\Session;
 
 use App\Actions\Action;
 use App\Enums\SessionStatusEnum;
+use App\Enums\SessionTypeEnum;
 use App\Models\Session;
 use App\Notifications\SessionFailedNotification;
 use Illuminate\Support\Facades\Notification;
@@ -20,6 +21,10 @@ class FailUnheldSessionsAction extends Action
                 SessionStatusEnum::in_session_confirmation->value,
             ])
             ->wherePastEndTime()
+            // SCRUM-445: an in-person session waits until its attendance window has closed -- its counsellor may still
+            // mark everyone absent and close it as a no-show, which a FAILED register would no longer allow.
+            ->where(fn ($q) => $q->where('type', '!=', SessionTypeEnum::in_person->value)
+                ->orWhere('end_time', '<', now()->subHours((int) config('limits.attendance_window_hours'))))
             ->get()
             ->each(function (Session $session) {
                 Notification::send($session->users, new SessionFailedNotification($session));
