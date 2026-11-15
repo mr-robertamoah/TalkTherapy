@@ -149,6 +149,27 @@
         <SafetyFlagPanel :therapy-id="computedTherapy.id" :is-group="therapyType === 'group'" :client-name="therapyType === 'group' ? '' : (computedTherapy.user?.fullName ?? '')" />
       </div>
 
+      <!-- SCRUM-438: its counsellor exports the notes they wrote here, as a PDF (the server decides who may). -->
+      <div v-if="computedIsCounsellor && computedTherapy.notesExport" class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
+        <section aria-labelledby="notes-export-title" class="bg-white shadow-sm border border-gray-200 rounded-lg p-6 text-sm text-gray-700">
+          <h2 id="notes-export-title" class="text-lg font-semibold text-gray-900">Your notes</h2>
+          <p class="mt-1">Download the notes you wrote on this therapy's sessions and messages. Never your clients' words, and never another counsellor's notes.</p>
+          <ConfirmedPdfExport
+            id-prefix="notes-export-form"
+            class="mt-3"
+            :gate="computedTherapy.notesExport"
+            :url="therapyType === 'group' ? route('api.notes_export.group', { groupTherapyId: computedTherapy.id }) : route('api.notes_export.therapy', { therapyId: computedTherapy.id })"
+            :with-date-range="false"
+            open-label="Export my notes as PDF"
+            title="Export your notes as a PDF"
+            intro="These are confidential clinical notes: once downloaded, keeping the file secure is your responsibility."
+            what="your notes"
+            fallback-name="talktherapy-notes.pdf"
+            done-text="Your notes have downloaded as a PDF. We've let you know on your account."
+          />
+        </section>
+      </div>
+
       <!-- SCRUM-37: a 1:1 therapy's outcome check-ins, for its counsellor and its client (the server decides). -->
       <div v-if="therapyType !== 'group' && computedTherapy.checkInsEnabled" class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
         <OutcomeCheckInsPanel :therapy-id="computedTherapy.id" />
@@ -189,6 +210,7 @@ import SecondaryButton from '@/Components/SecondaryButton.vue'
 import TherapyPausedBanner from '@/Components/TherapyPausedBanner.vue'
 import SafetyFlagPanel from '@/Components/Safety/SafetyFlagPanel.vue'
 import OutcomeCheckInsPanel from '@/Components/CheckIns/OutcomeCheckInsPanel.vue'
+import ConfirmedPdfExport from '@/Components/ConfirmedPdfExport.vue'
 import TherapyActiveHeader from '@/Components/TherapyActiveHeader.vue'
 import TherapyRecentSections from '@/Components/TherapyRecentSections.vue'
 import TherapyDiscussions from '@/Components/TherapyDiscussions.vue'

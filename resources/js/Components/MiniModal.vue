@@ -1,3 +1,9 @@
+<script>
+// How many of these are open: the page scrolls again only when the last one closes (a dialog opened over another,
+// as the journal's delete over its day, used to unlock the page behind the one still open).
+let openDialogs = 0;
+</script>
+
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import useFocusTrap from '@/Composables/useFocusTrap';
@@ -32,16 +38,15 @@ const emit = defineEmits(['close']);
 const dialog = ref(null);
 const { isTop } = useFocusTrap(dialog, () => props.show);
 
-watch(
-    () => props.show,
-    () => {
-        if (props.show) {
-            document.body.style.overflow = 'hidden';
-        } else {
-            document.body.style.overflow = null;
-        }
-    }
-);
+let locked = false;
+function lockScroll(open) {
+    if (open === locked) return;
+    locked = open;
+    openDialogs = Math.max(0, openDialogs + (open ? 1 : -1));
+    document.body.style.overflow = openDialogs ? 'hidden' : null;
+}
+
+watch(() => props.show, (show) => lockScroll(show));
 
 const close = () => {
     if (props.closeable) {
@@ -60,7 +65,7 @@ onMounted(() => document.addEventListener('keydown', closeOnEscape));
 
 onUnmounted(() => {
     document.removeEventListener('keydown', closeOnEscape);
-    document.body.style.overflow = null;
+    lockScroll(false);
 });
 
 const maxWidthClass = computed(() => {

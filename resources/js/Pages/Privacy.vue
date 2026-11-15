@@ -44,6 +44,7 @@ defineProps({
                             <li><a href="#confidential-messages" class="underline hover:text-gray-900">Confidential messages</a></li>
                             <li><a href="#journal" class="underline hover:text-gray-900">Your journal</a></li>
                             <li><a href="#check-ins" class="underline hover:text-gray-900">Check-ins</a></li>
+                            <li><a href="#counsellor-notes" class="underline hover:text-gray-900">Counsellors' notes</a></li>
                             <li><a href="#urgent-help" class="underline hover:text-gray-900">Urgent help</a></li>
                             <li><a href="#safety-flags" class="underline hover:text-gray-900">Safety concerns</a></li>
                             <li><a href="#administrator-access" class="underline hover:text-gray-900">Administrators</a></li>
@@ -146,6 +147,17 @@ defineProps({
                         We keep it until you delete it. When you close your account, it is deleted straight away. You can
                         export it as a PDF (we ask for your password first, and tell you each time), and it is in the copy of
                         your data.
+                    </p>
+                </section>
+
+                <!-- SCRUM-438 -->
+                <section id="counsellor-notes" class="space-y-2">
+                    <h2 class="text-lg font-semibold text-gray-900">Your counsellor's notes</h2>
+                    <p>
+                        Your counsellor may keep private notes about your sessions. You can't see them, and neither can other
+                        counsellors. Your counsellor can download a copy of the notes they wrote (never your messages), after
+                        confirming it's them; keeping that copy safe is then their professional responsibility. If you were
+                        anonymous, the copy doesn't name you.
                     </p>
                 </section>
 

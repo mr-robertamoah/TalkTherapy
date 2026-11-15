@@ -38,6 +38,7 @@ use App\Http\Controllers\SessionScheduleProposalController;
 use App\Http\Controllers\TestimonialController;
 use App\Http\Controllers\TherapyCaseController;
 use App\Http\Controllers\TherapyController;
+use App\Http\Controllers\TherapyNotesExportController;
 use App\Http\Controllers\TherapyTopicController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\UserController;
@@ -282,6 +283,9 @@ Route::middleware('auth:sanctum')->group(function () {
     // SCRUM-197/198 (TT-2.2b/c): a counsellor's own private notes on a session, fetched/mutated via
     // axios from the therapy page -- never broadcast, never reaches the client/participant side.
     // SCRUM-200: these are the only routes; the unused web.php duplicates were removed.
+    // SCRUM-438: a counsellor's own notes on one therapy, as a PDF -- password (and two-factor code) each time; 3 an hour.
+    Route::post('/therapies/{therapyId}/notes/export', [TherapyNotesExportController::class, 'forTherapy'])->name('api.notes_export.therapy')->whereNumber('therapyId')->middleware('throttle:3,60,notes-export');
+    Route::post('/group-therapies/{groupTherapyId}/notes/export', [TherapyNotesExportController::class, 'forGroup'])->name('api.notes_export.group')->whereNumber('groupTherapyId')->middleware('throttle:3,60,notes-export');
     Route::get('/sessions/{sessionId}/notes', [SessionNoteController::class, 'index'])->name('api.session.notes.index');
     Route::post('/sessions/{sessionId}/notes', [SessionNoteController::class, 'store'])->name('api.session.notes.store')->middleware('throttle:30,1,session-actions');
     Route::patch('/sessions/notes/{noteId}', [SessionNoteController::class, 'update'])->name('api.session.notes.update')->middleware('throttle:30,1,session-actions');

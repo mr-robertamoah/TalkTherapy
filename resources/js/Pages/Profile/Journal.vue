@@ -12,7 +12,7 @@ import SecondaryButton from '@/Components/SecondaryButton.vue'
 import DangerButton from '@/Components/DangerButton.vue'
 import MiniModal from '@/Components/MiniModal.vue'
 import TextInput from '@/Components/TextInput.vue'
-import JournalExport from './Partials/JournalExport.vue'
+import ConfirmedPdfExport from '@/Components/ConfirmedPdfExport.vue'
 import useHelpNow from '@/Composables/useHelpNow'
 
 const props = defineProps({
@@ -24,14 +24,104 @@ const props = defineProps({
 const { show: showHelp } = useHelpNow()
 
 // Fetched on every visit, never kept as a page prop (code review): going Back mustn't show entries deleted since.
-const list = ref([])
-const nextCursor = ref(null)
+// SCRUM-440 (the user's TODO): the journal as day notes -- one per day, its newest entry and how many -- in numbered
+// pages, searchable. Search sends the term in the body (never the URL); the server reads only your own entries.
+const days = ref([])
+const pageInfo = ref({ page: 1, lastPage: 1, total: 0 })
 const loaded = ref(false)
-const loadingMore = ref(false)
+const loadingDays = ref(false)
 const loadError = ref('')
 const listHeading = ref(null)
+const searchInput = ref('')
+const searching = ref('') // the term the notes show results for
+const resultStatus = ref('')
 
-onMounted(() => loadMore(true))
+onMounted(() => loadDays(1))
+
+// Only the latest request's answer is shown (code review): a save's reload can cross a search still on its way.
+let latestRequest = 0
+
+async function loadDays(page = pageInfo.value.page) {
+    const request = ++latestRequest
+    loadingDays.value = true
+    loadError.value = ''
+    try {
+        const { data } = searching.value
+            ? await axios.post(route('profile.journal.search'), { q: searching.value, page })
+            : await axios.get(route('profile.journal.days'), { params: { page } })
+        if (request !== latestRequest) return
+        // A page emptied by a delete: straight to the last one there is (one request, not one a page).
+        if (!data.data.length && page > data.lastPage) return loadDays(data.lastPage)
+        days.value = data.data
+        pageInfo.value = { page: data.page, lastPage: data.lastPage, total: data.total }
+        loaded.value = true
+        resultStatus.value = searching.value
+            ? (data.total ? `${data.total} day${data.total === 1 ? '' : 's'} with entries matching "${searching.value}".` : `No entries match "${searching.value}".`)
+            : ''
+    } catch (err) {
+        if (request !== latestRequest) return
+        loadError.value = err.response?.status === 422 ? (err.response.data.errors?.q?.[0] ?? 'Please check your search.')
+            : err.response?.status === 429 ? 'You are searching very quickly. Please wait a moment.'
+            : 'Your journal could not be loaded. Please try again.'
+    } finally {
+        if (request === latestRequest) loadingDays.value = false
+    }
+}
+
+// The pressed button may now be disabled (the first or last page): focus goes to the list's heading.
+async function goToPage(page) {
+    await loadDays(page)
+    nextTick(() => listHeading.value?.focus())
+}
+
+function search() {
+    searching.value = searchInput.value.trim()
+    loadDays(1)
+}
+
+function clearSearch() {
+    searchInput.value = ''
+    searching.value = ''
+    loadDays(1)
+}
+
+// --- one day, in a dialog ---
+const openDay = ref(null) // the note
+const dayEntries = ref([])
+const dayCursor = ref(null)
+const dayLoading = ref(false)
+const dayError = ref('')
+const dayHeading = ref(null)
+
+async function showDay(note, more = false) {
+    openDay.value = note
+    dayLoading.value = true
+    dayError.value = ''
+    if (!more) {
+        dayEntries.value = []
+        dayCursor.value = null
+    }
+    try {
+        const { data } = await axios.get(route('profile.journal.entries'), { params: { date: note.date, ...(more ? { cursor: dayCursor.value } : {}) } })
+        dayEntries.value = [...dayEntries.value, ...data.data]
+        dayCursor.value = data.nextCursor
+    } catch {
+        dayError.value = 'This day could not be loaded. Please try again.'
+    } finally {
+        dayLoading.value = false
+    }
+}
+
+function closeDay() {
+    openDay.value = null
+}
+
+function matches(entry) {
+    if (!searching.value) return false
+    // As the server compares (not locale-dependent), so the highlight matches the results.
+    const term = searching.value.toLowerCase()
+    return `${entry.title ?? ''}\n${entry.content}`.toLowerCase().includes(term)
+}
 
 const today = () => {
     const now = new Date()
@@ -56,6 +146,7 @@ function startNew() {
 }
 
 function startEdit(entry) {
+    closeDay()
     editing.value = entry.id
     form.value = { title: entry.title ?? '', content: entry.content, written_on: entry.writtenOn }
     errors.value = {}
@@ -77,15 +168,15 @@ async function save() {
 
     try {
         if (editing.value) {
-            const { data } = await axios.patch(route('profile.journal.update', editing.value), form.value)
-            list.value = sortEntries(list.value.map((entry) => entry.id === data.entry.id ? data.entry : entry))
+            await axios.patch(route('profile.journal.update', editing.value), form.value)
             status.value = 'Entry saved.'
         } else {
-            const { data } = await axios.post(route('profile.journal.store'), form.value)
-            list.value = sortEntries([data.entry, ...list.value])
+            await axios.post(route('profile.journal.store'), form.value)
             status.value = 'Entry added.'
         }
         startNew()
+        // Re-dated entries move between days: the notes are fetched again.
+        loadDays()
         // The button that was pressed changed (QA): back to writing.
         nextTick(() => contentInput.value?.focus())
     } catch (err) {
@@ -99,32 +190,6 @@ async function save() {
     } finally {
         saving.value = false
     }
-}
-
-function sortEntries(entries) {
-    return [...entries].sort((a, b) => b.writtenOn.localeCompare(a.writtenOn) || b.id - a.id)
-}
-
-async function loadMore(first = false) {
-    loadingMore.value = true
-    loadError.value = ''
-    try {
-        const { data } = await axios.get(route('profile.journal.entries'), { params: first ? {} : { cursor: nextCursor.value } })
-        const known = new Set(list.value.map((entry) => entry.id))
-        // Sorted again (code review): an entry added or re-dated here may belong among the older ones.
-        list.value = sortEntries([...list.value, ...data.data.filter((entry) => !known.has(entry.id))])
-        nextCursor.value = data.nextCursor
-        loaded.value = true
-    } catch {
-        loadError.value = first ? 'Your journal could not be loaded. Please try again.' : 'Older entries could not be loaded. Please try again.'
-    } finally {
-        loadingMore.value = false
-    }
-}
-
-// Every shown entry deleted while older ones are still to load: show those (not "no entries").
-function refillIfEmpty() {
-    if (!list.value.length && nextCursor.value) loadMore()
 }
 
 // Deleting -- one entry, or all of them -- asks first, and says it can't be undone.
@@ -142,20 +207,21 @@ async function confirmDelete() {
     try {
         if (confirming.value === 'all') {
             await axios.delete(route('profile.journal.destroy-all'))
-            list.value = []
-            nextCursor.value = null
+            closeDay()
             status.value = 'Your journal was deleted.'
         } else {
             const id = confirming.value.id
             await axios.delete(route('profile.journal.destroy', id))
-            list.value = list.value.filter((entry) => entry.id !== id)
+            dayEntries.value = dayEntries.value.filter((entry) => entry.id !== id)
+            if (openDay.value) openDay.value = { ...openDay.value, entries: openDay.value.entries - 1 }
+            if (!dayEntries.value.length) closeDay()
             status.value = 'Entry deleted.'
         }
         if (editing.value && (confirming.value === 'all' || editing.value === confirming.value.id)) startNew()
         confirming.value = null
-        // The button that opened the dialog is gone with its entry: focus goes to the list.
-        nextTick(() => listHeading.value?.focus())
-        refillIfEmpty()
+        await loadDays()
+        // The button that opened the dialog is gone with its entry: focus goes to the day still open, else the notes.
+        nextTick(() => (openDay.value ? dayHeading.value : listHeading.value)?.focus())
     } catch {
         deleteError.value = 'It could not be deleted. Please try again.'
     } finally {
@@ -165,6 +231,10 @@ async function confirmDelete() {
 
 function day(value) {
     return new Date(`${value}T00:00:00Z`).toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })
+}
+
+function plural(n, one, many) {
+    return `${n} ${n === 1 ? one : many}`
 }
 </script>
 
@@ -237,44 +307,87 @@ function day(value) {
 
                 <section aria-labelledby="journal-list-title" class="space-y-4">
                     <div class="flex flex-wrap items-center justify-between gap-3">
-                        <h3 id="journal-list-title" ref="listHeading" tabindex="-1" class="text-lg font-semibold text-gray-900 focus:outline-none">Entries</h3>
-                        <JournalExport v-if="list.length || nextCursor" :gate="exportGate" />
+                        <h3 id="journal-list-title" ref="listHeading" tabindex="-1" class="text-lg font-semibold text-gray-900 focus:outline-none">Your days</h3>
+                        <ConfirmedPdfExport v-if="pageInfo.total || searching" id-prefix="journal-export" :gate="exportGate" />
                     </div>
 
-                    <p v-if="!loaded && loadingMore" class="text-sm text-gray-600" role="status">Loading your journal…</p>
-                    <InputError role="alert" v-if="!loaded" :message="loadError" />
-                    <p v-else-if="loaded && !list.length && !nextCursor" class="bg-white shadow-sm border border-gray-200 rounded-lg p-6 text-sm text-gray-600">
-                        No entries yet. What you write appears here, newest first.
+                    <!-- SCRUM-440: search titles and text. -->
+                    <form v-if="pageInfo.total || searching" role="search" class="flex flex-wrap items-end gap-2" @submit.prevent="search">
+                        <div class="flex-1 min-w-[12rem]">
+                            <InputLabel for="journal-search" value="Search your journal" />
+                            <TextInput id="journal-search" v-model="searchInput" type="search" class="mt-1 block w-full" minlength="2" maxlength="100" autocomplete="off" />
+                        </div>
+                        <PrimaryButton class="disabled:opacity-50 disabled:cursor-not-allowed" :disabled="loadingDays || searchInput.trim().length < 2">Search</PrimaryButton>
+                        <SecondaryButton v-if="searching" type="button" @click="clearSearch">Clear search</SecondaryButton>
+                    </form>
+                    <p class="text-sm text-gray-700" role="status">{{ loadingDays && !loaded ? 'Loading your journal…' : resultStatus }}</p>
+                    <InputError role="alert" :message="loadError" />
+
+                    <p v-if="loaded && !pageInfo.total && !searching" class="bg-white shadow-sm border border-gray-200 rounded-lg p-6 text-sm text-gray-600">
+                        No entries yet. What you write appears here, a note for each day.
                     </p>
 
-                    <article
-                        v-for="entry in list"
-                        :key="entry.id"
-                        class="bg-white shadow-sm border border-gray-200 rounded-lg p-6"
-                        :aria-labelledby="`journal-entry-${entry.id}`"
-                    >
-                        <header class="flex flex-wrap items-baseline justify-between gap-2">
-                            <h4 :id="`journal-entry-${entry.id}`" class="font-semibold text-gray-900 [overflow-wrap:anywhere]">
-                                {{ entry.title || day(entry.writtenOn) }}
-                            </h4>
-                            <p v-if="entry.title" class="text-xs text-gray-500">{{ day(entry.writtenOn) }}</p>
-                        </header>
-                        <p class="mt-3 text-sm text-gray-800 whitespace-pre-line [overflow-wrap:anywhere]">{{ entry.content }}</p>
-                        <div class="mt-4 flex gap-3 text-sm">
-                            <button type="button" class="min-h-[44px] px-2 text-indigo-700 underline hover:text-indigo-900" :aria-label="`Edit ${entry.title || 'the entry of ' + day(entry.writtenOn)}`" @click="startEdit(entry)">Edit</button>
-                            <button type="button" class="min-h-[44px] px-2 text-red-700 underline hover:text-red-900" :aria-label="`Delete ${entry.title || 'the entry of ' + day(entry.writtenOn)}`" @click="confirming = entry">Delete</button>
-                        </div>
-                    </article>
+                    <!-- A note for each day: its newest entry, and how many. -->
+                    <ul v-if="days.length" role="list" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                        <li v-for="note in days" :key="note.date">
+                            <button
+                                type="button"
+                                class="flex h-full w-full flex-col rounded-lg border border-amber-200 bg-amber-50 p-4 text-left shadow-sm transition hover:border-amber-300 hover:shadow focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                :aria-label="`Open ${day(note.date)}, ${plural(note.entries, 'entry', 'entries')}${note.matches ? `, ${note.matches} matching` : ''}${note.latest?.title ? `, latest: ${note.latest.title}` : ''}`"
+                                @click="showDay(note)"
+                            >
+                                <span class="flex items-baseline justify-between gap-2">
+                                    <span class="text-xs font-semibold uppercase tracking-wide text-amber-900">{{ day(note.date) }}</span>
+                                    <span class="shrink-0 rounded-full bg-white px-2 py-0.5 text-xs font-medium text-amber-900 border border-amber-200">
+                                        {{ note.matches ? `${note.matches} of ${note.entries} match` : plural(note.entries, 'entry', 'entries') }}
+                                    </span>
+                                </span>
+                                <span v-if="note.latest?.title" class="mt-2 font-semibold text-gray-900 [overflow-wrap:anywhere]">{{ note.latest.title }}</span>
+                                <span class="mt-1 text-sm text-gray-800 line-clamp-4 whitespace-pre-line [overflow-wrap:anywhere]">{{ note.latest?.preview }}</span>
+                            </button>
+                        </li>
+                    </ul>
 
-                    <div v-if="nextCursor" class="text-center">
-                        <SecondaryButton type="button" :disabled="loadingMore" @click="loadMore()">{{ loadingMore ? 'Loading…' : 'Show older entries' }}</SecondaryButton>
-                        <InputError role="alert" class="mt-2" :message="loadError" />
-                    </div>
+                    <!-- Pages of days. -->
+                    <nav v-if="pageInfo.lastPage > 1" aria-label="Journal pages" class="flex items-center justify-between gap-3 text-sm">
+                        <SecondaryButton type="button" :disabled="loadingDays || pageInfo.page <= 1" @click="goToPage(pageInfo.page - 1)">Newer days</SecondaryButton>
+                        <span>Page {{ pageInfo.page }} of {{ pageInfo.lastPage }}</span>
+                        <SecondaryButton type="button" :disabled="loadingDays || pageInfo.page >= pageInfo.lastPage" @click="goToPage(pageInfo.page + 1)">Older days</SecondaryButton>
+                    </nav>
 
-                    <div v-if="list.length || nextCursor" class="pt-4 border-t border-gray-200">
+                    <div v-if="pageInfo.total" class="pt-4 border-t border-gray-200">
                         <button type="button" class="text-sm text-red-700 underline hover:text-red-900" @click="confirming = 'all'">Delete my whole journal</button>
                     </div>
                 </section>
+
+                <!-- One day's entries, newest first. -->
+                <MiniModal :show="!!openDay" max-width="2xl" labelledby="journal-day-title" @close="closeDay">
+                    <div v-if="openDay" class="p-6 text-sm text-gray-700">
+                        <h3 id="journal-day-title" ref="dayHeading" tabindex="-1" class="text-lg font-semibold text-gray-900 focus:outline-none">{{ day(openDay.date) }}</h3>
+                        <p class="mt-1 text-xs text-gray-500" role="status">{{ dayLoading ? 'Loading…' : plural(openDay.entries, 'entry', 'entries') }}</p>
+                        <InputError role="alert" :message="dayError" />
+                        <article
+                            v-for="(entry, index) in dayEntries"
+                            :key="entry.id"
+                            class="mt-4 rounded-lg border p-4"
+                            :class="matches(entry) ? 'border-indigo-300 bg-indigo-50' : 'border-gray-200 bg-white'"
+                            :aria-labelledby="`journal-entry-${entry.id}`"
+                        >
+                            <h4 :id="`journal-entry-${entry.id}`" class="font-semibold text-gray-900 [overflow-wrap:anywhere]">
+                                {{ entry.title || 'Untitled' }} <span v-if="matches(entry)" class="ms-1 text-xs font-normal text-indigo-800">matches your search</span>
+                            </h4>
+                            <p class="mt-2 text-gray-800 whitespace-pre-line [overflow-wrap:anywhere]">{{ entry.content }}</p>
+                            <div class="mt-3 flex gap-3">
+                                <button type="button" class="min-h-[44px] px-2 text-indigo-700 underline hover:text-indigo-900" :aria-label="`Edit entry ${index + 1}${entry.title ? `, ${entry.title}` : ''}`" @click="startEdit(entry)">Edit</button>
+                                <button type="button" class="min-h-[44px] px-2 text-red-700 underline hover:text-red-900" :aria-label="`Delete entry ${index + 1}${entry.title ? `, ${entry.title}` : ''}`" @click="confirming = entry">Delete</button>
+                            </div>
+                        </article>
+                        <SecondaryButton v-if="dayCursor" type="button" class="mt-4" :disabled="dayLoading" @click="showDay(openDay, true)">Show more</SecondaryButton>
+                        <div class="mt-6 flex justify-end">
+                            <SecondaryButton type="button" @click="closeDay">Close</SecondaryButton>
+                        </div>
+                    </div>
+                </MiniModal>
 
                 <!-- Asks before deleting: nothing deleted can be brought back. The shared dialog keeps focus inside it. -->
                 <MiniModal :show="!!confirming" max-width="md" labelledby="journal-delete-title" @close="closeConfirm">

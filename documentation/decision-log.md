@@ -12803,3 +12803,40 @@ encrypted now and their PDF export waits; check-ins ship behind a switch kept of
   four-byte characters encrypt to ~36 KB, under TEXT's 64 KB) and encrypts existing rows, soft-deleted too, in chunks,
   skipping ones that already decrypt (safe to re-run), reversibly. Nothing searched note content. The PDF export of a
   counsellor's notes is left for later (a data-protection read first).
+
+---
+
+## SCRUM-439 + SCRUM-440 + SCRUM-438 — guardian display, journal day notes and search, counsellors' notes as a PDF (2026-11-15)
+
+The user's TODO (the guardian display; the journal as searchable day notes) boxed with the follow-up SCRUM-438. One
+PR. The user's answers: notes may leave the platform with safeguards; search all text; a day opens in a dialog; no
+paused/active status on guardians.
+
+- **Guardians (SCRUM-439):** plain lists with since-dates in the profile card; a minor sees only "Your guardians"
+  (minors can't be guardians -- from the shared `isAdult`); the remove dialog names the ward and says what follows.
+  Whether a guardianship is paused isn't shown (it could reveal a guardian's suspension). The people are eager-loaded
+  (it was a query per row). Who may do what is unchanged.
+- **Journal days (SCRUM-440):** a note per `written_on` day; "most recent in the day" = the newest written (`MAX(id)`),
+  not the last edited. Numbered pages of 12 days (the user said "paginated"; page numbers suit a grid). A day opens in
+  a dialog through the existing entries endpoint with a `date` filter.
+- **Journal search:** entries are encrypted, so the server reads only the owner's own entries in memory (chunks of
+  200, capped at 5,000) and matches case-insensitively -- the user's choice over a word index, which would store word
+  fingerprints anyone with the database could analyse. The term comes in a POST body (never a URL or an access log),
+  is never logged, the response isn't cached; 10 a minute (security review: each search decrypts the whole
+  journal), 30 seconds at most; a page past the end comes back as the last page, and pages stop at 1,000. `JournalEntry`'s "never search" comment
+  is now "searched only by its owner, in memory, never in SQL".
+- **Notes PDF (SCRUM-438):** a counsellor exports the notes **they** wrote on one therapy (1:1 or group) while they're
+  its counsellor -- an ended therapy included (the user's decision), never an urgent help chat. A note on a message
+  shows only when the message was sent, never the client's words. An anonymous client isn't named; no names in the
+  file name. The journal export's steps are now shared (`RunConfirmedExportAction`: one PDF at a time per person, the
+  lock before the code is checked, then password and two-factor, then the file; `tell()` once it exists) and its line-
+  break weighting (`PdfTextWeight`). The alert (`TherapyNotesExportedNotification`) is always sent. /privacy tells
+  clients counsellors can keep a copy of their own notes.
+- **Notes PDF, after the security and code reviews (taking the safer option, not asked):** a deleted therapy isn't
+  exportable (notes aren't viewable there either; "ended" was the user's decision, "deleted" wasn't); a counsellor
+  whose role is suspended can neither see nor use the export (`EnsureCanActAsCounsellorAction`, as for other counsellor
+  actions); the 1:1 and group routes share one `notes-export` limit of 3 an hour, so two routes don't double the
+  password guesses. Notes on discussion messages stay out (they aren't therapy session notes).
+- **Shared PDF form:** the journal's export form became `Components/ConfirmedPdfExport.vue` with ids per use, now that
+  the therapy page uses it too. `MiniModal` counts open dialogs, so closing one stacked on another (the journal's
+  delete over its day) no longer unlocks the page's scroll behind it.

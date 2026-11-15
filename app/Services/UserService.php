@@ -188,7 +188,7 @@ class UserService extends Service
 
     public function getGuardianship(User $user)
     {
-        $query = Guardianship::query();
+        $query = Guardianship::query()->with(['guardian', 'ward']);
 
         $query->where('ward_id', $user->id);
         $query->orWhere(function ($query) use ($user) {

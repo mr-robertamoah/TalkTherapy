@@ -6,6 +6,7 @@ use App\Actions\Organization\GetRetainerCoveringOrganizationAction;
 use App\Actions\OutcomeCheckIn\CheckInAccess;
 use App\Actions\Safety\EnsureCanFlagClientAction;
 use App\Actions\Therapy\ResolveTherapySponsorAction;
+use App\Actions\User\ConfirmItsYouAction;
 use App\Actions\VideoConsent\GetCurrentValidVideoConsentForTherapyAction;
 use App\Actions\VideoConsent\GetWardForVideoConsentableAction;
 use App\Enums\ConstantsEnum;
@@ -121,6 +122,12 @@ class TherapyResource extends JsonResource
             // SCRUM-381: only for that counsellor, while their client is paused -- whether a request
             // for a safeguarding exception is already waiting for the super administrator.
             'safeguardingExceptionRequested' => $this->when($pause['client'] === true, fn () => $this->requests()->pendingSafeguardingException()->exists()),
+            // SCRUM-438: only for its counsellor -- what exporting their notes as a PDF asks for
+            // (never while their counsellor role is suspended).
+            'notesExport' => $this->when(
+                (bool) ($user?->counsellor && ! $this->isHelpChat() && $this->isCounsellor($user->counsellor) && ! $user->isSuspendedAsCounsellor()),
+                fn () => [...ConfirmItsYouAction::new()->requirements($user), 'maxNotes' => (int) config('limits.notes_export_max_notes')],
+            ),
             // SCRUM-32: only for its counsellor, and only while the feature is on -- whether they can raise a
             // safety flag here now (the client's resource never has the key).
             'canRaiseSafetyFlag' => $this->when(

@@ -146,7 +146,7 @@ test('the group participant scopes agree, and never widen a caller\'s other cond
 // --- SCRUM-367 #1: rate limits ---------------------------------------------------------------
 
 test('every rate-limited route has its own counter, named after it, unless deliberately shared', function () {
-    $shared = ['session-actions', 'image-uploads', 'counsellor-update', 'message-show', 'transactions-initiate', 'video-provider'];
+    $shared = ['session-actions', 'image-uploads', 'counsellor-update', 'message-show', 'transactions-initiate', 'video-provider', 'notes-export'];
 
     $wrong = collect(app('router')->getRoutes()->getRoutes())
         ->flatMap(fn ($route) => collect($route->gatherMiddleware())

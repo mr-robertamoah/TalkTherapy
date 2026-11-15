@@ -7,6 +7,10 @@ use App\Models\JournalEntry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response as HttpResponse;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -16,6 +20,13 @@ use Inertia\Response;
 class JournalController extends Controller
 {
     private const PER_PAGE = 15;
+
+    // SCRUM-440: day notes per page (divides into 1, 2 and 3 columns).
+    public const DAYS_PER_PAGE = 12;
+
+    private const SEARCH_MIN = 2;
+
+    private const SEARCH_MAX = 100;
 
     public function index(Request $request): Response
     {
@@ -37,7 +48,91 @@ class JournalController extends Controller
     // The page's entries, a page at a time. Never stored by the browser (security review: they're decrypted).
     public function entries(Request $request): JsonResponse
     {
-        return $this->private(response()->json($this->page($request)));
+        // SCRUM-440: `date` -- one day's entries (the day dialog).
+        $date = $request->validate(['date' => ['nullable', 'date_format:Y-m-d']])['date'] ?? null;
+
+        return $this->private(response()->json($this->page($request, $date)));
+    }
+
+    // SCRUM-440 (the user's TODO): the journal as day notes -- one per day written, newest first, each with that day's
+    // most recent entry (the newest written, MAX(id)) and how many entries it has. Numbered pages.
+    public function days(Request $request): JsonResponse
+    {
+        $page = $request->user()->journalEntries()->toBase()
+            ->select('written_on')->selectRaw('count(*) as entries, max(id) as latest_id')
+            ->groupBy('written_on')->orderByDesc('written_on')
+            ->paginate(self::DAYS_PER_PAGE);
+
+        return $this->private(response()->json($this->dayNotes($request, collect($page->items())->map(fn ($day) => [
+            'date' => Carbon::parse($day->written_on)->toDateString(),
+            'entries' => (int) $day->entries,
+            'latestId' => (int) $day->latest_id,
+        ]), $page)));
+    }
+
+    // SCRUM-440: search titles and text. Entries are encrypted, so the person's own entries are read and matched here,
+    // in memory, a chunk at a time (as many as the journal holds, at most journal_max_entries); nothing is stored, nothing logged, and the term
+    // comes in the body (a POST) so it never lands in a URL or an access log. Results are the matching days.
+    public function search(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'q' => ['required', 'string', 'min:'.self::SEARCH_MIN, 'max:'.self::SEARCH_MAX],
+            'page' => ['nullable', 'integer', 'min:1', 'max:1000'],
+        ]);
+        set_time_limit(30);
+
+        $term = trim($validated['q']);
+        $matches = []; // date => [ids]
+        $request->user()->journalEntries()->select(['id', 'title', 'content', 'written_on'])->lazyById(200)
+            ->each(function (JournalEntry $entry) use ($term, &$matches) {
+                if (Str::contains($entry->title."\n".$entry->content, $term, ignoreCase: true)) {
+                    $matches[$entry->written_on->toDateString()][] = $entry->id;
+                }
+            });
+        krsort($matches);
+
+        $perPage = self::DAYS_PER_PAGE;
+        // A page past the end comes back as the last one (code review), so the page never walks back a page at a time.
+        $current = min((int) ($validated['page'] ?? 1), max(1, (int) ceil(count($matches) / $perPage)));
+        $slice = array_slice($matches, ($current - 1) * $perPage, $perPage, true);
+        // Each day's whole count (the dates' stored form differs between databases, so all days, then picked).
+        $totals = $slice ? $request->user()->journalEntries()->toBase()
+            ->selectRaw('written_on, count(*) as entries')->groupBy('written_on')->get()
+            ->mapWithKeys(fn ($row) => [Carbon::parse($row->written_on)->toDateString() => (int) $row->entries])
+            : collect();
+
+        $paginator = new LengthAwarePaginator([], count($matches), $perPage, $current);
+
+        return $this->private(response()->json($this->dayNotes($request, collect($slice)->map(fn (array $ids, string $date) => [
+            'date' => $date,
+            'entries' => $totals[$date] ?? count($ids),
+            'matches' => count($ids),
+            'latestId' => max($ids),
+        ])->values(), $paginator)));
+    }
+
+    // The notes: each day's preview entry (its title, or the start of its text), loaded in one query.
+    private function dayNotes(Request $request, Collection $days, $paginator): array
+    {
+        $latest = $request->user()->journalEntries()->whereKey($days->pluck('latestId'))->get()->keyBy('id');
+
+        return [
+            'data' => $days->map(function (array $day) use ($latest) {
+                $entry = $latest->get($day['latestId']);
+
+                return [
+                    ...collect($day)->except('latestId')->all(),
+                    'latest' => $entry ? [
+                        'id' => $entry->id,
+                        'title' => $entry->title,
+                        'preview' => Str::limit($entry->content, 240),
+                    ] : null,
+                ];
+            })->all(),
+            'page' => $paginator->currentPage(),
+            'lastPage' => $paginator->lastPage(),
+            'total' => $paginator->total(),
+        ];
     }
 
     public function store(Request $request): JsonResponse
@@ -74,9 +169,10 @@ class JournalController extends Controller
         return response()->noContent();
     }
 
-    private function page(Request $request): array
+    private function page(Request $request, ?string $date = null): array
     {
         $page = $request->user()->journalEntries()
+            ->when($date, fn ($q) => $q->whereDate('written_on', $date))
             ->orderByDesc('written_on')->orderByDesc('id')
             ->cursorPaginate(self::PER_PAGE);
 

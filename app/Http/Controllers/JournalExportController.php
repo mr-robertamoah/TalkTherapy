@@ -3,14 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Actions\User\ConfirmItsYouAction;
+use App\Actions\User\RunConfirmedExportAction;
 use App\Models\JournalEntry;
 use App\Models\User;
 use App\Notifications\JournalExportedNotification;
+use App\Support\PdfTextWeight;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Notification;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -24,37 +24,19 @@ class JournalExportController extends Controller
     public function __invoke(Request $request): Response
     {
         $user = $request->user();
-        $gate = ConfirmItsYouAction::new();
 
         $validated = $request->validate([
-            ...$gate->rules($user),
+            ...ConfirmItsYouAction::new()->rules($user),
             'from' => ['nullable', 'date_format:Y-m-d'],
             'to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:from'],
         ]);
 
-        // One at a time per person, taken before the code is checked (security review: a second request mustn't use up a
-        // one-time code only to be turned away); then the password and code -- nothing about the entries is said before.
-        $lock = Cache::lock('journal-export:'.$user->id, 120);
-
-        if (! $lock->get()) {
-            throw ValidationException::withMessages(['form' => 'Your PDF is already being made. Please wait a moment.']);
-        }
-
-        try {
-            $gate->execute($user, $validated, 'your journal');
-            $pdf = $this->render($user, $validated);
-        } finally {
-            $lock->release();
-        }
+        $export = RunConfirmedExportAction::new();
+        $pdf = $export->execute($user, $validated, 'your journal', fn () => $this->render($user, $validated));
 
         // Only now that the file exists (code review).
         Log::notice('Journal exported', ['user_id' => $user->id, 'entries' => $pdf['entries']]);
-        $notification = new JournalExportedNotification(now()->toDayDateTimeString().' (UTC)');
-        $user->notify($notification);
-        // As for a copy of their data: after a recent email change, the address it replaced hears too.
-        if ($previous = $user->recentlyReplacedEmail()) {
-            Notification::route('mail', $previous)->notify($notification);
-        }
+        $export->tell($user, new JournalExportedNotification(now()->toDayDateTimeString().' (UTC)'));
 
         return response($pdf['file'], 200, [
             'Content-Type' => 'application/pdf',
@@ -67,9 +49,7 @@ class JournalExportController extends Controller
     // prose (devops review, measured -- 15 entries of bare line breaks took 50 s), so the cap counts them that way.
     public static function weight(JournalEntry $entry): int
     {
-        $text = $entry->content."\n".$entry->title;
-
-        return mb_strlen($text) + 100 * substr_count($text, "\n");
+        return PdfTextWeight::of($entry->content, $entry->title);
     }
 
     /**

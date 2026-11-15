@@ -23,7 +23,7 @@ const NCH_ALWAYS_SENT = [
     Notifications\EmailChangedNotification::class, Notifications\ConfirmNewEmailNotification::class,
     Notifications\VerifyEmailNotification::class, Notifications\VerifyCounsellorEmailNotification::class,
     Notifications\AccountEmailChangedByTeamNotification::class, Notifications\DataCopyDownloadedNotification::class,
-    Notifications\JournalExportedNotification::class, Notifications\AccountDeletedNotification::class,
+    Notifications\JournalExportedNotification::class, Notifications\TherapyNotesExportedNotification::class, Notifications\AccountDeletedNotification::class,
     Notifications\CounsellorAccountDeletedNotification::class, Notifications\PayoutDestinationChangedNotification::class,
     // Safety and urgent help
     Notifications\SafetyNoticeNotification::class, Notifications\GuardianSafetyNoticeNotification::class,
