@@ -7,12 +7,13 @@ import AdminLayout from '@/Layouts/AdminLayout.vue'
 import Alert from '@/Components/Alert.vue'
 import FormLoader from '@/Components/FormLoader.vue'
 import PrimaryButton from '@/Components/PrimaryButton.vue'
-import TestimonialComponent from '@/Components/TestimonialComponent.vue'
+import AdminTable from '@/Components/Admin/AdminTable.vue'
+import AdminTestimonialRow from '@/Components/Admin/AdminTestimonialRow.vue'
 import useAlert from '@/Composables/useAlert'
 
 defineOptions({ layout: AdminLayout })
 
-const { alertData, clearAlertData, setFailedAlertData } = useAlert()
+const { alertData, clearAlertData, setFailedAlertData, setSuccessAlertData } = useAlert()
 
 const testimonials = ref([])
 const nextPage = ref(1)
@@ -36,29 +37,44 @@ async function getTestimonials() {
 }
 
 onMounted(getTestimonials)
+
+// SCRUM-430: a table.
+const columns = [
+    { label: 'By' },
+    { label: 'Testimonial' },
+    { label: 'On the site' },
+    { label: 'Actions', srOnly: true },
+]
+
+function updated(testimonial) {
+    const index = testimonials.value.findIndex((t) => t.id === testimonial.id)
+    if (index !== -1) testimonials.value.splice(index, 1, testimonial)
+    setSuccessAlertData({ message: testimonial.use ? 'The testimonial is now shown on the site.' : 'The testimonial is no longer shown on the site.' })
+}
 </script>
 
 <template>
     <Head title="Testimonials" />
 
-    <div class="my-8 w-full max-w-5xl mx-auto space-y-6 px-4">
+    <div class="my-8 w-full max-w-7xl mx-auto space-y-6 px-4">
         <div>
             <h1 class="text-2xl font-bold text-gray-900">Testimonials</h1>
             <div class="w-16 h-1 bg-blue-600 mt-2"></div>
             <p class="mt-2 text-sm text-gray-600">What people have written about TalkTherapy.</p>
         </div>
 
-        <div class="relative bg-white shadow-sm border border-gray-200 rounded-lg p-4 sm:p-6 space-y-3">
+        <div class="relative space-y-4">
             <FormLoader class="mx-auto" :show="loading" :text="'getting testimonials'" />
 
-            <div v-if="!loading && testimonials.length === 0" class="text-sm text-gray-600">No testimonials yet.</div>
-
-            <TestimonialComponent
-                v-for="testimonial in testimonials"
-                :key="testimonial.id"
-                :testimonial="testimonial"
-                class="w-full"
-            />
+            <AdminTable :columns="columns" caption="Testimonials" :empty="!loading && testimonials.length === 0" empty-text="No testimonials yet.">
+                <AdminTestimonialRow
+                    v-for="testimonial in testimonials"
+                    :key="testimonial.id"
+                    :testimonial="testimonial"
+                    @updated="updated"
+                    @failed="(message) => setFailedAlertData({ message })"
+                />
+            </AdminTable>
 
             <div v-if="nextPage && testimonials.length && !loading" class="flex justify-center pt-2">
                 <PrimaryButton @click="getTestimonials">get more</PrimaryButton>

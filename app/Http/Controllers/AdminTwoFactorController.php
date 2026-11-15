@@ -7,6 +7,7 @@ use App\Actions\TwoFactor\ResetTwoFactorByAdminAction;
 use App\Http\Resources\AdminUserResource;
 use App\Models\TwoFactorReset;
 use App\Models\User;
+use App\Services\UserService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -30,7 +31,7 @@ class AdminTwoFactorController extends Controller
 
         ResetTwoFactorByAdminAction::new()->execute($request->user(), $user, $validated['code'] ?? null, $request->ip(), $validated['reason'] ?? null);
 
-        return response()->json(['user' => new AdminUserResource($user->fresh(['administrator', 'pendingTwoFactorReset']))]);
+        return response()->json(['user' => new AdminUserResource(UserService::forAdminRow($user->fresh()))]);
     }
 
     // SCRUM-424: a super administrator stops a scheduled reset (only ever makes the account safer -- no password asked).
@@ -51,6 +52,6 @@ class AdminTwoFactorController extends Controller
             return response()->json(['message' => 'There is no scheduled reset for this account.'], 422);
         }
 
-        return response()->json(['user' => new AdminUserResource($user->fresh(['administrator', 'pendingTwoFactorReset']))]);
+        return response()->json(['user' => new AdminUserResource(UserService::forAdminRow($user->fresh()))]);
     }
 }

@@ -5,6 +5,9 @@
 import { Head, Link } from '@inertiajs/vue3'
 import { computed, ref } from 'vue'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
+import AdminTable from '@/Components/Admin/AdminTable.vue'
+import AdminRow from '@/Components/Admin/AdminRow.vue'
+import AdminCell from '@/Components/Admin/AdminCell.vue'
 
 defineOptions({ layout: AdminLayout })
 
@@ -52,6 +55,12 @@ const currencies = computed(() => {
     return [...codes].sort()
 })
 
+// SCRUM-430: the money table as the shared admin table -- a column per currency.
+const moneyColumns = computed(() => [
+    { label: 'Measure', srOnly: true },
+    ...currencies.value.map((code) => ({ label: code })),
+])
+
 function href(item) {
     return route(item.route, item.params ?? {})
 }
@@ -82,7 +91,7 @@ const asOf = computed(() => props.stats.asOf ? new Date(props.stats.asOf).toLoca
 <template>
     <Head title="Administration" />
 
-    <div class="my-8 w-full max-w-6xl mx-auto space-y-8 px-4">
+    <div class="my-8 w-full max-w-7xl mx-auto space-y-8 px-4">
         <div>
             <h1 class="text-2xl font-bold text-gray-900">Overview</h1>
             <div class="w-16 h-1 bg-blue-600 mt-2"></div>
@@ -183,32 +192,29 @@ const asOf = computed(() => props.stats.asOf ? new Date(props.stats.asOf).toLoca
                 </div>
             </div>
 
-            <div class="bg-white shadow-sm border border-gray-200 rounded-lg p-4 sm:p-6">
-                <h3 class="text-sm font-semibold text-gray-900">Money, {{ period.label.toLowerCase() }}</h3>
-                <p class="text-xs text-gray-500">Per currency, never added across currencies. Successful, non-reversed amounts only.</p>
-
-                <div v-if="currencies.length === 0" class="mt-3 text-sm text-gray-600">No money moved in this period.</div>
-                <div v-else class="mt-3 overflow-x-auto">
-                    <table class="w-full text-sm text-left">
-                        <thead>
-                            <tr class="text-gray-500 border-b border-gray-200">
-                                <th scope="col" class="py-2 pr-4 font-medium"></th>
-                                <th v-for="code in currencies" :key="code" scope="col" class="py-2 pr-4 font-medium">{{ code }}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="row in moneyRows" :key="row.key" class="border-b border-gray-100 align-top">
-                                <th scope="row" class="py-2 pr-4 font-normal text-gray-700">{{ row.label }}</th>
-                                <td v-for="code in currencies" :key="code" class="py-2 pr-4">
-                                    <div class="font-semibold text-gray-900">{{ money(current.money?.[row.key]?.[code]) }}</div>
-                                    <div v-if="previous" class="text-xs text-gray-600">
-                                        {{ change(current.money?.[row.key]?.[code] ?? 0, previous.money?.[row.key]?.[code] ?? 0, money) }}
-                                    </div>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
+            <div class="space-y-3">
+                <div>
+                    <h3 class="text-sm font-semibold text-gray-900">Money, {{ period.label.toLowerCase() }}</h3>
+                    <p class="text-xs text-gray-500">Per currency, never added across currencies. Successful, non-reversed amounts only.</p>
                 </div>
+
+                <AdminTable
+                    :columns="moneyColumns"
+                    :caption="`Money, ${period.label.toLowerCase()}, per currency`"
+                    :empty="currencies.length === 0"
+                    empty-text="No money moved in this period."
+                >
+                    <AdminRow v-for="row in moneyRows" :key="row.key">
+                        <!-- The row's name stays a row header (AdminCell is a plain td). -->
+                        <th scope="row" class="block col-span-2 md:table-cell py-1.5 md:px-4 md:py-3 align-top font-medium md:font-normal text-gray-900 md:text-gray-700">{{ row.label }}</th>
+                        <AdminCell v-for="code in currencies" :key="code" :label="code">
+                            <div class="font-semibold text-gray-900">{{ money(current.money?.[row.key]?.[code]) }}</div>
+                            <div v-if="previous" class="text-xs text-gray-600">
+                                {{ change(current.money?.[row.key]?.[code] ?? 0, previous.money?.[row.key]?.[code] ?? 0, money) }}
+                            </div>
+                        </AdminCell>
+                    </AdminRow>
+                </AdminTable>
             </div>
         </section>
     </div>

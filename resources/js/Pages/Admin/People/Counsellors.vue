@@ -5,10 +5,17 @@
 import { Head } from '@inertiajs/vue3'
 import { onMounted, ref, watch } from 'vue'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
-import CounsellorComponent from '@/Components/CounsellorComponent.vue'
 import FormLoader from '@/Components/FormLoader.vue'
 import PrimaryButton from '@/Components/PrimaryButton.vue'
+import SecondaryButton from '@/Components/SecondaryButton.vue'
+import DangerButton from '@/Components/DangerButton.vue'
+import MiniModal from '@/Components/MiniModal.vue'
+import CounsellorModal from '@/Components/CounsellorModal.vue'
+import Alert from '@/Components/Alert.vue'
 import AdminSearchBox from '@/Components/Admin/AdminSearchBox.vue'
+import AdminTable from '@/Components/Admin/AdminTable.vue'
+import AdminCounsellorRow from '@/Components/Admin/AdminCounsellorRow.vue'
+import useAlert from '@/Composables/useAlert'
 
 defineOptions({ layout: AdminLayout })
 
@@ -66,44 +73,106 @@ watch(() => props.search, (search) => {
 
 onMounted(() => getCounsellors({ reset: true }))
 
-function deletedCounsellor(counsellor) {
-    counsellors.value = counsellors.value.filter((c) => c.id !== counsellor.id)
+// SCRUM-430: a table; the delete confirmation is the page's (one for the list).
+const columns = [
+    { label: 'Counsellor' },
+    { label: 'Profession' },
+    { label: 'Contact' },
+    { label: 'Verification' },
+    { label: 'Actions', srOnly: true },
+]
+
+const { alertData, setFailedAlertData, setSuccessAlertData, clearAlertData } = useAlert()
+const toDelete = ref(null)
+const viewing = ref(null)
+const lastViewed = ref(null)
+const deleting = ref(false)
+
+async function deleteCounsellor() {
+    const counsellor = toDelete.value
+    if (!counsellor || deleting.value) return
+    deleting.value = true
+
+    await axios.delete(route('admin.counsellors.delete', { counsellorId: counsellor.id }))
+        .then(() => {
+            setSuccessAlertData({ message: `${counsellor.name}'s counsellor account has been deleted.` })
+            counsellors.value = counsellors.value.filter((c) => c.id !== counsellor.id)
+            toDelete.value = null
+        })
+        .catch((err) => {
+            setFailedAlertData({ message: err.response?.data?.message ?? 'Something unfortunate happened. Please try again later.' })
+        })
+        .finally(() => { deleting.value = false })
 }
 </script>
 
 <template>
     <Head title="Counsellors" />
 
-    <div class="my-8 w-full max-w-5xl mx-auto space-y-6 px-4">
+    <div class="my-8 w-full max-w-7xl mx-auto space-y-6 px-4">
         <div>
             <h1 class="text-2xl font-bold text-gray-900">Counsellors</h1>
             <div class="w-16 h-1 bg-blue-600 mt-2"></div>
             <p class="mt-2 text-sm text-gray-600">Every counsellor profile. A super administrator can remove one that has nothing in progress.</p>
         </div>
 
-        <div class="bg-white shadow-sm border border-gray-200 rounded-lg p-4 sm:p-6 space-y-4">
-            <AdminSearchBox :model-value="term" label="Search by name or username" @search="searchFor" />
+        <AdminSearchBox :model-value="term" label="Search by name or username" @search="searchFor" />
 
-            <div class="relative space-y-3">
-                <FormLoader class="mx-auto" :show="loading" :text="'getting counsellors'" />
+        <div class="relative">
+            <FormLoader class="mx-auto" :show="loading" :text="'getting counsellors'" />
 
-                <div v-if="!loading && counsellors.length === 0" class="text-sm text-gray-600">No counsellors found.</div>
+            <AdminTable
+                :columns="columns"
+                caption="Counsellors"
+                :empty="!loading && counsellors.length === 0"
+                empty-text="No counsellors found."
+            >
+                <AdminCounsellorRow
+                    v-for="counsellor in counsellors"
+                    :key="counsellor.id"
+                    :counsellor="counsellor"
+                    @view="(c) => { viewing = c; lastViewed = c }"
+                    @delete="(c) => toDelete = c"
+                />
+            </AdminTable>
 
-                <div class="flex flex-wrap gap-3">
-                    <CounsellorComponent
-                        v-for="counsellor in counsellors"
-                        :key="counsellor.id"
-                        :counsellor="counsellor"
-                        :can-delete="true"
-                        class="bg-stone-200"
-                        @deleted="deletedCounsellor(counsellor)"
-                    />
-                </div>
-
-                <div v-if="nextPage && counsellors.length && !loading" class="flex justify-center pt-2">
-                    <PrimaryButton @click="() => getCounsellors()">get more</PrimaryButton>
-                </div>
+            <div v-if="nextPage && counsellors.length && !loading" class="flex justify-center pt-6">
+                <PrimaryButton @click="() => getCounsellors()">get more</PrimaryButton>
             </div>
         </div>
     </div>
+
+    <!-- Kept mounted once opened (the last one shown), so it opens and closes like any modal. -->
+    <CounsellorModal v-if="lastViewed" :show="!!viewing" :counsellor="lastViewed" @close="() => viewing = null" />
+
+    <MiniModal :show="!!toDelete" @close="() => toDelete = null">
+        <div v-if="toDelete">
+            <FormLoader :danger="true" class="mx-auto" :show="deleting" :text="'deleting counsellor account'"/>
+            <div class="text-gray-800 text-center font-bold tracking-wide">
+                Delete {{ toDelete.name }}'s counsellor account
+            </div>
+
+            <hr class="my-2">
+
+            <div class="my-4 text-sm text-red-700 text-center w-[90%] mx-auto font-bold tracking-wide">
+                Are you sure you want to delete this counsellor account? This is the same eligibility-gated
+                deletion the counsellor themselves would trigger -- it will fail if they have pending sessions,
+                an in-session therapy, an active group therapy or organization affiliation, or pending requests
+                awaiting their decision.
+            </div>
+
+            <div class="flex space-x-2 justify-end items-center w-full p-2">
+                <SecondaryButton type="button" @click="() => toDelete = null" class="shrink-0">cancel</SecondaryButton>
+                <DangerButton :disabled="deleting" @click="deleteCounsellor" class="shrink-0">delete</DangerButton>
+            </div>
+        </div>
+    </MiniModal>
+
+    <Alert
+        :show="alertData.show"
+        :type="alertData.type"
+        :message="alertData.message"
+        :time="alertData.time"
+        @close="clearAlertData"
+    />
 </template>

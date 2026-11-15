@@ -184,7 +184,7 @@ const userData = ref({
     country: '',
     otherNames: '',
     email: '',
-    emailVerified: null,
+    emailVerified: false,
     dob: '',
 })
 const userErrors = ref({
@@ -197,11 +197,12 @@ const userErrors = ref({
     dob: '',
 })
 
-watch(() => props.show, () => {
-    if (!props.show) return
+// Immediate (SCRUM-430): the users list creates this modal already open, for the person picked.
+watch(() => [props.show, props.user?.id], () => {
+    if (!props.show || !props.user) return
 
     setUserData()
-})
+}, { immediate: true })
 
 // SCRUM-425: only a super administrator changes someone's email, and never an administrator's (the server refuses
 // too); a changed address is never ticked verified here.
@@ -282,7 +283,7 @@ function clearUserData() {
     userData.value.email = ''
     userData.value.dob = ''
     userData.value.country = ''
-    userData.value.emailVerified = null
+    userData.value.emailVerified = false
 }
 
 function setUserData() {

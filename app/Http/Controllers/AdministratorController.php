@@ -164,7 +164,8 @@ class AdministratorController extends Controller
                 ])
             );
 
-            return $this->successResponse($request, ['user' => new AdminUserResource($user)]);
+            // SCRUM-430: the row comes back as the list shows it (a scheduled reset, the role, suspended).
+            return $this->successResponse($request, ['user' => new AdminUserResource(UserService::forAdminRow($user->fresh()))]);
         } catch (Throwable $th) {
 
             return $this->failureResponse($request, $th);

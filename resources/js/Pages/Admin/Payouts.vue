@@ -1,5 +1,9 @@
 <script setup>
 import AdminSearchBox from '@/Components/Admin/AdminSearchBox.vue'
+import AdminTable from '@/Components/Admin/AdminTable.vue'
+import AdminRow from '@/Components/Admin/AdminRow.vue'
+import AdminCell from '@/Components/Admin/AdminCell.vue'
+import AdminStatusPill from '@/Components/Admin/AdminStatusPill.vue'
 import Alert from '@/Components/Alert.vue';
 import FormLoader from '@/Components/FormLoader.vue';
 import InputError from '@/Components/InputError.vue';
@@ -198,12 +202,22 @@ function searchHistory(term) {
     reloadPayoutHistory()
 }
 
-function statusClass(status) {
-    return {
-        'text-green-700': status === 'SUCCEEDED',
-        'text-red-700': status === 'FAILED',
-        'text-gray-600': !['SUCCEEDED', 'FAILED'].includes(status),
-    }
+// SCRUM-430: the history as the shared admin table; a payout's status as a pill.
+const historyColumns = [
+    { label: 'Counsellor' },
+    { label: 'Amount' },
+    { label: 'Status' },
+    { label: 'Initiated by' },
+    { label: 'Reference' },
+    { label: 'Failure reason' },
+    { label: 'Date' },
+]
+
+function statusTone(status) {
+    if (status === 'SUCCEEDED') return 'green'
+    if (status === 'FAILED') return 'red'
+
+    return 'gray'
 }
 </script>
 
@@ -211,7 +225,7 @@ function statusClass(status) {
     <Head title="Admin Payouts" />
 
     <div>
-        <div class="my-8 w-full max-w-6xl mx-auto space-y-8 px-4">
+        <div class="my-8 w-full max-w-7xl mx-auto space-y-8 px-4">
 
             <!-- Platform Settings -->
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg p-6">
@@ -323,47 +337,31 @@ function statusClass(status) {
             </div>
 
             <!-- Payout Audit History -->
-            <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg p-6">
-                <div class="text-lg font-medium text-gray-900">Payout History</div>
-                <AdminSearchBox class="mt-3" label="Search payouts by the counsellor's name or username, or the reference" @search="searchHistory" />
-                <div class="mt-1 text-sm text-gray-600">All payouts across every counsellor.</div>
+            <section aria-labelledby="payout-history-heading" class="space-y-4">
+                <div>
+                    <h2 id="payout-history-heading" class="text-lg font-medium text-gray-900">Payout History</h2>
+                    <AdminSearchBox class="mt-3" label="Search payouts by the counsellor's name or username, or the reference" @search="searchHistory" />
+                    <div class="mt-1 text-sm text-gray-600">All payouts across every counsellor.</div>
+                </div>
 
-                <div class="relative mt-4">
+                <div class="relative space-y-4">
                     <FormLoader class="mx-auto" :show="loadingHistoryPage" :text="'loading payouts'" />
 
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-sm text-left">
-                            <thead>
-                                <tr class="text-gray-500 border-b border-gray-200">
-                                    <th class="py-2 pr-4">Counsellor</th>
-                                    <th class="py-2 pr-4">Amount</th>
-                                    <th class="py-2 pr-4">Status</th>
-                                    <th class="py-2 pr-4">Initiated By</th>
-                                    <th class="py-2 pr-4">Reference</th>
-                                    <th class="py-2 pr-4">Failure Reason</th>
-                                    <th class="py-2 pr-4">Date</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr v-for="payout in history.data" :key="payout.id" class="border-b border-gray-100">
-                                    <td class="py-2 pr-4">{{ payout.counsellorName }}</td>
-                                    <td class="py-2 pr-4">{{ formatMoney(payout.amount, payout.currency) }}</td>
-                                    <td class="py-2 pr-4 font-medium" :class="statusClass(payout.status)">{{ payout.status.toLowerCase() }}</td>
-                                    <td class="py-2 pr-4">{{ payout.initiatedBy }}</td>
-                                    <td class="py-2 pr-4">{{ payout.reference }}</td>
-                                    <td class="py-2 pr-4 text-red-700">{{ payout.failureMessage }}</td>
-                                    <td class="py-2 pr-4">{{ new Date(payout.createdAt).toLocaleDateString() }}</td>
-                                </tr>
-                                <tr v-if="!history.data.length">
-                                    <td colspan="7" class="py-4 text-center text-gray-500">No payouts yet.</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
+                    <AdminTable :columns="historyColumns" caption="Payout history" :empty="!history.data.length" empty-text="No payouts yet.">
+                        <AdminRow v-for="payout in history.data" :key="payout.id">
+                            <AdminCell label="Counsellor"><span class="font-medium text-gray-900">{{ payout.counsellorName }}</span></AdminCell>
+                            <AdminCell label="Amount">{{ formatMoney(payout.amount, payout.currency) }}</AdminCell>
+                            <AdminCell label="Status"><AdminStatusPill :label="payout.status.toLowerCase()" :tone="statusTone(payout.status)" /></AdminCell>
+                            <AdminCell label="Initiated by">{{ payout.initiatedBy }}</AdminCell>
+                            <AdminCell label="Reference"><span class="break-all">{{ payout.reference }}</span></AdminCell>
+                            <AdminCell label="Failure reason"><span class="text-red-700">{{ payout.failureMessage }}</span></AdminCell>
+                            <AdminCell label="Date"><span class="whitespace-nowrap">{{ new Date(payout.createdAt).toLocaleDateString() }}</span></AdminCell>
+                        </AdminRow>
+                    </AdminTable>
 
                     <Pagination :meta="history.meta" @navigate="goToHistoryPage" />
                 </div>
-            </div>
+            </section>
         </div>
 
         <Alert
