@@ -34,7 +34,7 @@ function refusedFor350($response): void
 }
 
 test('a guardianship link can only be for yourself', function () {
-    $user = User::factory()->adult()->create();
+    $user = User::factory()->create(['dob' => now()->subYears(15)->toDateString()]); // SCRUM-441: only under-18s ask for guardians
     $victim = User::factory()->adult()->create();
 
     refusedFor350($this->actingAs($user)->postJson(route('api.links.create'), linkPayloadFor350($user, 'GUARDIANSHIP', 'User', $victim->id)));
@@ -95,7 +95,7 @@ function anOldLinkFor350(User $creator, string $type, $for): Link
 
 test('an old guardianship link for someone else can\'t be used, even though it is active', function () {
     $attacker = User::factory()->adult()->create();
-    $victim = User::factory()->adult()->create();
+    $victim = User::factory()->create(['dob' => now()->subYears(15)->toDateString()]); // SCRUM-441: only under-18s take up a guardian
     $link = anOldLinkFor350($attacker, 'GUARDIANSHIP', $victim);
     $accomplice = User::factory()->adult()->create();
 

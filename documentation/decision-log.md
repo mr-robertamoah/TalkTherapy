@@ -12840,3 +12840,28 @@ paused/active status on guardians.
 - **Shared PDF form:** the journal's export form became `Components/ConfirmedPdfExport.vue` with ids per use, now that
   the therapy page uses it too. `MiniModal` counts open dialogs, so closing one stacked on another (the journal's
   delete over its day) no longer unlocks the page's scroll behind it.
+
+## SCRUM-441 + SCRUM-421 — guardians for under-18s only; organisations still don't start therapies (2026-11-15)
+
+- **SCRUM-421 (the user's decision):** closed as "still not now", as decided on 2026-11-12. The conditions for any
+  later revisit stay on the ticket.
+- **Guardians for under-18s only (the user's decision):** the profile shows "Add a guardian" only to someone under 18.
+  The server refuses a request or a guardianship link from anyone 18 or over (no date of birth counts as under 18,
+  as `User::isAdult()` already does), and refuses to take up either once its ward has turned 18. Existing
+  guardianships are untouched (`ward_was_minor_at_creation` keeps its meaning).
+  `EnsureUserCanCreateLinkForAction::mayCreate` was left alone, because a past clean-up migration reuses it; the check
+  sits in `LinkService::createLink` instead.
+- **Guardian picker:** `api.users` takes `for=guardian` and then lists only people who could be a guardian (18 or
+  over, a verified email), the rule `EnsureUserCanBeGuardianAction` already enforced on sending. Other pickers are
+  unchanged.
+- **After the security review:** the `for=guardian` filter answers only someone whose date of birth makes them under
+  18 -- an adult, or an account with no date of birth (sign-up doesn't ask), gets an empty list -- since run with and
+  without it the filter would pick out who is a minor. Without a date of birth the dialog asks for one first; the
+  link can still be shared. The 18th-birthday cut-off uses `subYearsNoOverflow`, so 29 February agrees with
+  `isAdult()`. The admin drawer uses the same scroll lock. Refusals seen by
+  someone other than the ward don't give the ward's age: an old link says "no longer active", an old request "can no
+  longer be accepted". The rule is only as strong as a self-declared date of birth (the SCRUM-382 limit still applies
+  to a new account with no relationships) unless age verification becomes required. Old links and pending requests
+  of a ward who has turned 18 stay listed but are refused when used; tidying them is left for later.
+- **Dialogs:** `Modal` and `MiniModal` share one scroll lock (`useScrollLock`), so a dialog closing while another is
+  open no longer lets the page behind scroll.

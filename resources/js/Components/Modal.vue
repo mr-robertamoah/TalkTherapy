@@ -1,6 +1,7 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import useFocusTrap from '@/Composables/useFocusTrap';
+import useScrollLock from '@/Composables/useScrollLock';
 
 const props = defineProps({
     show: {
@@ -36,16 +37,7 @@ const emit = defineEmits(['close']);
 const dialog = ref(null);
 const { isTop } = useFocusTrap(dialog, () => props.show);
 
-watch(
-    () => props.show,
-    () => {
-        if (props.show) {
-            document.body.style.overflow = 'hidden';
-        } else {
-            document.body.style.overflow = null;
-        }
-    }
-);
+useScrollLock(() => props.show);
 
 const close = () => {
     if (props.closeable) {
@@ -64,7 +56,6 @@ onMounted(() => document.addEventListener('keydown', closeOnEscape));
 
 onUnmounted(() => {
     document.removeEventListener('keydown', closeOnEscape);
-    document.body.style.overflow = null;
 });
 
 const maxWidthClass = computed(() => {

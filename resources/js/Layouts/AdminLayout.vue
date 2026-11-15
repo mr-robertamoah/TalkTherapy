@@ -11,6 +11,7 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue'
 import AdminNavList from '@/Components/AdminNavList.vue'
 import useAdminBadges from '@/Composables/useAdminBadges'
+import useScrollLock from '@/Composables/useScrollLock'
 import { acquireChannel, acquireUserChannel } from '@/Composables/sharedChannel'
 import { router, usePage } from '@inertiajs/vue3'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -57,12 +58,13 @@ onMounted(() => {
 
 // Mobile drawer.
 const drawerOpen = ref(false)
+// SCRUM-441: the shared lock, so the drawer and a dialog never unlock each other.
+useScrollLock(() => drawerOpen.value)
 const toggleButton = ref(null)
 const drawer = ref(null)
 
 function openDrawer() {
     drawerOpen.value = true
-    document.body.style.overflow = 'hidden'
     nextTick(() => focusables()[0]?.focus())
 }
 
@@ -70,7 +72,6 @@ function closeDrawer({ restoreFocus = true } = {}) {
     if (!drawerOpen.value) return
 
     drawerOpen.value = false
-    document.body.style.overflow = ''
     if (restoreFocus) nextTick(() => toggleButton.value?.focus())
 }
 
@@ -110,7 +111,6 @@ onBeforeUnmount(() => {
     stopListening()
     stopListeningForSuccess()
     wideViewport?.removeEventListener('change', onViewportChange)
-    document.body.style.overflow = ''
 })
 </script>
 
