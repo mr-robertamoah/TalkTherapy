@@ -173,7 +173,7 @@ function updatePage(res, data) {
 async function getUsers() {
     setGetting('users')
 
-    await axios.get(route(`api.users`, {page: users.value.page, like: userSearch.value}))
+    await axios.get(route(`api.users`, {page: users.value.page, like: userSearch.value, for: 'guardian'}))
         .then((res) => {
             
             if (users.value.page == 1)
@@ -255,7 +255,12 @@ function closeModal() {
             </p>
             <p class="mt-2 text-green-800" role="status">{{ statusText }}</p>
 
-            <section class="mt-4" aria-labelledby="add-guardian-search-title">
+            <!-- SCRUM-441: finding a guardian needs your date of birth (it shows you're under 18). -->
+            <p v-if="!user?.dob" class="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3 text-gray-700">
+                To find someone by name, first add your date of birth in your profile details. You can still share a
+                guardianship link below.
+            </p>
+            <section v-else class="mt-4" aria-labelledby="add-guardian-search-title">
                 <h3 id="add-guardian-search-title" class="font-semibold text-gray-900">Find them</h3>
                 <label for="add-guardian-search" class="mt-2 block text-xs font-medium text-gray-700">Name or username</label>
                 <TextInput id="add-guardian-search" v-model="userSearch" type="search" class="mt-1 block w-full" autocomplete="off" />

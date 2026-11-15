@@ -3,6 +3,7 @@
 namespace App\Actions\Request;
 
 use App\Actions\Action;
+use App\Actions\Guardianship\EnsureCanHaveNewGuardianAction;
 use App\Actions\Guardianship\HandleGuardianRestoredAction;
 use App\Actions\User\EnsureUserCanBeGuardianAction;
 use App\DTOs\CreateRequestDTO;
@@ -31,6 +32,8 @@ class RespondToGuardianshipRequestAction extends Action
         // reject payload, since 'rejected' is non-null. Must key off "is this actually an
         // accept" instead.
         if (strtoupper((string) $requestResponseDTO->response) === RequestStatusEnum::accepted->value) {
+            // SCRUM-441: not once the person asking has turned 18 -- in words that don't give their age (security review).
+            EnsureCanHaveNewGuardianAction::new()->execute($requestResponseDTO->request->from, EnsureCanHaveNewGuardianAction::NO_LONGER);
             EnsureUserCanBeGuardianAction::new()->execute(
                 CreateRequestDTO::new()->fromArray(['to' => $requestResponseDTO->request->to]),
                 'You are trying to respond to a guardianship request but do not qualify to be a guardian because you are not an adult, have not set date or birth, have not set email or have not verified your email.'

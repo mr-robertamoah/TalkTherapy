@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Actions\EnsureIsAdminAction;
 use App\Actions\EnsureIsSuperAdminAction;
+use App\Actions\Guardianship\EnsureCanHaveNewGuardianAction;
 use App\Actions\Suspension\EnsureCanDeleteOwnAccountWhileSuspendedAction;
 use App\Actions\User\CreateGuardianshipRequestAction;
 use App\Actions\User\DeleteGuardianshipAction;
@@ -42,6 +43,8 @@ class UserService extends Service
     public function sendGuardianshipRequest(CreateRequestDTO $createRequestDTO)
     {
         EnsureRequestDataIsValidAction::new()->execute($createRequestDTO);
+
+        EnsureCanHaveNewGuardianAction::new()->execute($createRequestDTO->from);
 
         EnsureUserIsNotAlreadyGuardianAction::new()->execute($createRequestDTO);
 
@@ -179,6 +182,19 @@ class UserService extends Service
 
         // Grouped (whereContains), so the ORs can't escape the "not yourself" filter above.
         $query->whereContains(['username', 'firstName', 'lastName', 'otherNames'], trim($getUsersDTO->like));
+
+        // SCRUM-441: the guardian picker lists only who could be a guardian (EnsureUserCanBeGuardianAction's rule):
+        // 18 or over, with a verified email -- never a minor.
+        // Only for someone with a date of birth that makes them under 18 (security and code reviews): run with and
+        // without it by anyone else -- an adult, or a new account with no date of birth -- it would pick out who is a
+        // minor. NoOverflow, so 29 February agrees with User::isAdult().
+        if ($getUsersDTO->for === GetUsersDTO::FOR_GUARDIAN && (! $getUsersDTO->user?->dob || $getUsersDTO->user->isAdult())) {
+            return [];
+        }
+
+        $query->when($getUsersDTO->for === GetUsersDTO::FOR_GUARDIAN, fn ($q) => $q
+            ->whereNotNull('email')->whereNotNull('email_verified_at')
+            ->whereNotNull('dob')->whereDate('dob', '<=', now()->subYearsNoOverflow(18)->toDateString()));
 
         // SCRUM-359: this feeds the guardian and organisation invite pickers.
         $query->whereDoesntHave('suspensions', fn ($q) => $q->active()->where('scope', SuspensionScopeEnum::account->value));

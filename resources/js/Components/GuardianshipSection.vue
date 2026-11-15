@@ -52,7 +52,8 @@
                 </p>
             </div>
 
-            <div class="mt-6 flex flex-wrap items-center gap-3">
+            <!-- SCRUM-441 (the user's decision): guardians are for under-18s only. -->
+            <div v-if="!isAdult" class="mt-6 flex flex-wrap items-center gap-3">
                 <PrimaryButton type="button" @click="() => showModal('add')">Add a guardian</PrimaryButton>
                 <p class="text-xs text-gray-500">Send a request to an adult who has an account, or share a guardianship link.</p>
             </div>

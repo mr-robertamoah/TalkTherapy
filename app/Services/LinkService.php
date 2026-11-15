@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Actions\EnsureAddedbyIsValidAction;
+use App\Actions\Guardianship\EnsureCanHaveNewGuardianAction;
 use App\Actions\Link\ChangeLinkStatusAction;
 use App\Actions\Link\CreateLinkAction;
 use App\Actions\Link\DeleteLinkAction;
@@ -94,6 +95,11 @@ class LinkService extends Service
         EnsureUserCanCreateOrganizationSelfApplyLinkAction::new()->execute($createLinkDTO);
 
         EnsureUserCanCreateLinkForAction::new()->execute($createLinkDTO);
+
+        // SCRUM-441: a guardianship link is for someone under 18 asking for a guardian (only for themselves, above).
+        if ($createLinkDTO->type === LinkTypeEnum::guardianship->value) {
+            EnsureCanHaveNewGuardianAction::new()->execute($createLinkDTO->user);
+        }
 
         EnsureLinkDataIsValidAction::new()->execute($createLinkDTO);
 

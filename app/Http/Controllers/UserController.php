@@ -23,6 +23,7 @@ class UserController extends Controller
                 GetUsersDTO::new()->fromArray([
                     'user' => $request->user(),
                     'like' => $request->like,
+                    'for' => $request->input('for') === GetUsersDTO::FOR_GUARDIAN ? GetUsersDTO::FOR_GUARDIAN : null,
                 ])
             );
         } catch (Throwable $th) {

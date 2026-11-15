@@ -96,6 +96,12 @@ class PerformGuardianshipLinkAction extends Action
     // $lock: a shared lock on the existing row, under the ward's lock.
     private function ensureCanBecomeGuardian(User $user, User $ward, bool $lock = false): void
     {
+        // SCRUM-441: not once the ward has turned 18 -- said as "no longer active", so whoever holds the link isn't
+        // told the ward's age (security review).
+        if ($ward->isAdult()) {
+            throw LinkException::inactive();
+        }
+
         EnsureUserCanBeGuardianAction::new()->execute(CreateRequestDTO::new()->fromArray(['to' => $user]), self::NOT_ELIGIBLE);
 
         if ($user->wards()->where('ward_id', $ward->id)->when($lock, fn ($query) => $query->sharedLock())->first(['id'])) {

@@ -1,6 +1,7 @@
 <?php
 
 use App\Actions\GroupTherapy\CreateGroupTherapyAction;
+use App\Actions\Guardianship\EnsureCanHaveNewGuardianAction;
 use App\Actions\Request\CreateRequestAction;
 use App\Actions\Request\RespondToGuardianshipRequestAction;
 use App\Actions\Therapy\CreateTherapyAction;
@@ -9,6 +10,7 @@ use App\DTOs\CreateTherapyDTO;
 use App\DTOs\GroupTherapyDTO;
 use App\DTOs\RequestResponseDTO;
 use App\Enums\RequestTypeEnum;
+use App\Exceptions\UserException;
 use App\Models\Counsellor;
 use App\Models\User;
 
@@ -49,7 +51,9 @@ test('accepting a guardianship request from a minor snapshots ward_was_minor_at_
     expect($ward->guardians()->first()->ward_was_minor_at_creation)->toBeTrue();
 });
 
-test('accepting a guardianship request from an adult snapshots ward_was_minor_at_creation as false', function () {
+// SCRUM-441: a request from an adult (e.g. one who turned 18 while it waited) is no longer taken up, so no
+// guardianship is created with ward_was_minor_at_creation false this way (existing rows keep theirs).
+test('accepting a guardianship request from an adult is refused and snapshots nothing', function () {
     $ward = anAdultForSnapshotTest();
     $guardian = anAdultForSnapshotTest();
 
@@ -62,13 +66,13 @@ test('accepting a guardianship request from an adult snapshots ward_was_minor_at
         ])
     );
 
-    RespondToGuardianshipRequestAction::new()->execute(RequestResponseDTO::new()->fromArray([
+    expect(fn () => RespondToGuardianshipRequestAction::new()->execute(RequestResponseDTO::new()->fromArray([
         'user' => $guardian,
         'response' => 'accepted',
         'request' => $request,
-    ]));
+    ])))->toThrow(UserException::class, EnsureCanHaveNewGuardianAction::NO_LONGER);
 
-    expect($ward->guardians()->first()->ward_was_minor_at_creation)->toBeFalse();
+    expect($ward->guardians()->exists())->toBeFalse();
 });
 
 test('creating a therapy as a minor snapshots client_was_minor_at_creation as true', function () {
