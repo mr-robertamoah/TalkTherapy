@@ -12,33 +12,25 @@ use App\Enums\TransactionStatusEnum;
 use App\Models\AdminContentAccess;
 use App\Models\Counsellor;
 use App\Models\CounsellorPayout;
-use App\Models\GroupTherapy;
 use App\Models\License;
-use App\Models\Message;
 use App\Models\OrganizationMember;
 use App\Models\Request;
-use App\Models\Session;
 use App\Models\Therapy;
-use App\Models\TherapyTopic;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Services\LicenseService;
 use App\Support\MaskedEmail;
+use App\Support\YourDataScope;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Query\Builder as QueryBuilder;
-use Illuminate\Support\Facades\DB;
 
 // SCRUM-50 (TT-8.2): the facts behind "What we hold about you" -- counts, yes/no, dates and the person's own profile
 // values, built from $user alone. The words (what, why, who sees it) live in the page, for legal to change.
 //
-// Only what the person OWNS is counted: therapies they started (`addedby`, deleted ones too -- still held), sessions
-// in those and in groups while they were in them, messages they sent. Never the visibility scopes (TherapyTrait),
-// which also reach a ward's or a client's therapies. Nothing about anyone else: no names, no counsellor details, no
-// counsellor notes or safety records, no administrator. Urgent help is never counted at all (not the chats, their
-// sessions or their messages): the page gives it one fixed sentence, as the user decided, so a count can't tip off
-// someone watching the account. A fixed number of queries whatever the person holds (lists are of their own few organisations and
+// Only what the person OWNS is counted -- YourDataScope says what that is (shared with the copy of their data,
+// SCRUM-432). Nothing about anyone else: no names, no counsellor details, no counsellor notes or safety records, no
+// administrator. Urgent help is never counted at all (not the chats, their sessions or their messages): the page gives
+// it one fixed sentence, as the user decided, so a count can't tip off someone watching the account. A fixed number of queries whatever the person holds (lists are of their own few organisations and
 // documents, capped).
 class GetYourDataAction extends Action
 {
@@ -46,22 +38,11 @@ class GetYourDataAction extends Action
 
     public const TEAM_ACCESS_LATEST = 10;
 
-    // SCRUM-360's resources the person owns -- an allow-list, so a resource added later stays off until chosen here.
-    // Never: who asked for urgent help or who a safety flag is about (and its reason), a case discussion's
-    // messages, or a group's page (shared with its other members).
-    private const THERAPY_RESOURCES = [AdminContentAccess::THERAPY];
-
-    private const SESSION_RESOURCES = [AdminContentAccess::SESSION, AdminContentAccess::SESSION_MESSAGES];
-
-    private const TOPIC_RESOURCES = [AdminContentAccess::TOPIC_MESSAGES];
-
-    private const MESSAGE_RESOURCES = [AdminContentAccess::MESSAGE, AdminContentAccess::MESSAGE_REPLIES, AdminContentAccess::MESSAGE_ATTACHMENT];
-
     public function execute(User $user): array
     {
         $row = $this->userRow($user);
         $counsellor = Counsellor::query()->where('user_id', $user->id)
-            ->withCount(['sentMessages' => fn (Builder $q) => $this->outsideHelpChats($q), 'notifications'])
+            ->withCount(['sentMessages' => fn (Builder $q) => YourDataScope::outsideHelpChats($q), 'notifications'])
             ->first();
 
         return [
@@ -119,7 +100,7 @@ class GetYourDataAction extends Action
                 'groupTherapies as groups_anonymous_count' => fn ($q) => $q->where('group_therapy_user.anonymous', true),
                 'allGroupTherapyMemberships as groups_left_count' => fn ($q) => $q->whereNotNull('group_therapy_user.left_at'),
                 'addedGroupTherapies as groups_started_count',
-                'sentMessages' => fn (Builder $q) => $this->outsideHelpChats($q),
+                'sentMessages' => fn (Builder $q) => YourDataScope::outsideHelpChats($q),
                 'guardians as active_guardians_count' => fn ($q) => $q->active(),
                 'wards as active_wards_count' => fn ($q) => $q->active(),
                 'notifications',
@@ -183,15 +164,7 @@ class GetYourDataAction extends Action
     // they left, only the sessions that started before they left.
     private function sessionsCount(User $user): int
     {
-        return Session::query()
-            ->where(fn (Builder $q) => $q
-                ->where(fn (Builder $q) => $q->where('for_type', (new Therapy)->getMorphClass())->whereIn('for_id', $this->ownTherapyIds($user)))
-                ->orWhere(fn (Builder $q) => $q->where('for_type', (new GroupTherapy)->getMorphClass())->whereExists(fn (QueryBuilder $q) => $q
-                    ->from('group_therapy_user')
-                    ->whereColumn('group_therapy_user.group_therapy_id', 'sessions.for_id')
-                    ->where('group_therapy_user.user_id', $user->id)
-                    ->where(fn (QueryBuilder $q) => $q->whereNull('group_therapy_user.left_at')->orWhereColumn('sessions.start_time', '<', 'group_therapy_user.left_at')))))
-            ->count();
+        return YourDataScope::sessions($user)->count();
     }
 
     private function organizations(User $user): array
@@ -299,14 +272,7 @@ class GetYourDataAction extends Action
     // TT-4.16: administrators opening the person's own content -- when and what, never who or from where. Two queries.
     private function teamAccess(User $user, ?Counsellor $counsellor): array
     {
-        $query = AdminContentAccess::query()->where(fn (Builder $q) => $q
-            ->orWhere(fn (Builder $q) => $this->accessTo($q, self::THERAPY_RESOURCES, new Therapy, $this->ownTherapyIds($user)))
-            ->orWhere(fn (Builder $q) => $this->accessTo($q, self::SESSION_RESOURCES, new Session, $this->ownSessionIds($user)))
-            ->orWhere(fn (Builder $q) => $this->accessTo($q, self::TOPIC_RESOURCES, new TherapyTopic, $this->ownTopicIds($user)))
-            ->orWhere(fn (Builder $q) => $this->accessTo($q, self::MESSAGE_RESOURCES, new Message, $this->sentMessageIds($user, $counsellor)))
-            ->orWhere(fn (Builder $q) => $this->accessTo($q, [AdminContentAccess::IDENTITY_DOCUMENT], new Request, $this->identityRequestIds($user)))
-            ->when($counsellor, fn (Builder $q) => $q
-                ->orWhere(fn (Builder $q) => $this->accessTo($q, [AdminContentAccess::LICENSE_DOCUMENT], new License, $this->licenseIds($counsellor)))));
+        $query = YourDataScope::teamAccess($user, $counsellor);
 
         return [
             'total' => (clone $query)->count(),
@@ -314,77 +280,5 @@ class GetYourDataAction extends Action
                 ->map(fn (AdminContentAccess $access) => ['at' => $access->created_at?->toIso8601String(), 'resource' => $access->resource])
                 ->all(),
         ];
-    }
-
-    private function accessTo(Builder $q, array $resources, Model $subject, QueryBuilder $subjectIds): Builder
-    {
-        return $q->whereIn('resource', $resources)->where('subject_type', $subject->getMorphClass())->whereIn('subject_id', $subjectIds);
-    }
-
-    // The person's own individual therapies, deleted ones included -- never urgent help chats (whose reads may be
-    // about a report the person isn't told of).
-    private function ownTherapyIds(User $user): QueryBuilder
-    {
-        return DB::table('therapies')->select('id')
-            ->where('addedby_type', $user->getMorphClass())
-            ->where('addedby_id', $user->id)
-            ->where('is_help_chat', false);
-    }
-
-    private function helpChatSessionIds(): QueryBuilder
-    {
-        return DB::table('sessions')->select('id')
-            ->where('for_type', (new Therapy)->getMorphClass())
-            ->whereIn('for_id', DB::table('therapies')->select('id')->where('is_help_chat', true));
-    }
-
-    private function ownSessionIds(User $user): QueryBuilder
-    {
-        return DB::table('sessions')->select('id')
-            ->where('for_type', (new Therapy)->getMorphClass())
-            ->whereIn('for_id', $this->ownTherapyIds($user));
-    }
-
-    private function ownTopicIds(User $user): QueryBuilder
-    {
-        return DB::table('therapy_topics')->select('id')
-            ->where('topicable_type', (new Therapy)->getMorphClass())
-            ->whereIn('topicable_id', $this->ownTherapyIds($user));
-    }
-
-    // Messages counted as the person's: all but those in urgent help chats (never counted -- see the class comment).
-    private function outsideHelpChats(Builder $messages): Builder
-    {
-        return $messages->whereNot(fn (Builder $q) => $q
-            ->where('for_type', (new Session)->getMorphClass())
-            ->whereIn('for_id', $this->helpChatSessionIds()));
-    }
-
-    // Messages the person sent in sessions, as themselves or as a counsellor -- never in a case discussion (a
-    // counsellor's discussion about a client) or an urgent help chat (see ownTherapyIds()).
-    private function sentMessageIds(User $user, ?Counsellor $counsellor): QueryBuilder
-    {
-        return DB::table('messages')->select('id')
-            ->where(fn (QueryBuilder $q) => $q
-                ->where(fn (QueryBuilder $q) => $q->where('from_type', $user->getMorphClass())->where('from_id', $user->id))
-                ->when($counsellor, fn (QueryBuilder $q) => $q
-                    ->orWhere(fn (QueryBuilder $q) => $q->where('from_type', $counsellor->getMorphClass())->where('from_id', $counsellor->id))))
-            ->where('for_type', (new Session)->getMorphClass())
-            ->whereNotIn('for_id', $this->helpChatSessionIds());
-    }
-
-    private function identityRequestIds(User $user): QueryBuilder
-    {
-        return DB::table('requests')->select('id')
-            ->where('type', RequestTypeEnum::ageVerification->value)
-            ->where('for_type', $user->getMorphClass())
-            ->where('for_id', $user->id);
-    }
-
-    private function licenseIds(Counsellor $counsellor): QueryBuilder
-    {
-        return DB::table('licenses')->select('id')
-            ->where('for_type', $counsellor->getMorphClass())
-            ->where('for_id', $counsellor->id);
     }
 }
