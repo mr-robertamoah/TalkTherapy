@@ -16,6 +16,7 @@ use App\Notifications\ConfirmNewEmailNotification;
 use App\Notifications\EmailChangedNotification;
 use App\Notifications\TwoFactorResetRequestedNotification;
 use App\Support\TwoFactorCodes;
+use Database\Seeders\RestoreGuardSeeder;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Notifications\AnonymousNotifiable;
 use Illuminate\Notifications\Events\NotificationSent;
@@ -618,4 +619,13 @@ test('only super administrators see the remembered address and when it was remem
 
     expect($super)->lastVerifiedEmail->toBe('current@example.com')->lastVerifiedEmailAt->not->toBeNull()
         ->and($plain)->lastVerifiedEmail->toBeNull()->lastVerifiedEmailAt->toBeNull();
+});
+
+test('the restore-guard demo accounts seed once: one remembered recently, one with no date', function () {
+    $this->seed(RestoreGuardSeeder::class);
+    $this->seed(RestoreGuardSeeder::class);
+
+    expect(User::query()->where('username', 'restore_guard_recent')->count())->toBe(1)
+        ->and(User::query()->where('username', 'restore_guard_recent')->first())->email->toBeNull()->last_verified_email_at->not->toBeNull()
+        ->and(User::query()->where('username', 'restore_guard_old')->first())->last_verified_email->toBe('restore.guard.old@example.com')->last_verified_email_at->toBeNull();
 });
