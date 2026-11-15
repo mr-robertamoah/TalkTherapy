@@ -245,7 +245,13 @@ these server-side waits on a Reverb terminate API that works with private channe
   (notice): dropped from the profile.
 - `Account email change stopped by its owner` (SCRUM-427, **warning**): someone pressed "This wasn't me" in the warning
   to the account's current address -- the change was dropped and every session ended. Likely an account under attack:
-  look at who asked (the request's log line) and help the person secure the account.
+  look at who asked (the request's log line) and help the person secure the account. `two_factor_during_wait` true
+  (SCRUM-428/431): two-factor was turned on during the change or in the `EMAIL_STOP_TWO_FACTOR_LOOKBACK_DAYS` (14)
+  before it, so a cancellable two-factor reset was scheduled and both addresses told.
+- `Email change warning not sent: the remembered address is another account's` (SCRUM-431, notice; `user_id`): the
+  account's last verified address now belongs to another account that verified it, so the change's warnings (with
+  "This wasn't me") weren't sent there -- the change still waits. Rare; a burst suggests someone registering or
+  taking over remembered addresses.
 - `The email change sweep failed.` / `An email change could not be applied` (error): confirmed changes aren't taking
   effect (scheduler `apply-due-email-changes`). Late, never early.
 - `ConfirmNewEmailNotification` in `failed_jobs` (SCRUM-427): the link to a new address didn't go out, so the change

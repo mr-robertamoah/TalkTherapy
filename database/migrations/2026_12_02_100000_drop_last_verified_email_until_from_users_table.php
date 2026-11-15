@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 // SCRUM-431: the last verified address stays protected however long ago (it was 30 days -- unticking "verified" and
@@ -20,5 +21,8 @@ return new class extends Migration
         Schema::table('users', function (Blueprint $table) {
             $table->timestamp('last_verified_email_until')->nullable()->after('last_verified_email');
         });
+
+        // Ops review: the older code reads it -- empty, every remembered address would stop being protected at once.
+        DB::table('users')->whereNotNull('last_verified_email')->update(['last_verified_email_until' => now()->addDays(30)]);
     }
 };

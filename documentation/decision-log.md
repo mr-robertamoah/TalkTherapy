@@ -12569,7 +12569,7 @@ and safeguarding stay cards); no download button yet (SCRUM-432); team access sh
   warnings for as long as the account's address stays unverified, and can press "This wasn't me" -- the owner gets
   back in with "Forgot your password?" (it goes to the current address). The older, pre-existing path -- "This wasn't
   me" on an account with no email restores the remembered address as verified -- is ticketed as SCRUM-433.
-- **Deploy**: the column drop runs after the new code is live (the old saving hook still writes that column).
+- **Deploy**: no manual step -- `scripts/deploy.sh` migrates under maintenance mode after checking out the new code (the old saving hook wrote that column; production runs SCRUM-427's add and this drop in the same deploy). Rolling back: roll this migration back first, while in maintenance (its `down()` restores the column with 30 days for remembered addresses).
 - **SCRUM-430 (admin facelift)**: one table layout for admin lists (`resources/js/Components/Admin/AdminTable`, `AdminRow`,
   `AdminCell`, `AdminStatusPill`, `AdminActionButton`) -- a real table from md up, below it the same rows as a
   two-column grid (short values side by side), one DOM for both. Each row's actions are in the row; long details and
