@@ -25,6 +25,8 @@ class NotificationCategories
         Notifications\SessionScheduleProposedNotification::class => Category::sessions,
         Notifications\SessionScheduleProposalAcceptedNotification::class => Category::sessions,
         Notifications\SessionScheduleProposalRejectedNotification::class => Category::sessions,
+        // SCRUM-446: marked absent from an in-person session.
+        Notifications\SessionMarkedAbsentNotification::class => Category::sessions,
 
         Notifications\TherapyAssistanceRequestAcceptedNotification::class => Category::therapies,
         Notifications\TherapyAssistanceLinkNotification::class => Category::therapies,

@@ -4,9 +4,12 @@ namespace App\Actions\SessionAttendance;
 
 use App\Actions\Action;
 use App\DTOs\SessionAttendanceDTO;
+use App\Enums\SessionAttendanceStatusEnum;
 use App\Exceptions\SessionAttendanceException;
 use App\Models\Session;
 use App\Models\SessionAttendance;
+use App\Models\User;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 // SCRUM-445: saves the register a counsellor submitted, in one transaction under the session's row lock (so it can't
@@ -14,11 +17,14 @@ use Illuminate\Support\Facades\DB;
 // is resolved server-side against the roster; one that isn't on it refuses the whole register. People left out of it
 // keep what they had. A mark that doesn't change keeps its marked_at and who marked it. The marking counsellor is
 // always the signed-in one. Never touches the session's status, payments or payouts.
+// SCRUM-446: returns the people whose mark became ABSENT with this save (a first mark or a change -- not an unchanged
+// one), so they can be told.
 class RecordSessionAttendanceAction extends Action
 {
     public const UNKNOWN_PERSON = 'Someone in this register is not part of this session.';
 
-    public function execute(SessionAttendanceDTO $dto): Session
+    /** @return Collection<int, User> */
+    public function execute(SessionAttendanceDTO $dto): Collection
     {
         return DB::transaction(function () use ($dto) {
             $locked = Session::query()->whereKey($dto->session->id)->lockForUpdate()->first();
@@ -31,6 +37,7 @@ class RecordSessionAttendanceAction extends Action
             $roster = GetSessionAttendanceRosterAction::new()->execute($dto->session)->keyBy('key');
 
             $rows = [];
+            $markedAbsent = collect();
             $now = now();
 
             foreach ($dto->entries as $entry) {
@@ -46,6 +53,10 @@ class RecordSessionAttendanceAction extends Action
                         'created_at' => $now,
                         'updated_at' => $now,
                     ];
+
+                    if ($entry['status'] === SessionAttendanceStatusEnum::absent->value) {
+                        $markedAbsent->push($member['user']);
+                    }
                 }
             }
 
@@ -55,7 +66,7 @@ class RecordSessionAttendanceAction extends Action
 
             $dto->session->unsetRelation('attendances');
 
-            return $dto->session;
+            return $markedAbsent;
         });
     }
 }

@@ -26,6 +26,7 @@ import CreateDiscussionFormModal from '@/Components/CreateDiscussionFormModal.vu
 import DiscussionModal from '@/Components/DiscussionModal.vue'
 import ProposeSessionScheduleModal from '@/Components/ProposeSessionScheduleModal.vue'
 import SessionScheduleCounterOfferModal from '@/Components/SessionScheduleCounterOfferModal.vue'
+import SessionAttendanceSection from '@/Components/SessionAttendanceSection.vue'
 
 import useTherapyState from '@/Composables/useTherapyState'
 import useModal from '@/Composables/useModal'
@@ -1335,6 +1336,13 @@ function reportCreated(report) {
                   class="shrink-0"
                   >end session for you</PrimaryButton
                 >
+                <!-- SCRUM-446: an in-person session's attendance -- its counsellor marks it, a client or member sees their own. -->
+                <SessionAttendanceSection
+                  v-if="activeSession.type === 'IN_PERSON'"
+                  :session="activeSession"
+                  class="w-full"
+                  @updated="(session) => { if (session) updateSessionOrTopic(session) }"
+                />
               </template>
               <div v-else class="text-sm text-gray-600 my-2 w-full text-center">
                 performing action...

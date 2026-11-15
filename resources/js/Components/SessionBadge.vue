@@ -39,6 +39,7 @@
         :session="session"
         :show="modalData.type == 'details' && modalData.show"
         @close="closeModal"
+        @updated="(updated) => { if (updated) emits('onUpdate', updated) }"
         v-if="session"
     />
     <UpdateSessionFormModal
