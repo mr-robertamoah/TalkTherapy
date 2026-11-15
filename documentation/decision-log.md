@@ -12956,3 +12956,22 @@ Part of SCRUM-115 (the user's decision: the counsellor marks attendance; it neve
   in-person session alone until its attendance window has closed, so the counsellor can still mark it and close it as
   a no-show; online sessions fail as before.
 - **Follow-up filed:** `/fail` lets any participant fail any session after its end, even a held one (pre-existing) -- SCRUM-450.
+
+## SCRUM-446 — in-person attendance UI, absent notice, demo data (2026-11-15)
+
+- **Where:** a "Mark attendance" section on an in-person session that has started -- in the session's details and the
+  active session's actions -- opening a register dialog (a radio group per person, names as the server gives them, so
+  anonymous members stay masked). "Close as a no-show" is offered only when the saved register is all absent, the
+  session has ended and it hasn't started; the server decides the rest and its message is shown.
+- **Who may save is the server's call:** the register response carries `canRecord`, worked out by running the same
+  checks as a save (window, final status, suspension, therapy paused); the page doesn't re-derive it.
+- **The client's own mark** comes from the session copy when it carries it (the single-session fetch), otherwise from
+  the attendance endpoint.
+- **Absent notice (`SessionMarkedAbsentNotification`):** to the person marked, only on a first ABSENT or a change to
+  ABSENT, never to a closed account, at most once an hour per person and session (security review: a flipped mark
+  isn't a stream of notices). In-app, and by email when verified, under the sessions notification choice (as the other
+  session notices). No place, no counsellor, no other names; the refund line only for a paid session.
+- **"Your data"** shows how many in-person sessions you were marked for.
+- **Demo data (`InPersonAttendanceSeeder`):** reuses the in-person demo therapy and group, adds `amy_taylor` to the group
+  anonymously, and makes two sessions that ended an hour before seeding (re-run it to reopen the 48-hour window). It
+  backdates only the demo members' memberships so they're on the register.
