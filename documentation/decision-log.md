@@ -11878,6 +11878,8 @@ organisations start therapies for members).
   The covered line now reads "...an organization's plan -- no payment needed" when there's no name.
 - **Seed.** The demo pay-per-use charge now uses the real `org_charge_` prefix, so the badge shows for it.
 
+- **Update (2026-11-15, SCRUM-409)**: the four exact overrides are removed; see the SCRUM-432 + SCRUM-433 + SCRUM-409 entry.
+
 ---
 
 ## SCRUM-420 part 1 — retainer billing for group sessions (2026-11-12)
@@ -12624,3 +12626,58 @@ and safeguarding stay cards); no download button yet (SCRUM-432); team access sh
   ceiling), with a ceiling of 14.
 - **Counsellor "clients"**: distinct people in their individual therapies (urgent help chats excluded), never
   names.
+
+---
+
+## SCRUM-432 + SCRUM-433 + SCRUM-409 — a copy of your data, a guard on "This wasn't me", the npm hold-backs (2026-11-15)
+
+After PR #344 the user asked to box its follow-ups into the next set: SCRUM-432 (the download), SCRUM-433 (the
+older restore path found in the SCRUM-431 review) and SCRUM-409 (allowed from today). One PR, one commit per part.
+The user's answers: a JSON file straight away (no ZIP, no attachments); counsellors get counts of their messages, not
+the text; put a remembered address back only if it's recent; password plus the two-factor code when it's on, and an
+alert afterwards.
+
+- **SCRUM-409**: the four SCRUM-404 overrides are removed; `get-blob-duration` → `@babel/runtime` stays. Plain
+  removal left the lock as it was, and a plain update would take releases under 7 days old (`@babel/*` 7.29.14 is
+  from 11 Nov), so `npm update … --before=2026-11-08`: `@babel/parser` and `helper-string-parser` 7.29.13 (4 Nov);
+  `follow-redirects` 1.16.2 and `postcss-selector-parser` 6.1.5 stay (their 8 Nov releases are under 7 days old --
+  Dependabot's 7-day cooldown takes them later; 6.1.6's dropped `cssesc` is still to check then). The nested copies
+  collapse to one each. Audit clean, build and browser smoke check OK. Its own commit, so it reverts alone.
+- **SCRUM-433**: `users.last_verified_email_at` records when an address was remembered (the saving hook that remembers
+  it). "This wasn't me" on an account with no email puts the address back only if remembered within
+  `EMAIL_STOP_RESTORE_DAYS` (default 30, 7-90). No date (remembered before this release) counts as too old: those
+  accounts go to support -- the safe default, accepted (count them before deploying; production checklist). Measured
+  when "This wasn't me" is pressed, not when the change was asked for (code review): the safer reading for a mailbox
+  that changed hands. The stop still drops the change, ends every session and scrambles the password; the page then
+  says the account has no email to reset through and to contact support (before, it said "reset your password", which
+  couldn't work). The warning email says the same. Restoring the address *unverified* was rejected: password resets go
+  to any address in `email`, verified or not, so whoever holds the mailbox could still take the account. Super admins
+  see the remembered address and its date on the users list. Still accepted (unchanged from SCRUM-431): the warning,
+  with its stop link, goes to an old remembered mailbox -- a stranger there can lock the owner out (support, not a
+  takeover); SCRUM-434 drops the link and the new address past the window.
+- **SCRUM-432 (TT-8.4), the copy**:
+  - **One set of rules**: what counts as the person's own moved into `App\Support\YourDataScope`, used by the page
+    and the copy (a refactor commit with no behaviour change first). The "Other records" sentence moved to
+    `App\Support\YourDataWording`, passed to the page, so the page and the file say the same.
+  - **Synchronous, streamed JSON, nothing stored** (architect): no queue, no file on disk, no cleanup, no expiring link
+    (and the PHP image has no zip extension). Messages, sessions and team access are read in chunks. Attachments are
+    listed by name, type and size; the files themselves would need the queued ZIP (later, if asked).
+  - **What's in it**: the page's facts; therapies (deleted ones marked), group memberships, sessions (times and
+    status -- never a session's place, name or notes, which a counsellor may have written); the text of messages sent
+    as themselves (deleted ones too, still held -- the page's count now includes them, so the two agree, code review);
+    their own payments and payouts; every team open (when and what); retention periods. Never anyone else's message
+    or the text of a message they replied to; never a counsellor's or admin's name; never counsellor notes, safety
+    records, case discussions or urgent-help chats (the one sentence only).
+  - **Security review (Medium, fixed)**: a charge an organisation paid or settled is listed with "paid by your
+    organisation" and no amount, and isn't in the page's totals -- the amount is the organisation's and counsellor's
+    terms. **(Low, fixed)**: a group's sessions count from when the person joined; one answer for a wrong password or a
+    wrong code when two-factor is on (the code is only checked, and used up, after the right password); the alert also
+    goes to the address a change replaced within the restore window (it may be the owner's); a bad character can't cut
+    the file short (`JSON_INVALID_UTF8_SUBSTITUTE`; a failure mid-file is logged).
+  - **Limits**: password each time, plus the two-factor code (or a recovery code) when it's on -- the user's choice,
+    stricter than closing the account. 3 tries an hour per account. Refused while a new email waits (the moment an
+    intruder would want it; the page says so up front). An account with no password is pointed to support. The
+    account is told each time (in-app, and by email to a verified address); the email never carries the data or a
+    link.
+  - **Follow-ups**: SCRUM-435 (password confirmation fails for accounts with no email -- not used by this feature),
+    SCRUM-436 (the counsellor message count's session-only rule; whether deleted sessions are listed).

@@ -47,6 +47,10 @@ function formatDate(value) {
             <div class="[overflow-wrap:anywhere]">{{ user.email || 'not set' }}</div>
             <!-- SCRUM-427: a new address waiting for its owner to confirm it (super administrators only). -->
             <div v-if="user.pendingEmail" class="mt-1 text-xs text-amber-900 [overflow-wrap:anywhere]">waiting for confirmation: {{ user.pendingEmail }}</div>
+            <!-- SCRUM-433: the last verified address, and when it was remembered (super administrators only). -->
+            <div v-if="user.lastVerifiedEmail" class="mt-1 text-xs text-gray-600 [overflow-wrap:anywhere]">
+                previously verified: {{ user.lastVerifiedEmail }}{{ user.lastVerifiedEmailAt ? ` (remembered ${formatDate(user.lastVerifiedEmailAt)})` : ' (date not recorded)' }}
+            </div>
         </AdminCell>
 
         <AdminCell label="Verified" half>

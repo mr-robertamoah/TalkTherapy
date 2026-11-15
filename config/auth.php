@@ -141,6 +141,9 @@ return [
     // SCRUM-431: "This wasn't me" schedules a two-factor reset when two-factor was turned on this many days before the
     // change was asked for, or since (it may be an intruder's phone). 7-90; anything else (or not a number) is 14.
     'email_stop_two_factor_lookback_days' => ($lookback = (int) env('EMAIL_STOP_TWO_FACTOR_LOOKBACK_DAYS', 14)) >= 7 && $lookback <= 90 ? $lookback : 14,
+    // SCRUM-433: "This wasn't me" on an account with no email puts its remembered address back only when it was
+    // remembered at most this many days ago -- an old mailbox may belong to someone else now. 7-90; anything else is 30.
+    'email_stop_restore_days' => ($restoreDays = (int) env('EMAIL_STOP_RESTORE_DAYS', 30)) >= 7 && $restoreDays <= 90 ? $restoreDays : 30,
 
     'two_factor' => [
         'enabled' => (bool) env('TWO_FACTOR_ENABLED', true),

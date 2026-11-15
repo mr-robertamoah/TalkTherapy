@@ -8,6 +8,7 @@ use App\Actions\User\RequestEmailChangeAction;
 use App\Enums\AdministratorTypeEnum;
 use App\Exceptions\UserException;
 use App\Http\Middleware\EndStaleSessions;
+use App\Http\Resources\AdminUserResource;
 use App\Models\Administrator;
 use App\Models\TwoFactorReset;
 use App\Models\User;
@@ -15,6 +16,7 @@ use App\Notifications\ConfirmNewEmailNotification;
 use App\Notifications\EmailChangedNotification;
 use App\Notifications\TwoFactorResetRequestedNotification;
 use App\Support\TwoFactorCodes;
+use Database\Seeders\RestoreGuardSeeder;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Notifications\AnonymousNotifiable;
 use Illuminate\Notifications\Events\NotificationSent;
@@ -431,7 +433,7 @@ test('after the email was removed, the profile and the warning say what really h
     RequestEmailChangeAction::new()->execute($user->fresh(), 'next@example.org');
 
     $this->actingAs($user->fresh(), 'web')->get(route('profile.show'))->assertInertia(fn ($page) => $page->where('auth.user.pendingEmailWaits', true));
-    Notification::assertSentOnDemand(EmailChangedNotification::class, fn ($notification, $channels, $notifiable) => str_contains((string) $notification->toMail($notifiable)->render(), 'recently removed from'));
+    Notification::assertSentOnDemand(EmailChangedNotification::class, fn ($notification, $channels, $notifiable) => str_contains((string) $notification->toMail($notifiable)->render(), 'was removed from'));
 });
 
 // SCRUM-428: two-factor turned on while the change waited may be the intruder's phone -- or the owner's, if the old
@@ -540,4 +542,90 @@ test('a reset after "This wasn\'t me" waits for the copy to the dropped address,
     TwoFactorResetRequestedNotification::markSent(new NotificationSent((new AnonymousNotifiable)->route('mail', 'newplace@example.org'), TwoFactorResetRequestedNotification::for($reset), 'mail'));
     expect($reset->fresh()->notified_at)->not->toBeNull()
         ->and(ApplyDueTwoFactorResetsAction::new()->execute())->toBe(1);
+});
+
+// SCRUM-433: a long-remembered mailbox may belong to someone else now -- "This wasn't me" must not hand them the account.
+test('removing the email remembers when -- the address and the date', function () {
+    $user = pndUser();
+    $user->forceFill(['email' => null, 'email_verified_at' => null])->save();
+
+    expect($user->fresh())->last_verified_email->toBe('current@example.com')
+        ->last_verified_email_at->not->toBeNull()
+        ->and(User::ANONYMISED_ATTRIBUTES)->toContain('last_verified_email_at')
+        ->and($user->fresh()->toArray())->not->toHaveKey('last_verified_email_at');
+});
+
+test('"This wasn\'t me" doesn\'t put back an address remembered too long ago -- whoever holds it can\'t reset the password', function () {
+    Notification::fake();
+    Log::spy();
+    $user = pndUser();
+    $user->forceFill(['email' => null, 'email_verified_at' => null])->save();
+    $this->travel((int) config('auth.email_stop_restore_days') + 1)->days();
+    RequestEmailChangeAction::new()->execute($user->fresh(), 'attacker@example.org');
+
+    $this->post(pndLink('email.change.stop', $user, 'attacker@example.org', 96))
+        ->assertRedirect(route('login'))
+        ->assertSessionHas('status', fn (string $status) => str_contains($status, 'contact support'));
+
+    expect($user->fresh())->email->toBeNull()->pending_email->toBeNull()
+        ->and(Hash::check('password', $user->fresh()->password))->toBeFalse();
+    Log::shouldHaveReceived('warning')->with('Account email change stopped by its owner', Mockery::on(fn ($context) => $context['email_restored'] === false && $context['has_email'] === false));
+
+    $this->post(route('password.email'), ['email' => 'current@example.com']);
+    Notification::assertNotSentTo($user->fresh(), ResetPassword::class);
+});
+
+test('an address remembered before the date was recorded is never put back', function () {
+    Notification::fake();
+    $user = pndUser();
+    $user->forceFill(['email' => null, 'email_verified_at' => null])->save();
+    $user->forceFill(['last_verified_email_at' => null])->save();
+    RequestEmailChangeAction::new()->execute($user->fresh(), 'attacker@example.org');
+
+    $this->post(pndLink('email.change.stop', $user, 'attacker@example.org', 96));
+
+    expect($user->fresh())->email->toBeNull()->last_verified_email->toBe('current@example.com');
+});
+
+test('inside the restore window the address is put back, with the usual message', function () {
+    Notification::fake();
+    config(['auth.email_stop_restore_days' => 60]);
+    $user = pndUser();
+    $user->forceFill(['email' => null, 'email_verified_at' => null])->save();
+    $this->travel(45)->days();
+    RequestEmailChangeAction::new()->execute($user->fresh(), 'attacker@example.org');
+
+    $this->post(pndLink('email.change.stop', $user, 'attacker@example.org', 96))
+        ->assertSessionHas('status', fn (string $status) => str_contains($status, 'Reset your password now'));
+
+    expect($user->fresh())->email->toBe('current@example.com')->email_verified_at->not->toBeNull();
+});
+
+test('the restore window stays between 7 and 90 days', function (string $value, int $expected) {
+    putenv("EMAIL_STOP_RESTORE_DAYS={$value}");
+    $config = require base_path('config/auth.php');
+    putenv('EMAIL_STOP_RESTORE_DAYS');
+
+    expect($config['email_stop_restore_days'])->toBe($expected);
+})->with([['14', 14], ['3', 30], ['365', 30], ['soon', 30]]);
+
+test('only super administrators see the remembered address and when it was remembered', function () {
+    $user = pndUser();
+    $user->forceFill(['email' => null, 'email_verified_at' => null])->save();
+    $admin = User::factory()->adult()->has(Administrator::factory()->state(['type' => AdministratorTypeEnum::normal->value]))->create();
+
+    $super = (new AdminUserResource($user->fresh()))->toArray(request()->setUserResolver(fn () => pndSuper()));
+    $plain = (new AdminUserResource($user->fresh()))->toArray(request()->setUserResolver(fn () => $admin));
+
+    expect($super)->lastVerifiedEmail->toBe('current@example.com')->lastVerifiedEmailAt->not->toBeNull()
+        ->and($plain)->lastVerifiedEmail->toBeNull()->lastVerifiedEmailAt->toBeNull();
+});
+
+test('the restore-guard demo accounts seed once: one remembered recently, one with no date', function () {
+    $this->seed(RestoreGuardSeeder::class);
+    $this->seed(RestoreGuardSeeder::class);
+
+    expect(User::query()->where('username', 'restore_guard_recent')->count())->toBe(1)
+        ->and(User::query()->where('username', 'restore_guard_recent')->first())->email->toBeNull()->last_verified_email_at->not->toBeNull()
+        ->and(User::query()->where('username', 'restore_guard_old')->first())->last_verified_email->toBe('restore.guard.old@example.com')->last_verified_email_at->toBeNull();
 });

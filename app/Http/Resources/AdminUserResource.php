@@ -65,6 +65,10 @@ class AdminUserResource extends JsonResource
             'twoFactorEnabled' => $request->user()?->isSuperAdmin() ? $this->hasTwoFactorEnabled() : null,
             // SCRUM-427: a new address waiting for its owner to confirm it (super administrators only).
             'pendingEmail' => $request->user()?->isSuperAdmin() ? $this->pending_email : null,
+            // SCRUM-433: the last verified address the account had, and when it was remembered (super administrators
+            // only) -- what support goes on when "This wasn't me" couldn't put it back.
+            'lastVerifiedEmail' => $request->user()?->isSuperAdmin() ? $this->last_verified_email : null,
+            'lastVerifiedEmailAt' => $request->user()?->isSuperAdmin() ? $this->last_verified_email_at : null,
             // SCRUM-424: when a scheduled reset applies (super administrators only; loaded, never a query per row).
             'twoFactorResetDueAt' => $request->user()?->isSuperAdmin() && $this->relationLoaded('pendingTwoFactorReset') ? $this->pendingTwoFactorReset?->due_at : null,
         ];

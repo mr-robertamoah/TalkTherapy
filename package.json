@@ -36,10 +36,6 @@
     "overrides": {
         "get-blob-duration": {
             "@babel/runtime": "7.29.7"
-        },
-        "follow-redirects": "1.16.2",
-        "postcss-selector-parser": "6.1.5",
-        "@babel/parser": "7.29.12",
-        "@babel/helper-string-parser": "7.29.11"
+        }
     }
 }
