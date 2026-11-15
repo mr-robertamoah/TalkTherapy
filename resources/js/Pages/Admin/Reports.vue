@@ -89,7 +89,7 @@ function searchFor(term) {
             <div class="space-y-4">
                 <AdminTable :columns="columns" caption="Reports" :empty="reports.data.length === 0" empty-text="No reports here.">
                     <AdminRow v-for="report in reports.data" :key="report.id">
-                        <AdminCell label="#"><span class="text-gray-500">{{ report.id }}</span></AdminCell>
+                        <AdminCell label="#" half><span class="text-gray-500">{{ report.id }}</span></AdminCell>
                         <template v-if="report.involved">
                             <!-- AdminCell can't span columns: the note sits in "About" and the two cells after it stay empty (hidden when stacked). -->
                             <AdminCell label="About">
@@ -97,8 +97,8 @@ function searchFor(term) {
                             </AdminCell>
                             <AdminCell class="hidden md:table-cell" />
                             <AdminCell class="hidden md:table-cell" />
-                            <AdminCell label="Status"><ReportStatusBadge :status="report.status" /></AdminCell>
-                            <AdminCell label="Submitted"><span class="whitespace-nowrap">{{ formatDate(report.createdAt) }}</span></AdminCell>
+                            <AdminCell label="Status" half><ReportStatusBadge :status="report.status" /></AdminCell>
+                            <AdminCell label="Submitted" half><span class="whitespace-nowrap">{{ formatDate(report.createdAt) }}</span></AdminCell>
                             <AdminCell actions />
                         </template>
                         <template v-else>
@@ -112,8 +112,8 @@ function searchFor(term) {
                                 <span v-if="report.reportedPerson">{{ report.reportedPerson.name }}</span>
                                 <span v-else class="text-amber-700">not recorded</span>
                             </AdminCell>
-                            <AdminCell label="Status"><ReportStatusBadge :status="report.status" /></AdminCell>
-                            <AdminCell label="Submitted"><span class="whitespace-nowrap">{{ formatDate(report.createdAt) }}</span></AdminCell>
+                            <AdminCell label="Status" half><ReportStatusBadge :status="report.status" /></AdminCell>
+                            <AdminCell label="Submitted" half><span class="whitespace-nowrap">{{ formatDate(report.createdAt) }}</span></AdminCell>
                             <AdminCell actions>
                                 <AdminActionButton
                                     tone="primary"

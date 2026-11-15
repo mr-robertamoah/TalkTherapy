@@ -45,6 +45,8 @@ class AdminCounsellorVerificationRequestResource extends JsonResource
             'id' => $this->id,
             'type' => $this->type,
             'status' => $this->status,
+            // SCRUM-430 (QA): the admin list's "Sent" column.
+            'createdAt' => $this->created_at?->diffForHumans(),
             'nationalIdLicense' => new LicenseResource(License::find($this->data['nationalIdLicense'] ?? null)),
             'otherLicense' => new LicenseResource(License::find($this->data['otherLicense'] ?? null)),
         ];

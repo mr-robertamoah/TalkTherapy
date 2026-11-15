@@ -168,7 +168,7 @@ function searchFor(term) {
                             <span v-else class="text-gray-400">--</span>
                         </AdminCell>
                         <AdminCell label="Reason"><div class="md:max-w-[240px] text-gray-600">{{ request.reason ?? '--' }}</div></AdminCell>
-                        <AdminCell label="Requested">{{ request.createdAt }}</AdminCell>
+                        <AdminCell label="Requested" half>{{ request.createdAt }}</AdminCell>
                         <AdminCell actions>
                             <div v-if="rejectingId === request.id" class="relative w-full md:min-w-[260px] text-left">
                                 <FormLoader class="mx-auto" :show="respondingId === request.id" :text="'submitting'" />
@@ -214,9 +214,9 @@ function searchFor(term) {
                 <AdminTable :columns="failedColumns" caption="Failed refunds" :empty="failedRefunds.length === 0" empty-text="No refunds have failed.">
                     <AdminRow v-for="refund in failedRefunds" :key="refund.id">
                         <AdminCell label="Client"><span class="font-medium text-gray-900">{{ clientName(refund) }}</span></AdminCell>
-                        <AdminCell label="Amount">{{ formatMoney(refund.amount, refund.currency) }}</AdminCell>
+                        <AdminCell label="Amount" half>{{ formatMoney(refund.amount, refund.currency) }}</AdminCell>
                         <AdminCell label="Why it failed"><div class="md:max-w-[280px] text-gray-600">{{ refund.failureReason ?? '--' }}</div></AdminCell>
-                        <AdminCell label="Failed">{{ formatDate(refund.failedAt) }}</AdminCell>
+                        <AdminCell label="Failed" half>{{ formatDate(refund.failedAt) }}</AdminCell>
                         <AdminCell label="Reference"><span class="text-gray-500 break-all">{{ refund.reference }}</span></AdminCell>
                     </AdminRow>
                 </AdminTable>

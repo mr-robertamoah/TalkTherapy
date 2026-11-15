@@ -350,12 +350,12 @@ function statusTone(status) {
                     <AdminTable :columns="historyColumns" caption="Payout history" :empty="!history.data.length" empty-text="No payouts yet.">
                         <AdminRow v-for="payout in history.data" :key="payout.id">
                             <AdminCell label="Counsellor"><span class="font-medium text-gray-900">{{ payout.counsellorName }}</span></AdminCell>
-                            <AdminCell label="Amount">{{ formatMoney(payout.amount, payout.currency) }}</AdminCell>
-                            <AdminCell label="Status"><AdminStatusPill :label="payout.status.toLowerCase()" :tone="statusTone(payout.status)" /></AdminCell>
-                            <AdminCell label="Initiated by">{{ payout.initiatedBy }}</AdminCell>
+                            <AdminCell label="Amount" half>{{ formatMoney(payout.amount, payout.currency) }}</AdminCell>
+                            <AdminCell label="Status" half><AdminStatusPill :label="payout.status.toLowerCase()" :tone="statusTone(payout.status)" /></AdminCell>
+                            <AdminCell label="Initiated by" half>{{ payout.initiatedBy }}</AdminCell>
                             <AdminCell label="Reference"><span class="break-all">{{ payout.reference }}</span></AdminCell>
-                            <AdminCell label="Failure reason"><span class="text-red-700">{{ payout.failureMessage }}</span></AdminCell>
-                            <AdminCell label="Date"><span class="whitespace-nowrap">{{ new Date(payout.createdAt).toLocaleDateString() }}</span></AdminCell>
+                            <AdminCell :label="payout.failureMessage ? 'Failure reason' : ''"><span class="text-red-700">{{ payout.failureMessage }}</span></AdminCell>
+                            <AdminCell label="Date" half><span class="whitespace-nowrap">{{ new Date(payout.createdAt).toLocaleDateString() }}</span></AdminCell>
                         </AdminRow>
                     </AdminTable>
 

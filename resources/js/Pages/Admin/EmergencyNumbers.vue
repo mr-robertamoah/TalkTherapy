@@ -138,7 +138,7 @@ function remove() {
                         <div class="font-medium text-gray-900">{{ number.label }}</div>
                         <div v-if="number.notes" class="text-gray-600">{{ number.notes }}</div>
                     </AdminCell>
-                    <AdminCell label="Number"><span class="font-medium text-gray-900 tabular-nums whitespace-nowrap">{{ number.number }}</span></AdminCell>
+                    <AdminCell label="Number" half><span class="font-medium text-gray-900 tabular-nums whitespace-nowrap">{{ number.number }}</span></AdminCell>
                     <AdminCell label="Verified">
                         <div class="text-gray-700">
                             {{ number.verifiedAt }} by {{ number.verifiedBy }} ·

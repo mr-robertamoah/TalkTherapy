@@ -32,7 +32,7 @@ function formatDate(value) {
     <AdminRow>
         <AdminCell label="User">
             <div class="flex items-center gap-3 min-w-0">
-                <Avatar v-if="user.avatar" class="shrink-0" :avatar-text="'...'" :size="32" :src="user.avatar" />
+                <Avatar v-if="user.avatar" class="shrink-0" aria-hidden="true" :avatar-text="'...'" :size="32" :src="user.avatar" />
                 <div v-else class="shrink-0 h-8 w-8 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center text-xs font-semibold" aria-hidden="true">
                     {{ (user.username ?? '?').slice(0, 1).toUpperCase() }}
                 </div>
@@ -44,9 +44,9 @@ function formatDate(value) {
         </AdminCell>
 
         <AdminCell label="Email">
-            <div class="break-all">{{ user.email || 'not set' }}</div>
+            <div class="[overflow-wrap:anywhere]">{{ user.email || 'not set' }}</div>
             <!-- SCRUM-427: a new address waiting for its owner to confirm it (super administrators only). -->
-            <div v-if="user.pendingEmail" class="mt-1 text-xs text-amber-900 break-all">waiting for confirmation: {{ user.pendingEmail }}</div>
+            <div v-if="user.pendingEmail" class="mt-1 text-xs text-amber-900 [overflow-wrap:anywhere]">waiting for confirmation: {{ user.pendingEmail }}</div>
         </AdminCell>
 
         <AdminCell label="Verified" half>

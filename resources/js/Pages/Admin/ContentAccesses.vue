@@ -112,7 +112,7 @@ function searchFor(term) {
             <div class="space-y-4">
                 <AdminTable :columns="columns" caption="Admin read log" :empty="accesses.data.length === 0" empty-text="Nothing recorded.">
                     <AdminRow v-for="access in accesses.data" :key="access.id">
-                        <AdminCell label="When"><span class="whitespace-nowrap">{{ formatDate(access.at) }}</span></AdminCell>
+                        <AdminCell label="When" half><span class="whitespace-nowrap">{{ formatDate(access.at) }}</span></AdminCell>
                         <AdminCell label="Administrator">
                             <button
                                 type="button"
@@ -136,7 +136,7 @@ function searchFor(term) {
                             <template v-else>{{ access.subject }}</template>
                             <span v-if="access.fileId" class="text-gray-500">· {{ access.fileName ?? 'an attachment' }}</span>
                         </AdminCell>
-                        <AdminCell label="From"><span class="text-gray-500">{{ access.ip ?? '--' }}</span></AdminCell>
+                        <AdminCell label="From" half><span class="text-gray-500">{{ access.ip ?? '--' }}</span></AdminCell>
                     </AdminRow>
                 </AdminTable>
 

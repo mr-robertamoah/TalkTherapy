@@ -103,7 +103,7 @@ function searchFor(term) {
                 <AdminTable :columns="columns" caption="Organizations with a billing problem" :empty="organizations.data.length === 0" empty-text="No organizations are billing-suspended or have a failed invoice.">
                     <AdminRow v-for="organization in organizations.data" :key="organization.id">
                         <AdminCell label="Organization"><span class="font-medium text-gray-900">{{ organization.name }}</span></AdminCell>
-                        <AdminCell label="Suspended since">
+                        <AdminCell label="Suspended since" half>
                             <template v-if="organization.billingSuspendedAt">{{ formatDate(organization.billingSuspendedAt) }}</template>
                             <span v-else class="text-gray-500">not suspended</span>
                         </AdminCell>
@@ -116,7 +116,7 @@ function searchFor(term) {
                             </template>
                             <span v-else class="text-gray-400">none</span>
                         </AdminCell>
-                        <AdminCell label="Payment method">
+                        <AdminCell label="Payment method" half>
                             <AdminStatusPill
                                 :label="organization.hasPaymentInstrument ? 'on file' : 'missing'"
                                 :tone="organization.hasPaymentInstrument ? 'green' : 'red'"

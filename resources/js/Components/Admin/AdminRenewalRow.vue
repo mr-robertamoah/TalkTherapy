@@ -26,7 +26,7 @@ function formatDate(value) {
     <AdminRow>
         <AdminCell label="Counsellor">
             <div class="flex items-center gap-3 min-w-0">
-                <Avatar class="shrink-0" :avatar-text="'...'" :size="32" :src="counsellor.avatar ?? ''" />
+                <Avatar class="shrink-0" aria-hidden="true" :avatar-text="'...'" :size="32" :src="counsellor.avatar ?? ''" />
                 <div class="min-w-0">
                     <div class="font-medium text-gray-900 capitalize truncate">{{ counsellor.name }}</div>
                     <div v-if="counsellor.username" class="text-xs text-gray-500 truncate">@{{ counsellor.username }}</div>
