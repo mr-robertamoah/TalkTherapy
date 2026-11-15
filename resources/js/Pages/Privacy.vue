@@ -293,6 +293,11 @@ defineProps({
                             profile. A "check in" support message from the TalkTherapy team that you haven't dismissed yet is
                             kept until you do. Closing your account deletes your notifications as described above.
                         </li>
+                        <li v-if="retentionDays.sessionPin">
+                            For an in-person session, the exact map pin of where it takes place is deleted
+                            {{ retentionDays.sessionPin }} days after the session ends; the written landmark is kept. Only
+                            the people in that therapy or group, and administrators, can see them.
+                        </li>
                         <li>Verification and identity documents are deleted on the schedule below.</li>
                     </ul>
                 </section>

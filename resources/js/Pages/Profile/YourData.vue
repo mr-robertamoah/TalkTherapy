@@ -271,9 +271,14 @@ const counsellor = computed(() => props.data.counsellor)
 
                 <YourDataSection id="sessions" title="Sessions">
                     <p>{{ plural(data.sessions.count, 'session', 'sessions') }} in your therapies, and in groups while you were in them.</p>
-                    <template #why>To schedule and hold your sessions.</template>
-                    <template #kept>While your account is open.</template>
-                    <template #who>The people in that therapy or group, and administrators (recorded).</template>
+                    <template #why>To schedule and hold your sessions, and to say where an in-person one takes place.</template>
+                    <template #kept>
+                        While your account is open.<template v-if="retentionDays.sessionPin"> An in-person session's exact map pin is deleted
+                        {{ retentionDays.sessionPin }} days after the session ends; its written landmark is kept.</template>
+                    </template>
+                    <template #who>
+                        The people in that therapy or group, and administrators (recorded).
+                    </template>
                 </YourDataSection>
 
                 <YourDataSection id="messages" title="Messages you sent">
