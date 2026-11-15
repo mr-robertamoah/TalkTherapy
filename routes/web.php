@@ -457,6 +457,9 @@ Route::middleware('auth')->group(function () {
     // SCRUM-36: the private journal -- the signed-in person's own only (no user in any route).
     Route::get('/profile/journal', [JournalController::class, 'index'])->name('profile.journal')->middleware('throttle:60,1,profile.journal');
     Route::get('/profile/journal/entries', [JournalController::class, 'entries'])->name('profile.journal.entries')->middleware('throttle:60,1,profile.journal.entries');
+    // SCRUM-440: the journal as day notes, and searching it (a POST: the term never lands in a URL or a log).
+    Route::get('/profile/journal/days', [JournalController::class, 'days'])->name('profile.journal.days')->middleware('throttle:60,1,profile.journal.days');
+    Route::post('/profile/journal/search', [JournalController::class, 'search'])->name('profile.journal.search')->middleware('throttle:10,1,profile.journal.search');
     Route::post('/profile/journal', [JournalController::class, 'store'])->name('profile.journal.store')->middleware('throttle:20,1,profile.journal.store');
     Route::patch('/profile/journal/{entry}', [JournalController::class, 'update'])->whereNumber('entry')->name('profile.journal.update')->middleware('throttle:30,1,profile.journal.update');
     Route::delete('/profile/journal/{entry}', [JournalController::class, 'destroy'])->whereNumber('entry')->name('profile.journal.destroy')->middleware('throttle:30,1,profile.journal.destroy');

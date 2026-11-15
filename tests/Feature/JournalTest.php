@@ -2,6 +2,7 @@
 
 use App\Actions\User\AnonymiseClosedAccountAction;
 use App\Enums\AdministratorTypeEnum;
+use App\Http\Controllers\JournalController;
 use App\Http\Controllers\JournalExportController;
 use App\Models\AdminContentAccess;
 use App\Models\Administrator;
@@ -309,4 +310,95 @@ test('line breaks count heavily towards the export\'s size (they cost dompdf the
     config(['limits.journal_export_max_characters' => 50000]);
     jnlExport($this, $me)->assertSessionHasErrors('form');
     Notification::assertNothingSent();
+});
+
+// SCRUM-440: days as notes, opening a day, and searching.
+test('days: one note per day, newest first, with the day\'s newest entry and its count; numbered pages', function () {
+    $me = jnlUser();
+    jnlEntry($me, ['written_on' => now()->toDateString(), 'title' => 'jnl morning']);
+    jnlEntry($me, ['written_on' => now()->toDateString(), 'title' => 'jnl evening']);
+    foreach (range(1, 13) as $daysAgo) {
+        jnlEntry($me, ['written_on' => now()->subDays($daysAgo)->toDateString()]);
+    }
+    jnlEntry(jnlUser(), ['written_on' => now()->toDateString(), 'title' => 'jnl-SOMEONE-ELSE']);
+
+    $first = $this->actingAs($me)->getJson(route('profile.journal.days'))->assertOk()->assertHeader('Cache-Control', 'no-store, private');
+    expect($first->json('data'))->toHaveCount(JournalController::DAYS_PER_PAGE)
+        ->and($first->json('data.0'))->toMatchArray(['date' => now()->toDateString(), 'entries' => 2])
+        ->and($first->json('data.0.latest.title'))->toBe('jnl evening')
+        ->and($first->json('lastPage'))->toBe(2)->and($first->json('total'))->toBe(14)
+        ->and($first->content())->not->toContain('jnl-SOMEONE-ELSE');
+
+    $second = $this->getJson(route('profile.journal.days', ['page' => 2]))->assertOk();
+    expect($second->json('data'))->toHaveCount(2)->and($second->json('data.1.date'))->toBe(now()->subDays(13)->toDateString());
+});
+
+test('a day\'s entries, for the day dialog', function () {
+    $me = jnlUser();
+    jnlEntry($me, ['written_on' => '2026-11-01', 'content' => 'jnl first']);
+    jnlEntry($me, ['written_on' => '2026-11-01', 'content' => 'jnl second']);
+    jnlEntry($me, ['written_on' => '2026-11-02', 'content' => 'jnl other day']);
+
+    $day = $this->actingAs($me)->getJson(route('profile.journal.entries', ['date' => '2026-11-01']))->assertOk();
+    expect(collect($day->json('data'))->pluck('content')->all())->toBe(['jnl second', 'jnl first']);
+    $this->getJson(route('profile.journal.entries', ['date' => 'yesterday']))->assertJsonValidationErrors('date');
+});
+
+test('search: titles and text, any case, only your own, as matching days -- and nothing is logged', function () {
+    Log::spy();
+    $me = jnlUser();
+    jnlEntry($me, ['written_on' => '2026-11-01', 'title' => 'jnl Anxious morning', 'content' => 'x']);
+    jnlEntry($me, ['written_on' => '2026-11-01', 'title' => null, 'content' => 'calm afternoon']);
+    jnlEntry($me, ['written_on' => '2026-11-03', 'title' => null, 'content' => 'felt ANXIOUS again, café ☕']);
+    jnlEntry(jnlUser(), ['written_on' => '2026-11-02', 'content' => 'anxious-SOMEONE-ELSE']);
+
+    $res = $this->actingAs($me)->postJson(route('profile.journal.search'), ['q' => 'anxious'])->assertOk()->assertHeader('Cache-Control', 'no-store, private');
+    expect(collect($res->json('data'))->pluck('date')->all())->toBe(['2026-11-03', '2026-11-01'])
+        ->and($res->json('data.1'))->toMatchArray(['entries' => 2, 'matches' => 1])
+        ->and($res->content())->not->toContain('SOMEONE-ELSE');
+
+    expect($this->postJson(route('profile.journal.search'), ['q' => 'CAFÉ'])->json('data.0.date'))->toBe('2026-11-03');
+    $this->postJson(route('profile.journal.search'), ['q' => 'a'])->assertJsonValidationErrors('q');
+    $this->getJson(route('profile.journal.search').'?q=anxious')->assertStatus(405);
+    Log::shouldNotHaveReceived('info');
+    Log::shouldNotHaveReceived('notice');
+});
+
+test('days and search are only ever your own: a guardian sees nothing of a ward\'s', function () {
+    $ward = User::factory()->create(['dob' => now()->subYears(15)]);
+    jnlEntry($ward, ['content' => 'jnl-WARD-PRIVATE']);
+    $guardian = jnlUser();
+    Guardianship::query()->create(['guardian_id' => $guardian->id, 'ward_id' => $ward->id]);
+
+    $this->actingAs($guardian)->getJson(route('profile.journal.days'))->assertJsonPath('data', [])->assertJsonPath('total', 0);
+    $this->actingAs($guardian)->postJson(route('profile.journal.search'), ['q' => 'WARD-PRIVATE'])->assertJsonPath('data', []);
+});
+
+test('search results come in pages; a page past the end is the last one, and a huge one is refused, not a 500', function () {
+    $me = jnlUser();
+    foreach (range(0, 13) as $daysAgo) {
+        jnlEntry($me, ['written_on' => now()->subDays($daysAgo)->toDateString(), 'content' => 'jnl paged match']);
+    }
+    $this->actingAs($me);
+
+    $second = $this->postJson(route('profile.journal.search'), ['q' => 'paged', 'page' => 2])->assertOk();
+    expect($second->json('data'))->toHaveCount(2)->and($second->json('page'))->toBe(2)->and($second->json('total'))->toBe(14);
+
+    $past = $this->postJson(route('profile.journal.search'), ['q' => 'paged', 'page' => 50])->assertOk();
+    expect($past->json('page'))->toBe(2)->and($past->json('data'))->toHaveCount(2);
+
+    $this->postJson(route('profile.journal.search'), ['q' => 'paged', 'page' => PHP_INT_MAX])->assertJsonValidationErrors('page');
+    $this->postJson(route('profile.journal.search'), ['q' => 'nothing-like-it', 'page' => 3])->assertOk()->assertJsonPath('data', [])->assertJsonPath('page', 1);
+});
+
+test('re-dating an entry moves it from one day note to another', function () {
+    $me = jnlUser();
+    $entry = jnlEntry($me, ['written_on' => '2026-11-01', 'content' => 'jnl moving']);
+    jnlEntry($me, ['written_on' => '2026-11-01', 'content' => 'jnl staying']);
+    $this->actingAs($me);
+
+    $this->patchJson(route('profile.journal.update', $entry->id), ['content' => 'jnl moving', 'written_on' => '2026-11-04'])->assertOk();
+
+    $days = collect($this->getJson(route('profile.journal.days'))->json('data'))->mapWithKeys(fn ($d) => [$d['date'] => $d['entries']])->all();
+    expect($days)->toBe(['2026-11-04' => 1, '2026-11-01' => 1]);
 });
