@@ -619,3 +619,17 @@ Counsellors' safety flags. The feature is **off by default**: set `SAFETY_FLAGS_
 | `safety_demo_member` | `password` | Yaa, an anonymous member of "Safety Flag Demo Group". Has an **urgent** flag `suspension_demo_admin` is handling. |
 | `safety_demo_client` | `password` | Kojo, an adult in "Safety Flag Demo (raise one)". No open flag, so you can raise one. A **withdrawn** flag is already there (TT-4.3b). |
 
+
+## What we hold about you (SCRUM-50, TT-8.2)
+
+`/profile/your-data` with something in every category. Seeded by `YourDataSeeder` (called at the end of
+`DatabaseSeeder`; safe to run again on its own: `docker compose exec -u www-data php php artisan db:seed --class=YourDataSeeder`,
+skipped once `your_data_demo` exists).
+
+| Username | Password | What it's for |
+|---|---|---|
+| `your_data_demo` | `password` | An adult client. "Your Data Demo Therapy" (going on: a session, 2 messages, a GHS 150.00 payment), "Your Data Demo Anonymous Therapy" (ended), an urgent help chat, "Your Data Demo Group" (joined anonymously), a ward, an accepted age check whose document is deleted 5 days into the identity-document period, 3 notifications. The super admin opened the therapy, a session's messages and a message (listed), plus the group's page, the help chat and an urgent-help identity reveal (**not** listed). |
+| `your_data_demo_ward` | `password` | The ward (15). Their page shows 1 guardian and none of `your_data_demo`'s data. |
+| `your_data_demo_counsellor` | `password` | Dr. YourData Counsellor, verified, counsellor of both therapies (1 client). A professional licence (kept) and a national ID (deleted on a date shown) from a verification accepted 3 days ago, a GHS 120.00 payout, and one administrator open of the licence. |
+
+The seeded documents are rows only, with no stored file behind them.

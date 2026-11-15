@@ -47,6 +47,7 @@ use App\Http\Controllers\TherapyController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\VideoConsentController;
 use App\Http\Controllers\VideoSessionController;
+use App\Http\Controllers\YourDataController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -444,6 +445,8 @@ Route::middleware('auth')->group(function () {
     Route::delete('/counsellor/{counsellorId}', [CounsellorController::class, 'deleteCounsellor'])->name('counsellor.delete');
 
     Route::get('/profile', [ProfileController::class, 'show'])->name('profile.show');
+    // SCRUM-50: what we hold about the signed-in person -- their own only, so no user in the route.
+    Route::get('/profile/your-data', YourDataController::class)->name('profile.your-data')->middleware('throttle:30,1,profile.your-data');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update')->middleware('throttle:10,1,profile.update'); // SCRUM-422: it checks the password when the email changes
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy')->middleware('throttle:6,1,profile.destroy'); // SCRUM-422: checks the password
     // Self-service only -- always operates on $request->user(), never a route-supplied user id,

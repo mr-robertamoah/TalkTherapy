@@ -4,6 +4,7 @@ use App\Models\User;
 use Database\Seeders\CounsellorSeeder;
 use Database\Seeders\DatabaseSeeder;
 use Database\Seeders\NotificationCenterSeeder;
+use Database\Seeders\YourDataSeeder;
 
 // SCRUM-429: demo seeders never run outside local and testing by accident.
 
@@ -27,6 +28,7 @@ test('seeding refuses anywhere but local and testing, and creates nobody', funct
     ['staging', DatabaseSeeder::class],
     ['production', CounsellorSeeder::class],
     ['production', NotificationCenterSeeder::class],
+    ['production', YourDataSeeder::class],
 ]);
 
 test('the override works outside production, but never in production', function () {

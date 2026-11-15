@@ -300,6 +300,11 @@ defineProps({
                         Email us to ask. If you're not happy with our answer, you can complain to Ghana's Data Protection
                         Commission.
                     </p>
+                    <!-- SCRUM-50: needs signing in (a signed-out visitor is sent to sign in first). -->
+                    <p>
+                        Signed in, you can see a summary of what we hold about you on
+                        <Link :href="route('profile.your-data')" class="underline hover:text-gray-900">What we hold about you</Link>.
+                    </p>
                 </section>
 
                 <section id="children" class="space-y-2">

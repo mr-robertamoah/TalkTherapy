@@ -180,6 +180,19 @@ function changeStep(value) {
                     />
                 </div>
 
+                <!-- SCRUM-50 -->
+                <div class="p-8 bg-white shadow-sm border border-gray-200 rounded-xl">
+                    <section class="max-w-xl">
+                        <h2 class="text-lg font-medium text-gray-900">What we hold about you</h2>
+                        <p class="mt-1 text-sm text-gray-600">
+                            See the information TalkTherapy keeps about you, why, for how long, and who can see it.
+                        </p>
+                        <Link :href="route('profile.your-data')" class="mt-4 inline-block text-sm text-indigo-700 underline hover:text-indigo-900">
+                            What we hold about you
+                        </Link>
+                    </section>
+                </div>
+
                 <div id="profile-account-id" class="relative"></div>
                 <div class="p-8 bg-white shadow-xl border border-gray-100 rounded-xl">
                     <DeleteUserForm class="max-w-xl" />

@@ -12570,3 +12570,30 @@ and safeguarding stay cards); no download button yet (SCRUM-432); team access sh
   back in with "Forgot your password?" (it goes to the current address). The older, pre-existing path -- "This wasn't
   me" on an account with no email restores the remembered address as verified -- is ticketed as SCRUM-433.
 - **Deploy**: the column drop runs after the new code is live (the old saving hook still writes that column).
+
+- **SCRUM-50 (TT-8.2), "What we hold about you"** -- the decisions below.
+
+- **The user's decisions**: no download button (the page says "contact us", linking to `/privacy#contact`, the only
+  contact route); team access shows when and what was opened, never which administrator; counsellor notes, safety
+  flags and urgent-help records get one fixed sentence (no counts, no content); no journal category (there is no
+  journal feature); urgent help chats get one line with the help-chat retention.
+- **Ownership only**: therapies are the ones the person started (`addedby`), sessions are in those and in groups
+  they are or were in (`group_therapy_user`, left ones included), and messages are the ones they sent (as a
+  counsellor too). The visibility scopes are never reused, because they also reach wards' and clients' therapies.
+- **Urgent help chats are left out of team access entirely** (the help chat's page, its session, and messages sent
+  in it), not only the identity reveal. An administrator reads a help chat mostly to look into a report about it, and
+  the privacy policy promises the requester isn't told about a report. Help-chat sessions are left out of the
+  sessions count (help chats are counted on their own line). Messages sent in them still count among "messages you
+  sent", because they are held until the help-chat period ends.
+- **Team access is an allow-list** of resources the person owns (their own 1:1 therapies' THERAPY / SESSION /
+  SESSION_MESSAGES / TOPIC_MESSAGES, MESSAGE* for messages they sent, their own LICENSE_DOCUMENT /
+  IDENTITY_DOCUMENT). A resource added later stays off the page until someone chooses to add it. Labels are
+  copy, so they live in the Vue page. The server sends only `resource` and `at`.
+- **Deletion dates**: `LicenseService::documentRetentionFor()` is now the one rule. `applyDocumentRetention()` purges
+  once its date has passed (same outcomes as before, and the existing retention tests pass unchanged), and the page
+  shows the date. `DeleteExpiredIdentityDocumentsAction::deletesAt()` does the same for identity documents.
+- **Query count**: 9 for a client whatever they hold. A counsellor adds up to 5 (one fewer when they have no
+  licences, because the issuers' eager load is skipped). The test asserts the same ceiling (14) for an empty and a
+  busy account, and an exact match for clients.
+- **Counsellor "clients"**: distinct people in their individual therapies (urgent help chats excluded), never
+  names.
