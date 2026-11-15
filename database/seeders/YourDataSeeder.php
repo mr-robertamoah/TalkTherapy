@@ -170,7 +170,7 @@ class YourDataSeeder extends Seeder
         ]);
         $group->addedby()->associate($counsellor->user);
         $group->save();
-        DB::table('group_therapy_user')->insert(['group_therapy_id' => $group->id, 'user_id' => $client->id, 'anonymous' => true, 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('group_therapy_user')->insert(['group_therapy_id' => $group->id, 'user_id' => $client->id, 'anonymous' => true, 'created_at' => now()->subWeek(), 'updated_at' => now()->subWeek()]);
         $this->message($client, $this->session($group, $counsellor, SessionStatusEnum::held->value), 'Hello, everyone.');
 
         return $group;

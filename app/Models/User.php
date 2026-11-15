@@ -242,6 +242,20 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return $this->email && $this->email_verified_at ? $this->email : $this->last_verified_email;
     }
 
+    // SCRUM-432 (security review): the verified address a change replaced within the last auth.email_stop_restore_days
+    // -- told of a data download as well, since it may be the owner's -- unless another account has verified it since.
+    public function recentlyReplacedEmail(): ?string
+    {
+        $previous = $this->last_verified_email;
+
+        if (! $previous || mb_strtolower($previous) === mb_strtolower((string) $this->email)
+            || ! $this->last_verified_email_at?->gte(now()->subDays((int) config('auth.email_stop_restore_days')))) {
+            return null;
+        }
+
+        return self::query()->whereKeyNot($this->id)->where('email', $previous)->whereNotNull('email_verified_at')->exists() ? null : $previous;
+    }
+
     // SCRUM-431: where the warnings (and their "This wasn't me" link) go -- the protected address, unless it's a
     // remembered one that another account now has and has verified: that stranger mustn't be able to stop the change and
     // scramble the password. Verified only (security review: else an intruder registers an account with the remembered

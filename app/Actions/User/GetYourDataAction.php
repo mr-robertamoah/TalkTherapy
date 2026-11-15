@@ -30,8 +30,8 @@ use Illuminate\Database\Eloquent\Builder;
 // Only what the person OWNS is counted -- YourDataScope says what that is (shared with the copy of their data,
 // SCRUM-432). Nothing about anyone else: no names, no counsellor details, no counsellor notes or safety records, no
 // administrator. Urgent help is never counted at all (not the chats, their sessions or their messages): the page gives
-// it one fixed sentence, as the user decided, so a count can't tip off someone watching the account. A fixed number of queries whatever the person holds (lists are of their own few organisations and
-// documents, capped).
+// it one fixed sentence, as the user decided, so a count can't tip off someone watching the account. A fixed number of
+// queries whatever the person holds (lists are of their own few organisations and documents, capped).
 class GetYourDataAction extends Action
 {
     private const LIST_LIMIT = 50;
@@ -42,7 +42,7 @@ class GetYourDataAction extends Action
     {
         $row = $this->userRow($user);
         $counsellor = Counsellor::query()->where('user_id', $user->id)
-            ->withCount(['sentMessages' => fn (Builder $q) => YourDataScope::outsideHelpChats($q), 'notifications'])
+            ->withCount(['sentMessages' => fn (Builder $q) => YourDataScope::outsideHelpChats($q->withTrashed()), 'notifications'])
             ->first();
 
         return [
@@ -100,7 +100,7 @@ class GetYourDataAction extends Action
                 'groupTherapies as groups_anonymous_count' => fn ($q) => $q->where('group_therapy_user.anonymous', true),
                 'allGroupTherapyMemberships as groups_left_count' => fn ($q) => $q->whereNotNull('group_therapy_user.left_at'),
                 'addedGroupTherapies as groups_started_count',
-                'sentMessages' => fn (Builder $q) => YourDataScope::outsideHelpChats($q),
+                'sentMessages' => fn (Builder $q) => YourDataScope::outsideHelpChats($q->withTrashed()),
                 'guardians as active_guardians_count' => fn ($q) => $q->active(),
                 'wards as active_wards_count' => fn ($q) => $q->active(),
                 'notifications',
@@ -191,7 +191,8 @@ class GetYourDataAction extends Action
     // Per currency: how many payments, and the total that went through (minor units).
     private function transactions(User $user): array
     {
-        return $this->moneyByCurrency(Transaction::query()->where('user_id', $user->id), TransactionStatusEnum::success->value);
+        // SCRUM-432 security review: what they paid themselves -- an organisation's charges aren't theirs to total.
+        return $this->moneyByCurrency(Transaction::query()->where('user_id', $user->id)->whereNull('organization_id'), TransactionStatusEnum::success->value);
     }
 
     private function payouts(Counsellor $counsellor): array

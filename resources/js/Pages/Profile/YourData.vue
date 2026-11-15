@@ -2,15 +2,80 @@
 // SCRUM-50 (TT-8.2): "What we hold about you" -- the facts come from GetYourDataAction (counts, yes/no, dates, the
 // person's own profile values); the words about what, why, how long and who can see it live here so they can be
 // changed after the legal read (SCRUM-364). The periods are the privacy policy's own (RetentionPeriods).
-import { computed } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { Head, Link } from '@inertiajs/vue3'
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue'
+import InputError from '@/Components/InputError.vue'
+import InputLabel from '@/Components/InputLabel.vue'
+import PrimaryButton from '@/Components/PrimaryButton.vue'
+import SecondaryButton from '@/Components/SecondaryButton.vue'
+import TextInput from '@/Components/TextInput.vue'
 import YourDataSection from './Partials/YourDataSection.vue'
 
 const props = defineProps({
     data: { type: Object, required: true },
     retentionDays: { type: Object, required: true },
+    // SCRUM-432: the same sentence the copy of their data gives (YourDataWording).
+    otherRecords: { type: String, required: true },
 })
+
+// SCRUM-432: a copy of their data -- password each time, and the two-factor code when it's on. Fetched (not a form
+// post) so a wrong password shows here, without leaving the page.
+const downloadOpen = ref(false)
+const downloading = ref(false)
+const downloaded = ref(false)
+const downloadForm = ref({ current_password: '', code: '' })
+const downloadErrors = ref({})
+const passwordInput = ref(null)
+const downloadButton = ref(null)
+
+function openDownload() {
+    downloadOpen.value = true
+    downloaded.value = false
+    nextTick(() => passwordInput.value?.focus())
+}
+
+function closeDownload() {
+    downloadOpen.value = false
+    downloadForm.value = { current_password: '', code: '' }
+    downloadErrors.value = {}
+    // QA: back to the button that opened it.
+    nextTick(() => downloadButton.value?.$el?.focus?.() ?? downloadButton.value?.focus?.())
+}
+
+async function download() {
+    downloading.value = true
+    downloadErrors.value = {}
+
+    try {
+        const response = await axios.post(route('profile.your-data.download'), downloadForm.value, { responseType: 'blob' })
+        const name = /filename="?([^";]+)"?/.exec(response.headers['content-disposition'] ?? '')?.[1] ?? 'talktherapy-your-data.json'
+        const url = URL.createObjectURL(response.data)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = name
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        setTimeout(() => URL.revokeObjectURL(url), 1000)
+        closeDownload()
+        downloaded.value = true
+    } catch (error) {
+        const status = error.response?.status
+        let body = {}
+        try { body = JSON.parse(await error.response?.data?.text?.()) } catch { body = {} }
+
+        if (status === 422) {
+            downloadErrors.value = Object.fromEntries(Object.entries(body.errors ?? {}).map(([key, messages]) => [key, messages[0]]))
+        } else if (status === 429) {
+            downloadErrors.value = { form: 'You have asked for a copy too many times. Please try again in an hour.' }
+        } else {
+            downloadErrors.value = { form: 'Something went wrong. Please try again later.' }
+        }
+    } finally {
+        downloading.value = false
+    }
+}
 
 const contactHref = computed(() => `${route('privacy')}#contact`)
 const profile = (anchor) => `${route('profile.show')}#${anchor}`
@@ -91,13 +156,62 @@ const counsellor = computed(() => props.data.counsellor)
                         can see it. It only ever shows your own information.
                     </p>
                     <p>
-                        To get a copy of your data, or to ask us to correct or delete it,
+                        To ask us to correct or delete your data,
                         <a :href="contactHref" class="text-indigo-700 underline hover:text-indigo-900">contact us</a>.
                         Our <Link :href="route('privacy')" class="text-indigo-700 underline hover:text-indigo-900">privacy policy</Link>
                         explains all of this in more detail.
                     </p>
                     <p class="text-xs text-gray-500">This page is awaiting legal review, and its wording may change.</p>
                 </div>
+
+                <!-- SCRUM-432 -->
+                <section id="download" aria-labelledby="download-title" class="bg-white shadow-sm border border-gray-200 rounded-lg p-6 text-sm text-gray-700">
+                    <h2 id="download-title" class="text-lg font-semibold text-gray-900">Download a copy</h2>
+                    <p class="mt-2">
+                        A file (JSON) with what this page lists, in more detail: your profile, therapies, groups and
+                        sessions (times and status), the messages you sent, your payments, and when the team opened your
+                        content. It has only what is yours -- never anyone else's messages. Files you attached are listed
+                        by name, not included.<template v-if="counsellor"> Messages you sent as a counsellor are about your
+                        clients, so they are counted, not included.</template>
+                    </p>
+
+                    <p v-if="!data.security.passwordSet" class="mt-3">
+                        Your account has no password, so we can't check it's you here.
+                        <a :href="contactHref" class="text-indigo-700 underline hover:text-indigo-900">Contact us</a> for a copy.
+                    </p>
+                    <p v-else-if="account.pendingEmail" class="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-900">
+                        A new email address is waiting on your account. You can download a copy once that change is
+                        finished or stopped.
+                    </p>
+                    <template v-else>
+                        <p v-if="downloaded" role="status" class="mt-3 rounded-md border border-green-200 bg-green-50 p-3 text-green-900">
+                            Your copy has downloaded. We've let you know on your account{{ account.emailVerified ? ' and by email' : '' }}.
+                        </p>
+
+                        <div v-if="!downloadOpen" class="mt-4">
+                            <PrimaryButton ref="downloadButton" type="button" @click="openDownload">Download a copy</PrimaryButton>
+                        </div>
+
+                        <form v-else class="mt-4 max-w-sm space-y-4" @submit.prevent="download">
+                            <p>To keep it safe, confirm it's you{{ data.security.twoFactorEnabled ? ' with your password and a two-step sign-in code' : ' with your password' }}. We'll let you know on your account{{ account.emailVerified ? ' and by email' : '' }} each time a copy is downloaded.</p>
+                            <div>
+                                <InputLabel for="download-password" value="Password" />
+                                <TextInput id="download-password" ref="passwordInput" v-model="downloadForm.current_password" type="password" class="mt-1 block w-full" autocomplete="current-password" required />
+                                <InputError class="mt-2" :message="downloadErrors.current_password" />
+                            </div>
+                            <div v-if="data.security.twoFactorEnabled">
+                                <InputLabel for="download-code" value="Two-step sign-in code (or a recovery code)" />
+                                <TextInput id="download-code" v-model="downloadForm.code" type="text" class="mt-1 block w-full" autocomplete="one-time-code" required />
+                                <InputError class="mt-2" :message="downloadErrors.code" />
+                            </div>
+                            <InputError :message="downloadErrors.form" />
+                            <div class="flex items-center gap-3">
+                                <PrimaryButton :disabled="downloading" :class="{ 'opacity-25': downloading }">{{ downloading ? 'Preparing…' : 'Download' }}</PrimaryButton>
+                                <SecondaryButton type="button" :disabled="downloading" @click="closeDownload">Cancel</SecondaryButton>
+                            </div>
+                        </form>
+                    </template>
+                </section>
 
                 <YourDataSection id="account" title="Your account and profile" :link="{ href: profile('profile-info-id'), label: 'Change your profile' }">
                     <ul class="space-y-1">
@@ -316,11 +430,7 @@ const counsellor = computed(() => props.data.counsellor)
                 <div class="bg-white shadow-sm border border-gray-200 rounded-lg p-6 text-sm text-gray-700">
                     <h2 class="text-lg font-semibold text-gray-900">Other records</h2>
                     <p class="mt-2">
-                        Your counsellor may keep private notes about your sessions and messages, and the TalkTherapy team may
-                        hold records made to keep you safe, such as urgent help chats or a safety concern a counsellor raised.
-                        They aren't listed or counted on this page. An urgent help chat's messages are deleted
-                        {{ retentionDays.helpChat }} days after the chat ended; a record that help was asked for is kept. To ask
-                        about any of these,
+                        {{ otherRecords }} To ask about any of these,
                         <a :href="contactHref" class="text-indigo-700 underline hover:text-indigo-900">contact us</a>.
                     </p>
                 </div>

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Actions\User\GetYourDataAction;
 use App\Support\RetentionPeriods;
+use App\Support\YourDataWording;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -17,6 +18,8 @@ class YourDataController extends Controller
         return Inertia::render('Profile/YourData', [
             'data' => GetYourDataAction::new()->execute($request->user()),
             'retentionDays' => RetentionPeriods::days(),
+            // SCRUM-432: the same sentence the copy of their data gives.
+            'otherRecords' => YourDataWording::otherRecords(),
         ]);
     }
 }

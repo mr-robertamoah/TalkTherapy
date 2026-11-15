@@ -48,22 +48,22 @@ class YourDataScope
             ->where('is_help_chat', false);
     }
 
-    public static function helpChatSessionIds(): QueryBuilder
+    private static function helpChatSessionIds(): QueryBuilder
     {
         return DB::table('sessions')->select('id')
             ->where('for_type', (new Therapy)->getMorphClass())
             ->whereIn('for_id', DB::table('therapies')->select('id')->where('is_help_chat', true));
     }
 
-    public static function ownSessionIds(User $user): QueryBuilder
+    private static function ownSessionIds(User $user): QueryBuilder
     {
         return DB::table('sessions')->select('id')
             ->where('for_type', (new Therapy)->getMorphClass())
             ->whereIn('for_id', self::ownTherapyIds($user));
     }
 
-    // Sessions in the person's own therapies (not urgent help chats) and in groups while they were in them: for a group
-    // they left, only the sessions that started before they left.
+    // Sessions in the person's own therapies (not urgent help chats) and in groups while they were in them: from when they
+    // joined and, for a group they left, until they left.
     public static function sessions(User $user): Builder
     {
         return Session::query()
@@ -73,17 +73,19 @@ class YourDataScope
                     ->from('group_therapy_user')
                     ->whereColumn('group_therapy_user.group_therapy_id', 'sessions.for_id')
                     ->where('group_therapy_user.user_id', $user->id)
+                    // Security review: from when they joined -- a group's earlier sessions aren't theirs.
+                    ->whereColumn('sessions.start_time', '>=', 'group_therapy_user.created_at')
                     ->where(fn (QueryBuilder $q) => $q->whereNull('group_therapy_user.left_at')->orWhereColumn('sessions.start_time', '<', 'group_therapy_user.left_at')))));
     }
 
-    public static function ownTopicIds(User $user): QueryBuilder
+    private static function ownTopicIds(User $user): QueryBuilder
     {
         return DB::table('therapy_topics')->select('id')
             ->where('topicable_type', (new Therapy)->getMorphClass())
             ->whereIn('topicable_id', self::ownTherapyIds($user));
     }
 
-    // Messages counted as the person's: all but those in urgent help chats.
+    // Messages counted as the person's: all but those in urgent help chats. Callers include deleted ones (still held).
     public static function outsideHelpChats(Builder $messages): Builder
     {
         return $messages->whereNot(fn (Builder $q) => $q
@@ -93,7 +95,7 @@ class YourDataScope
 
     // Messages the person sent in sessions, as themselves or as a counsellor -- never in a case discussion (a
     // counsellor's discussion about a client) or an urgent help chat (see ownTherapyIds()).
-    public static function sentMessageIds(User $user, ?Counsellor $counsellor): QueryBuilder
+    private static function sentMessageIds(User $user, ?Counsellor $counsellor): QueryBuilder
     {
         return DB::table('messages')->select('id')
             ->where(fn (QueryBuilder $q) => $q
@@ -117,7 +119,7 @@ class YourDataScope
             ->whereNotIn('for_id', self::helpChatSessionIds());
     }
 
-    public static function identityRequestIds(User $user): QueryBuilder
+    private static function identityRequestIds(User $user): QueryBuilder
     {
         return DB::table('requests')->select('id')
             ->where('type', RequestTypeEnum::ageVerification->value)
@@ -125,7 +127,7 @@ class YourDataScope
             ->where('for_id', $user->id);
     }
 
-    public static function licenseIds(Counsellor $counsellor): QueryBuilder
+    private static function licenseIds(Counsellor $counsellor): QueryBuilder
     {
         return DB::table('licenses')->select('id')
             ->where('for_type', $counsellor->getMorphClass())

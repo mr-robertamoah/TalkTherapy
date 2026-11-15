@@ -53,7 +53,7 @@ function ydtTherapy(User $client, ?Counsellor $counsellor = null, array $attribu
 
 function ydtSession(Therapy|GroupTherapy $for): Session
 {
-    return Session::factory()->create(['for_type' => $for::class, 'for_id' => $for->id]);
+    return Session::factory()->create(['for_type' => $for::class, 'for_id' => $for->id, 'start_time' => now()->addDay(), 'end_time' => now()->addDay()->addHour()]);
 }
 
 function ydtMessage(User|Counsellor $from, Session|Discussion $for): Message
@@ -486,7 +486,7 @@ test('a group they left counts only the sessions from before they left', functio
     $left = ydtGroup($me);
     Session::factory()->create(['for_type' => GroupTherapy::class, 'for_id' => $left->id, 'start_time' => now()->subDays(10), 'end_time' => now()->subDays(10)->addHour()]);
     Session::factory()->create(['for_type' => GroupTherapy::class, 'for_id' => $left->id, 'start_time' => now()->subDays(2), 'end_time' => now()->subDays(2)->addHour()]);
-    DB::table('group_therapy_user')->where('group_therapy_id', $left->id)->where('user_id', $me->id)->update(['left_at' => now()->subDays(5)]);
+    DB::table('group_therapy_user')->where('group_therapy_id', $left->id)->where('user_id', $me->id)->update(['created_at' => now()->subDays(20), 'left_at' => now()->subDays(5)]);
     ydtSession(ydtGroup($me));
 
     $data = ydtData($me);
@@ -531,4 +531,14 @@ test('a turned-down verification\'s deletion date is the job\'s own', function (
     expect(LicenseService::new()->applyDocumentRetention(dryRun: true))->toHaveCount(0);
     $this->travelTo(Carbon::parse($deletesAt)->addMinute());
     expect(LicenseService::new()->applyDocumentRetention(dryRun: true)->pluck('license')->all())->toBe([$license->id]);
+});
+
+// SCRUM-432 security review: a group's sessions from before they joined aren't theirs.
+test('a group they joined later counts only the sessions from after they joined', function () {
+    $me = User::factory()->adult()->create();
+    $group = ydtGroup($me);
+    Session::factory()->create(['for_type' => GroupTherapy::class, 'for_id' => $group->id, 'start_time' => now()->subDays(10), 'end_time' => now()->subDays(10)->addHour()]);
+    Session::factory()->create(['for_type' => GroupTherapy::class, 'for_id' => $group->id, 'start_time' => now()->addDay(), 'end_time' => now()->addDay()->addHour()]);
+
+    expect(ydtData($me)['sessions']['count'])->toBe(1);
 });
