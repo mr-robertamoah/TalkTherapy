@@ -12545,3 +12545,28 @@ security review) was the only one, ticketed as SCRUM-429.
   stays a clean exit (the entrypoint seeds a fresh database -- an error would stop the container), test hardening.
   Accepted: two-factor an intruder turned on *before* asking for the change isn't covered -- not a takeover (the
   owner goes through support), and it can't be told apart from the owner's own.
+
+## SCRUM-50 + SCRUM-430 + SCRUM-431 — "What we hold about you", the admin facelift, and two email-change gaps (2026-11-15)
+
+The user asked for one PR: a backlog ticket of my choosing (SCRUM-50, TT-8.2 -- same epic as the admin facelift, and it
+feeds the privacy policy still in legal review, SCRUM-364), their TODO (the admin facelift, SCRUM-430), and the two gaps
+accepted in SCRUM-427/428 (SCRUM-431). One commit per part. The user's answers: rows for Users, Counsellors,
+Suspensions, Requests, Counsellor verification and Testimonials (existing tables restyled; safety alerts, urgent help
+and safeguarding stay cards); no download button yet (SCRUM-432); team access shown with date and what, never who; a
+14-day look-back.
+
+- **SCRUM-431 A**: "This wasn't me" also schedules the cancellable two-factor reset when two-factor was turned on in the
+  14 days before the change was asked for (`EMAIL_STOP_TWO_FACTOR_LOOKBACK_DAYS`, 7-90; anything else is 14), not only
+  during the wait. Accepted: two-factor turned on earlier than that isn't covered (the owner got the "turned on"
+  email then, and an intruder's two-factor locks the owner out at their next sign-in).
+- **SCRUM-431 B**: the last verified address stays protected however long ago while the current one is unverified (it
+  was 30 days -- unticking "verified" and waiting them out skipped the wait). `last_verified_email_until` is dropped
+  (nothing read it any more); existing accounts whose 30 days had run out are protected again. A remembered address
+  that another account now has **and has verified** isn't sent the warnings (they carry "This wasn't me": a stranger
+  could stop the change and scramble the password); the change still waits. Security review (High, fixed): without
+  "verified", an intruder could remove the email, register an account with it unverified, and silence every warning.
+  Accepted (security Medium): a remembered address whose mailbox now belongs to someone who isn't a user gets the
+  warnings for as long as the account's address stays unverified, and can press "This wasn't me" -- the owner gets
+  back in with "Forgot your password?" (it goes to the current address). The older, pre-existing path -- "This wasn't
+  me" on an account with no email restores the remembered address as verified -- is ticketed as SCRUM-433.
+- **Deploy**: the column drop runs after the new code is live (the old saving hook still writes that column).

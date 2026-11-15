@@ -71,7 +71,7 @@ class TwoFactorResetRequestedNotification extends Notification implements Should
 
         if ($this->afterEmailStop) {
             // SCRUM-428: the two-factor may be an intruder's phone -- or the owner's, if the old mailbox is the intruder.
-            $message->line('A change of email on a TalkTherapy account was stopped ("This wasn\'t me"). Two-factor sign-in was turned on while that change waited, so it may be on someone else\'s phone: it\'s set to be reset.')
+            $message->line('A change of email on a TalkTherapy account was stopped ("This wasn\'t me"). Two-factor sign-in was turned on shortly before or during that change, so it may be on someone else\'s phone: it\'s set to be reset.')
                 ->line("It takes effect on {$due->format('j F Y, H:i T')}.")
                 ->line('If that two-factor sign-in is yours (on your own phone), cancel the reset -- and contact support, as someone else may have this account\'s mailbox.');
         } else {

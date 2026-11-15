@@ -53,8 +53,8 @@ class RequestEmailChangeAction extends Action
 
         Notification::route('mail', $newEmail)->notify(new ConfirmNewEmailNotification($user->id, $newEmail, $user->pendingEmailHash()));
 
-        // The current verified address -- or one verified until recently (removed or unticked: security review).
-        EmailChangedNotification::sendTo($user->protectedEmail(), $name, $newEmail, byTeam: $byTeam, userId: $user->id,
+        // The current verified address -- or the last one verified (removed or unticked: security review, SCRUM-431).
+        EmailChangedNotification::sendTo($user->protectedEmailRecipient(), $name, $newEmail, byTeam: $byTeam, userId: $user->id,
             pendingHash: $user->pendingEmailHash(), accountHasEmail: (bool) $user->email);
 
         if ($byTeam) {

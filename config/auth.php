@@ -138,6 +138,9 @@ return [
     // verified -- its owner can stop it meanwhile ("This wasn't me"). Under 24 (or not a number) is 48: a misconfiguration
     // mustn't quietly gut it (security review). Over 72 is 48 too: the "This wasn't me" link lasts 4 days.
     'email_change_wait_hours' => ($emailChangeWait = (int) env('EMAIL_CHANGE_WAIT_HOURS', 48)) >= 24 && $emailChangeWait <= 72 ? $emailChangeWait : 48,
+    // SCRUM-431: "This wasn't me" schedules a two-factor reset when two-factor was turned on this many days before the
+    // change was asked for, or since (it may be an intruder's phone). 7-90; anything else (or not a number) is 14.
+    'email_stop_two_factor_lookback_days' => ($lookback = (int) env('EMAIL_STOP_TWO_FACTOR_LOOKBACK_DAYS', 14)) >= 7 && $lookback <= 90 ? $lookback : 14,
 
     'two_factor' => [
         'enabled' => (bool) env('TWO_FACTOR_ENABLED', true),
