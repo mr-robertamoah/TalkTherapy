@@ -127,6 +127,12 @@ class YourDataScope
             ->where('from_id', $user->id));
     }
 
+    // SCRUM-36: the person's journal -- theirs alone, counted on the page and given in full in the copy.
+    public static function journalEntries(User $user): Builder
+    {
+        return $user->journalEntries()->getQuery();
+    }
+
     private static function identityRequestIds(User $user): QueryBuilder
     {
         return DB::table('requests')->select('id')

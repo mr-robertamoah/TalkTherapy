@@ -169,7 +169,7 @@ const counsellor = computed(() => props.data.counsellor)
                     <h2 id="download-title" class="text-lg font-semibold text-gray-900">Download a copy</h2>
                     <p class="mt-2">
                         A file (JSON) with what this page lists, in more detail: your profile, therapies, groups and
-                        sessions (times and status), the messages you sent, your payments, and when the team opened your
+                        sessions (times and status), the messages you sent, your journal, your payments, and when the team opened your
                         content. It has only what is yours -- never anyone else's messages. Files you attached are listed
                         by name, not included.<template v-if="counsellor"> Messages you sent as a counsellor are about your
                         clients, so they are counted, not included.</template>
@@ -294,6 +294,16 @@ const counsellor = computed(() => props.data.counsellor)
                     </template>
                 </YourDataSection>
 
+                <!-- SCRUM-36 -->
+                <YourDataSection id="journal" title="Your journal" :link="{ href: route('profile.journal'), label: 'Open your journal' }">
+                    <p>
+                        {{ plural(data.journal.entries, 'entry', 'entries') }}<template v-if="data.journal.since">, the first written on {{ day(data.journal.since) }}</template>.
+                    </p>
+                    <template #why>So you can keep track of how you're doing. It's yours, and only there because you wrote it.</template>
+                    <template #kept>Until you delete it, or close your account -- then it's deleted straight away.</template>
+                    <template #who>Only you. Not your counsellor, a guardian, an organisation or the TalkTherapy team -- it is stored encrypted and there is no way to open it in the app but yours.</template>
+                </YourDataSection>
+
                 <YourDataSection id="groups" title="Groups and organisations">
                     <ul class="space-y-1">
                         <li>
@@ -378,10 +388,15 @@ const counsellor = computed(() => props.data.counsellor)
                     <template #who>You and administrators (recorded).</template>
                 </YourDataSection>
 
-                <YourDataSection id="notifications" title="Notifications" :link="{ href: profile('profile-notifications-id'), label: 'Change how long' }">
+                <YourDataSection id="notifications" title="Notifications" :link="{ href: profile('profile-notifications-id'), label: 'Change your choices' }">
                     <p>
                         {{ plural(data.notifications.count, 'notification', 'notifications') }}<template v-if="data.notifications.counsellorCount !== null">,
                         and {{ data.notifications.counsellorCount }} on your counsellor profile</template>.
+                    </p>
+                    <!-- SCRUM-40 -->
+                    <p v-if="data.notifications.switchedOff.length" class="mt-1">
+                        You switched off:
+                        <template v-for="(choice, i) in data.notifications.switchedOff" :key="choice.kind">{{ i ? '; ' : '' }}{{ choice.kind.toLowerCase() }} ({{ [choice.email && 'email', choice.inApp && 'in the app'].filter(Boolean).join(' and ') }})</template>.
                     </p>
                     <template #why>To tell you about things that need you.</template>
                     <template #kept>

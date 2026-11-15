@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\ConstantsEnum;
 use App\Enums\FileTagEnum;
+use App\Enums\NotificationCategoryEnum;
 use App\Enums\SuspensionScopeEnum;
 use App\Events\SessionCheckRequestedEvent;
 use App\Notifications\ConfirmNewEmailNotification;
@@ -16,6 +17,7 @@ use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -94,6 +96,8 @@ class User extends Authenticatable implements MustVerifyEmailContract
         'last_verified_email',
         'last_verified_email_at',
         'session_version',
+        // SCRUM-40: only the person's own profile shows these.
+        'notification_channels',
     ];
 
     /**
@@ -116,6 +120,8 @@ class User extends Authenticatable implements MustVerifyEmailContract
         'pending_email_requested_at' => 'datetime',
         'pending_email_confirmed_at' => 'datetime',
         'last_verified_email_at' => 'datetime',
+        // SCRUM-40
+        'notification_channels' => 'array',
         'session_version' => 'integer',
     ];
 
@@ -218,6 +224,12 @@ class User extends Authenticatable implements MustVerifyEmailContract
             }
         });
 
+        // SCRUM-36: closing an account deletes its journal at once (soft delete of the account, or the force delete's
+        // cascade) -- nothing needs it while the account waits to be anonymised, and there is no restore.
+        static::deleting(function (User $user) {
+            $user->journalEntries()->delete();
+        });
+
         static::updated(function (User $user) {
             if ($user->wasChanged(['password', 'two_factor_confirmed_at', 'session_version'])) {
                 SessionCheckRequestedEvent::after($user->id);
@@ -307,6 +319,19 @@ class User extends Authenticatable implements MustVerifyEmailContract
     public function clearPendingEmail(): void
     {
         $this->forceFill(['pending_email' => null, 'pending_email_requested_at' => null, 'pending_email_requested_by' => null, 'pending_email_confirmed_at' => null])->save();
+    }
+
+    // SCRUM-40 (TT-5.5): whether they want $category's notifications by $channel ('mail' or 'database') -- yes unless
+    // they switched it off.
+    public function wantsNotification(NotificationCategoryEnum $category, string $channel): bool
+    {
+        return ($this->notification_channels[$category->value][$channel] ?? true) !== false;
+    }
+
+    // SCRUM-36: the person's private journal -- read only through here, by its writer.
+    public function journalEntries(): HasMany
+    {
+        return $this->hasMany(JournalEntry::class);
     }
 
     // SCRUM-424: a reset of their two-factor sign-in by the team that is still waiting to apply (at most one).

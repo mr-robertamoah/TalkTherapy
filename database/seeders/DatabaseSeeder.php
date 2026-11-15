@@ -272,6 +272,8 @@ class DatabaseSeeder extends Seeder
         $this->call(NotificationCenterSeeder::class);
         // SCRUM-50: "What we hold about you" with something in every category (your_data_demo, your_data_demo_counsellor).
         $this->call(YourDataSeeder::class);
+        // SCRUM-36
+        $this->call(JournalSeeder::class);
         // SCRUM-433
         $this->call(RestoreGuardSeeder::class);
     }

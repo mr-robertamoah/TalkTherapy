@@ -11,4 +11,15 @@ return [
 
     // A discussion's max counsellors (EnsureDiscussionDataIsValidAction): a separate cap from the group one.
     'discussion_max_counsellors_ceiling' => (int) env('DISCUSSION_MAX_COUNSELLORS_CEILING', 50),
+
+    // SCRUM-36: a journal entry's text and title (characters).
+    'journal_entry_max_length' => (int) env('JOURNAL_ENTRY_MAX_LENGTH', 10000),
+    'journal_title_max_length' => (int) env('JOURNAL_TITLE_MAX_LENGTH', 120),
+    // How many entries one person can keep (security review: storage, and the size of their data copy).
+    'journal_max_entries' => (int) env('JOURNAL_MAX_ENTRIES', 5000),
+    // SCRUM-38: one PDF export -- dompdf lays it out in memory at about half a second per 10,000 characters, so it is
+    // capped by entries and by total characters, a line break counting as 100 (JournalExportController::weight; about
+    // 7 seconds); past either, the person picks a date range.
+    'journal_export_max_entries' => (int) env('JOURNAL_EXPORT_MAX_ENTRIES', 500),
+    'journal_export_max_characters' => (int) env('JOURNAL_EXPORT_MAX_CHARACTERS', 150000),
 ];

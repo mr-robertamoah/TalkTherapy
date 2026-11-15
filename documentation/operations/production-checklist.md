@@ -110,6 +110,19 @@ Check every item before going live.
     in Docker `docker compose up -d --force-recreate php queue`). Before deploying, count the accounts that will go
     to support instead (remembered before SCRUM-433, so no date) and brief support:
     `SELECT COUNT(*) FROM users WHERE email IS NULL AND last_verified_email IS NOT NULL AND last_verified_email_at IS NULL;`
+  - SCRUM-36/38, the private journal: `APP_KEY` encrypts every journal entry and nothing re-encrypts them. Rotate it
+    only with the old key kept in `APP_PREVIOUS_KEYS` (for good), and back the key up apart from the database -- a
+    database backup without it recovers no journal (the page and the data copy then fail with `DecryptException`).
+  - SCRUM-38, PDF export (dompdf): the host's PHP has `dom` and `mbstring` (`php -m`; `gd` recommended) -- without them
+    `composer install` fails mid-deploy and the site stays in maintenance mode. php-fpm `memory_limit` at least 384M,
+    and nginx `fastcgi_read_timeout` / FPM `request_terminate_timeout` at least 90s for `POST /profile/journal/export`
+    (capped at about 7 seconds of work, but a slow CPU stretches it). With more than one app host, set `CACHE_STORE`
+    to redis or database so the one-export-at-a-time lock is shared.
+  - SCRUM-40, notification choices: applied by an auto-discovered listener (`ApplyNotificationChoices`). `deploy.sh`
+    doesn't cache events; if `event:cache` or `optimize` is ever run, run it on every deploy (a stale cache drops the
+    listener and switched-off notifications go out anyway), and `event:clear` before rolling back.
+  - Rolling back SCRUM-36/40: roll back the code, not the migrations -- the old code ignores `journal_entries` and
+    `users.notification_channels`. Dropping `journal_entries` deletes people's private journals for good; dump it first.
   - SCRUM-434, support: someone writing from an account's long-remembered address (warnings there now say only to
     contact support) is **not** proof they own the account -- that mailbox may have passed to someone else. Check who
     they are another way (`two-factor-reset-identity-check.md`; the account's identity-check records) before setting

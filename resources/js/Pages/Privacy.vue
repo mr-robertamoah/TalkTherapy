@@ -42,6 +42,7 @@ defineProps({
                             <li><a href="#why" class="underline hover:text-gray-900">Why</a></li>
                             <li><a href="#sharing" class="underline hover:text-gray-900">Who sees it</a></li>
                             <li><a href="#confidential-messages" class="underline hover:text-gray-900">Confidential messages</a></li>
+                            <li><a href="#journal" class="underline hover:text-gray-900">Your journal</a></li>
                             <li><a href="#urgent-help" class="underline hover:text-gray-900">Urgent help</a></li>
                             <li><a href="#safety-flags" class="underline hover:text-gray-900">Safety concerns</a></li>
                             <li><a href="#administrator-access" class="underline hover:text-gray-900">Administrators</a></li>
@@ -128,6 +129,22 @@ defineProps({
                         device and network address they used. These records can't be changed or deleted, and are kept
                         permanently. When the review closes, the person who reported and the person the report is about
                         are told whether confidential messages were read. Neither is told which administrator reviewed it.
+                    </p>
+                </section>
+
+                <!-- SCRUM-36/38 -->
+                <section id="journal" class="space-y-2">
+                    <h2 class="text-lg font-semibold text-gray-900">Your journal</h2>
+                    <p>
+                        If you keep a journal, only you can read it. Your counsellor, a guardian, an organisation and the
+                        TalkTherapy team have no way to open it in the app, and it is stored encrypted. Because nobody reads
+                        it, nobody will notice if you write that you're struggling -- use "I need help now" or talk to your
+                        counsellor instead.
+                    </p>
+                    <p>
+                        We keep it until you delete it. When you close your account, it is deleted straight away. You can
+                        export it as a PDF (we ask for your password first, and tell you each time), and it is in the copy of
+                        your data.
                     </p>
                 </section>
 

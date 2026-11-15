@@ -17,6 +17,7 @@ use App\DTOs\CheckNameRetrievabilityDTO;
 use App\DTOs\DeleteCounsellorDTO;
 use App\DTOs\EnsureDobChangeIsAllowedDTO;
 use App\DTOs\UpdateUserAvatarDTO;
+use App\Enums\NotificationCategoryEnum;
 use App\Exceptions\CannotDeleteCounsellorException;
 use App\Exceptions\DobChangeRequiresApprovalException;
 use App\Exceptions\SuspensionException;
@@ -76,6 +77,14 @@ class ProfileController extends Controller
                 'defaultDays' => PruneNotificationsAction::defaultDays(),
                 'options' => array_values(array_map('intval', config('notifications.retention_options'))),
             ],
+            // SCRUM-40 (TT-5.5): email and in-app, per kind of notification -- on unless they switched it off.
+            'notificationChannels' => array_map(fn (NotificationCategoryEnum $category) => [
+                'key' => $category->value,
+                'label' => $category->label(),
+                'description' => $category->description(),
+                'mail' => $request->user()->wantsNotification($category, 'mail'),
+                'database' => $request->user()->wantsNotification($category, 'database'),
+            ], array_values(array_filter(NotificationCategoryEnum::cases(), fn (NotificationCategoryEnum $category) => ! $category->forCounsellorsOnly() || $request->user()->counsellor()->exists()))),
         ]);
     }
 

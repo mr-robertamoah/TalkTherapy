@@ -47,6 +47,7 @@ use Illuminate\Support\Str;
 //    "a member left your group" notices (SCRUM-73), found by WardRef.
 //  - the one-line note on its urgent help requests, and an administrator's close note on them
 //    (SCRUM-33; the chats themselves follow their own one-year retention).
+//  - its journal (SCRUM-36) -- already deleted when the account was closed (User::booted); again here, in case.
 // What stays: the account row itself (soft-deleted), so what the person took part in still holds
 // together -- their messages stay in other people's conversations as "Deleted user", and payment,
 // complaint, suspension and audit records keep pointing at it. Guardianship and organisation
@@ -173,6 +174,7 @@ class AnonymiseClosedAccountAction extends Action
                 DB::table('password_reset_tokens')->where('email', $user->email)->delete();
             }
             $user->tokens()->delete();
+            $user->journalEntries()->delete();
             Contact::query()->where('addedby_type', $user->getMorphClass())->where('addedby_id', $user->id)
                 ->update(['name' => null, 'email' => null]);
             DB::table('visitors')->where('user_id', $user->id)->update(['user_id' => null]);

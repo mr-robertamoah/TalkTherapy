@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Actions\Notification\ListNotificationsAction;
 use App\Actions\Notification\MarkNotificationsReadAction;
 use App\Actions\Notification\SetNotificationRetentionAction;
+use App\Enums\NotificationCategoryEnum;
 use App\Support\NotificationCenter;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -47,6 +48,30 @@ class NotificationController extends Controller
         SetNotificationRetentionAction::new()->execute($request->user(), $validated['days'] ?? null);
 
         // The form says "Saved." itself (review: not a toast as well).
+        return back();
+    }
+
+    // SCRUM-40 (TT-5.5): from the profile page -- for each category, email and in-app on or off. Only what is off is
+    // kept; always-on notifications aren't categories, so can't be switched off here.
+    public function channels(Request $request)
+    {
+        $categories = array_map(fn (NotificationCategoryEnum $c) => $c->value, NotificationCategoryEnum::cases());
+
+        $validated = $request->validate([
+            'channels' => ['present', 'array:'.implode(',', $categories)],
+            'channels.*' => ['array:mail,database'],
+            'channels.*.mail' => ['required', 'boolean'],
+            'channels.*.database' => ['required', 'boolean'],
+        ]);
+
+        // The form always sends every category, so this replaces the choices; only what is off is kept.
+        $off = collect($validated['channels'])
+            ->map(fn (array $channels) => array_fill_keys(array_keys(array_filter($channels, fn (bool $on) => ! $on)), false))
+            ->filter()
+            ->all();
+
+        $request->user()->forceFill(['notification_channels' => $off ?: null])->save();
+
         return back();
     }
 }

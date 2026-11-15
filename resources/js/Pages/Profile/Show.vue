@@ -5,6 +5,7 @@ import UpdateAvatarForm from './Partials/UpdateAvatarForm.vue';
 import UpdatePasswordForm from './Partials/UpdatePasswordForm.vue';
 import TwoFactorSection from './Partials/TwoFactorSection.vue';
 import NotificationRetentionForm from './Partials/NotificationRetentionForm.vue';
+import NotificationChannelsForm from './Partials/NotificationChannelsForm.vue';
 import UpdateProfileInformationForm from './Partials/UpdateProfileInformationForm.vue';
 import VerifyEmailSection from './Partials/VerifyEmailSection.vue';
 import BecomeCounsellorForm from './Partials/BecomeCounsellorForm.vue';
@@ -40,6 +41,11 @@ const props = defineProps({
     // SCRUM-39 (TT-5.4d)
     notificationRetention: {
         type: Object,
+        default: null,
+    },
+    // SCRUM-40 (TT-5.5)
+    notificationChannels: {
+        type: Array,
         default: null,
     },
 });
@@ -170,6 +176,9 @@ function changeStep(value) {
                 <div v-if="notificationRetention" class="p-8 bg-white shadow-xl border border-gray-100 rounded-xl">
                     <NotificationRetentionForm :retention="notificationRetention" class="max-w-xl" />
                 </div>
+                <div v-if="notificationChannels" class="p-8 bg-white shadow-xl border border-gray-100 rounded-xl">
+                    <NotificationChannelsForm :categories="notificationChannels" class="max-w-xl" />
+                </div>
 
                 <div id="profile-counsellor-id" class="relative"></div>
                 <div class="p-8 bg-gradient-to-r from-green-600 to-teal-600 shadow-xl rounded-xl text-white">
@@ -178,6 +187,19 @@ function changeStep(value) {
                         @change-step="changeStep"
                         class="max-w-xl"
                     />
+                </div>
+
+                <!-- SCRUM-36 -->
+                <div class="p-8 bg-white shadow-sm border border-gray-200 rounded-xl">
+                    <section class="max-w-xl">
+                        <h2 class="text-lg font-medium text-gray-900">Your journal</h2>
+                        <p class="mt-1 text-sm text-gray-600">
+                            A private place to write about how you're doing. Only you can read it.
+                        </p>
+                        <Link :href="route('profile.journal')" class="mt-4 inline-block text-sm text-indigo-700 underline hover:text-indigo-900">
+                            Open your journal
+                        </Link>
+                    </section>
                 </div>
 
                 <!-- SCRUM-50 -->

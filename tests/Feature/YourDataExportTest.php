@@ -8,6 +8,7 @@ use App\Models\Discussion;
 use App\Models\File;
 use App\Models\GroupTherapy;
 use App\Models\Guardianship;
+use App\Models\JournalEntry;
 use App\Models\Message;
 use App\Models\MessageNote;
 use App\Models\Organization;
@@ -326,4 +327,23 @@ test('a deleted session is still held: listed, marked, and counted', function ()
     expect($data['sessions'])->toHaveCount(2)
         ->and(collect($data['sessions'])->where('deleted', true))->toHaveCount(1)
         ->and($data['summary']['sessions']['count'])->toBe(2);
+});
+
+// SCRUM-36: the journal is the person's own -- counted on the page, given in full in their copy, never anyone else's.
+test('the journal is counted on the page and given in full in the copy -- only the person\'s own', function () {
+    Notification::fake();
+    $me = ydeUser();
+    JournalEntry::factory()->create(['user_id' => $me->id, 'title' => 'yde mine', 'content' => 'yde my words', 'written_on' => now()->subDays(4)->toDateString()]);
+    JournalEntry::factory()->create(['user_id' => ydeUser()->id, 'content' => 'yde-LEAK someone else']);
+
+    $this->actingAs($me)->get(route('profile.your-data'))->assertInertia(fn ($page) => $page
+        ->where('data.journal.entries', 1)
+        ->where('data.journal.since', now()->subDays(4)->toDateString()));
+
+    $content = ydeDownload($this, $me)->assertOk()->streamedContent();
+    $data = json_decode($content, true);
+
+    expect($data['journal'])->toHaveCount(1)
+        ->and($data['journal'][0])->toMatchArray(['title' => 'yde mine', 'content' => 'yde my words', 'writtenOn' => now()->subDays(4)->toDateString()])
+        ->and($content)->not->toContain('yde-LEAK');
 });
