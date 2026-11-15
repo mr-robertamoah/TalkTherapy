@@ -44,6 +44,10 @@
                     </div>
                 </div>
 
+                <!-- SCRUM-446: an in-person session's attendance -- the register for its counsellor, the viewer's own mark
+                     for a client or member. -->
+                <SessionAttendanceSection v-if="session.type === 'IN_PERSON'" :session="session" @updated="(updated) => emits('updated', updated)" />
+
                 <!-- Cases Section -->
                 <div class="bg-gradient-to-br from-slate-50 to-slate-100 p-6 rounded-xl shadow-md border border-slate-200">
                     <div class="flex items-center mb-4">
@@ -127,6 +131,7 @@ import useLocalDateTimed from '@/Composables/useLocalDateTime';
 import useLocation from '@/Composables/useLocation';
 import useMap from '@/Composables/useMap';
 import Modal from './Modal.vue';
+import SessionAttendanceSection from './SessionAttendanceSection.vue';
 import NameAndValue from './NameAndValue.vue';
 import PreferenceItem from './PreferenceItem.vue';
 
@@ -134,7 +139,7 @@ const { addMarker, createMap, setMarkerPosition, markerPosition } = useMap();
 const { currentLocation, getCurrentLocation } = useLocation();
 const { toDiffForHumans } = useLocalDateTimed()
 
-const emits = defineEmits(['close'])
+const emits = defineEmits(['close', 'updated'])
 
 const props = defineProps({
     show: {

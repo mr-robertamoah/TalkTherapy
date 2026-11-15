@@ -272,13 +272,19 @@ const counsellor = computed(() => props.data.counsellor)
 
                 <YourDataSection id="sessions" title="Sessions">
                     <p>{{ plural(data.sessions.count, 'session', 'sessions') }} in your therapies, and in groups while you were in them.</p>
-                    <template #why>To schedule and hold your sessions, and to say where an in-person one takes place.</template>
+                    <!-- SCRUM-446 -->
+                    <p v-if="data.attendance?.marked" class="mt-1">
+                        Your counsellor marked whether you came to {{ plural(data.attendance.marked, 'in-person session', 'in-person sessions') }}.
+                        You can see each mark on the session; nobody else in a group sees yours.
+                    </p>
+                    <template #why>To schedule and hold your sessions, and to say where an in-person one takes place. For an in-person one, your counsellor also notes whether you came.</template>
                     <template #kept>
                         While your account is open.<template v-if="retentionDays.sessionPin"> An in-person session's exact map pin is deleted
                         {{ retentionDays.sessionPin }} days after the session ends; its written landmark is kept.</template>
                     </template>
                     <template #who>
-                        The people in that therapy or group, and administrators (recorded).
+                        The people in that therapy or group, and administrators (recorded). Whether you came to an in-person
+                        session: you, its counsellors, and administrators (recorded).
                     </template>
                 </YourDataSection>
 

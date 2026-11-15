@@ -14,8 +14,11 @@ use App\Actions\Therapy\EnsureTherapyCanProceedAction;
 use App\DTOs\CreateSessionDTO;
 use App\DTOs\SessionAttendanceDTO;
 use App\Events\SessionUpdatedEvent;
+use App\Exceptions\AppException;
 use App\Models\AdminContentAccess;
 use App\Models\Session;
+use App\Models\User;
+use App\Notifications\SessionMarkedAbsentNotification;
 use App\Notifications\SessionStatusChangedNotification;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Notification;
@@ -55,6 +58,9 @@ class SessionAttendanceService extends Service
             'viewerAttendance' => null,
             'recordableFrom' => $session->start_time->toIso8601String(),
             'recordableUntil' => EnsureCanRecordSessionAttendanceAction::closesAt($session)->toIso8601String(),
+            // SCRUM-446: whether this viewer may save it now -- the same checks a save makes, so the page never offers a
+            // form the server would refuse (an administrator, a closed window or session, a suspended counsellor).
+            'canRecord' => $this->canWrite($dto),
         ];
     }
 
@@ -62,9 +68,19 @@ class SessionAttendanceService extends Service
     {
         $this->ensureCanWrite($dto);
 
-        $session = RecordSessionAttendanceAction::new()->execute($dto);
+        $markedAbsent = RecordSessionAttendanceAction::new()->execute($dto);
+        $session = $dto->session;
 
         broadcast(new SessionUpdatedEvent($session))->toOthers();
+
+        // SCRUM-446: each person newly marked absent is told, themselves only (a closed account isn't).
+        // At most once an hour per person and session (security review): a mark flipped back and forth isn't a stream
+        // of notices.
+        Notification::send(
+            $markedAbsent->reject(fn (User $user) => $user->trashed())
+                ->filter(fn (User $user) => Cache::add("absent-notice:{$user->id}:{$session->id}", 1, 3600)),
+            new SessionMarkedAbsentNotification($session),
+        );
 
         return $session;
     }
@@ -86,6 +102,17 @@ class SessionAttendanceService extends Service
     private function ensureSessionExists(SessionAttendanceDTO $dto): void
     {
         EnsureSessionExistsAction::new()->execute(CreateSessionDTO::new()->fromArray(['session' => $dto->session]));
+    }
+
+    private function canWrite(SessionAttendanceDTO $dto): bool
+    {
+        try {
+            $this->ensureCanWrite($dto);
+
+            return true;
+        } catch (AppException) {
+            return false;
+        }
     }
 
     private function ensureCanWrite(SessionAttendanceDTO $dto): void

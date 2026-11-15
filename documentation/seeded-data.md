@@ -647,3 +647,26 @@ Seeded from existing accounts (password `password`), local and testing only; ski
 | "In-Person Demo Group" | created by Dr. Michael Chen; members `john_davis`, `robert_miller` | Allows in-person; private. Its "In-Person Demo Group Session" meets at "Osu Community Centre, main hall (behind the clinic)". |
 
 A minor (for example `your_data_demo_ward`) sees the in-person checkbox on their therapy form disabled, with the reason.
+
+## In-person attendance (SCRUM-446, `InPersonAttendanceSeeder`)
+
+Added to the in-person demo above (password `password`), local and testing only; skipped if `michael_chen`,
+`amy_taylor` (an adult), "In-Person Demo Therapy" or "In-Person Demo Group" is missing. Both sessions end **one hour
+before the seeder runs**, so their 48-hour attendance window is open. **The window expires**: once it has, re-run the
+seeder on its own to move both sessions back to an hour ago, put their status back, clear their marks and lift the
+"marked absent" notice's hourly limit for the demo users:
+
+```bash
+docker compose exec -T -u www-data php php artisan db:seed --class=InPersonAttendanceSeeder --force
+```
+
+| Record | Who | What to try |
+|---|---|---|
+| "In-Person Attendance Demo Session" in "In-Person Demo Therapy" | counsellor `michael_chen`, client `john_davis` | PENDING (never started), ended an hour ago. As `michael_chen`, mark `john_davis` present or absent; mark him absent and close the session as a no-show. As `john_davis`, see your own mark and the "marked absent" notice in the bell. |
+| "In-Person Attendance Demo Group Session" in "In-Person Demo Group" | counsellor `michael_chen`; members `john_davis`, `robert_miller` (named) and `amy_taylor` (joined anonymously) | HELD, ended an hour ago. The register shows `amy_taylor` masked, as "Client (Anonymous User)". Marking a held session never changes its status or money, and it can't be closed as a no-show. |
+
+`amy_taylor` is added to "In-Person Demo Group" as an anonymous member, so she is also in its upcoming
+"In-Person Demo Group Session". The seeder dates the group's memberships before the session (the register lists who
+was a member at the time); only the three demo members' memberships are touched, and if `amy_taylor` left the group
+she is put back as an anonymous member. Both sessions have ended, so they are never the therapy's active session: open
+them with "show details" under "Most Recent Sessions" (the newest 5).
