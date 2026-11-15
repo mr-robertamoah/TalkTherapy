@@ -34,7 +34,7 @@ class YourDataScope
     // messages, or a group's page (shared with its other members).
     private const THERAPY_RESOURCES = [AdminContentAccess::THERAPY];
 
-    private const SESSION_RESOURCES = [AdminContentAccess::SESSION, AdminContentAccess::SESSION_MESSAGES];
+    private const SESSION_RESOURCES = [AdminContentAccess::SESSION, AdminContentAccess::SESSION_MESSAGES, AdminContentAccess::SESSION_ATTENDANCE];
 
     private const TOPIC_RESOURCES = [AdminContentAccess::TOPIC_MESSAGES];
 
@@ -138,6 +138,13 @@ class YourDataScope
     public static function outcomeCheckIns(User $user): Builder
     {
         return OutcomeCheckIn::query()->where('client_user_id', $user->id);
+    }
+
+    // SCRUM-445: the person's own attendance marks at in-person sessions -- theirs, given in the copy (never the place or
+    // who marked it).
+    public static function sessionAttendances(User $user): Builder
+    {
+        return $user->sessionAttendances()->getQuery();
     }
 
     private static function identityRequestIds(User $user): QueryBuilder

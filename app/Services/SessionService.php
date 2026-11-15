@@ -23,6 +23,7 @@ use App\Actions\Session\GetCounsellorCalendarSessionsAction;
 use App\Actions\Session\SetCurrentTopicOfSessionAction;
 use App\Actions\Session\UnsetCurrentTopicOfSessionAction;
 use App\Actions\Session\UpdateSessionAction;
+use App\Actions\SessionAttendance\EnsureCanViewSessionAttendanceAction;
 use App\Actions\Therapy\EnsureTherapyCanProceedAction;
 use App\Actions\TherapyTopic\EnsureTherapyTopicExistsAction;
 use App\DTOs\CreateSessionDTO;
@@ -44,6 +45,7 @@ use App\Notifications\SessionStatusChangedNotification;
 use App\Notifications\SessionUpdatedNotification;
 use App\Support\InPerson;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 
 class SessionService extends Service
@@ -139,12 +141,21 @@ class SessionService extends Service
 
         // SCRUM-360: once per admin per session per ten minutes -- an open page refetches on every
         // live update.
+        $inPerson = $session->type === SessionTypeEnum::in_person->value;
+
         if (Cache::add("admin-session-read:{$user->id}:{$session->id}", 1, 600)) {
             RecordAdminContentReadAction::new()->execute($user, AdminContentAccess::SESSION, $session, $session->for);
+
+            // SCRUM-445: SessionResource gives an administrator an in-person session's attendance register too -- never
+            // public, so logged without the therapy as context.
+            if ($inPerson && EnsureCanViewSessionAttendanceAction::readsAsAdministrator($session, $user)) {
+                RecordAdminContentReadAction::new()->execute($user, AdminContentAccess::SESSION_ATTENDANCE, $session);
+            }
         }
 
-        // Every open page fetches here on each live update: load what SessionResource reads at once.
-        $session->loadMissing(['topics', 'cases', 'addedby', 'updatedby', 'latestTransaction']);
+        // Every open page fetches here on each live update: load what SessionResource reads at once (attendance only
+        // for an in-person session, SCRUM-445).
+        $session->loadMissing(['topics', 'cases', 'addedby', 'updatedby', 'latestTransaction', ...($inPerson ? ['attendances'] : [])]);
 
         return new SessionResource($session);
     }
@@ -155,9 +166,11 @@ class SessionService extends Service
 
         EnsureCanEndSessionAction::new()->execute($createSessionDTO);
 
-        EnsureConfirmedByAnotherPersonAction::new()->execute($createSessionDTO, SessionStatusEnum::held->value);
+        $session = $this->underSessionLock($createSessionDTO, function () use ($createSessionDTO) {
+            EnsureConfirmedByAnotherPersonAction::new()->execute($createSessionDTO, SessionStatusEnum::held->value);
 
-        $session = ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::held->value);
+            return ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::held->value);
+        });
 
         broadcast(new SessionUpdatedEvent($session))->toOthers();
 
@@ -177,14 +190,16 @@ class SessionService extends Service
 
         EnsureTherapyCanProceedAction::new()->execute($createSessionDTO->user, $createSessionDTO->session->for);
 
-        EnsureConfirmedByAnotherPersonAction::new()->execute($createSessionDTO, SessionStatusEnum::in_session->value);
+        $session = $this->underSessionLock($createSessionDTO, function () use ($createSessionDTO) {
+            EnsureConfirmedByAnotherPersonAction::new()->execute($createSessionDTO, SessionStatusEnum::in_session->value);
 
-        // SCRUM-443: an in-person session doesn't start while someone under 18 is taking part (one booked before the rule).
-        if ($createSessionDTO->session->type === SessionTypeEnum::in_person->value && InPerson::hasMinorClient($createSessionDTO->session->for)) {
-            throw new SessionException(InPerson::refusalFor($createSessionDTO->user, $createSessionDTO->session->for), 422);
-        }
+            // SCRUM-443: an in-person session doesn't start while someone under 18 is taking part (one booked before the rule).
+            if ($createSessionDTO->session->type === SessionTypeEnum::in_person->value && InPerson::hasMinorClient($createSessionDTO->session->for)) {
+                throw new SessionException(InPerson::refusalFor($createSessionDTO->user, $createSessionDTO->session->for), 422);
+            }
 
-        $session = ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::in_session->value);
+            return ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::in_session->value);
+        });
 
         broadcast(new SessionUpdatedEvent($session))->toOthers();
 
@@ -220,7 +235,7 @@ class SessionService extends Service
 
         EnsureCanEndSessionAction::new()->execute($createSessionDTO);
 
-        $session = ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::failed->value);
+        $session = $this->underSessionLock($createSessionDTO, fn () => ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::failed->value));
 
         Notification::send(
             $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user),
@@ -281,5 +296,19 @@ class SessionService extends Service
         broadcast(new SessionTopicUnsetEvent($session))->toOthers();
 
         return $session;
+    }
+
+    // SCRUM-445: a status change runs on the session as it is now, under its row lock -- so starting, ending or failing
+    // it can't interleave with closing it as a no-show (CloseSessionAsNoShowAction takes the same lock). The checks that
+    // read its status run inside $change too. Billing stays where it is (ChangeSessionStatusAction, after the write).
+    private function underSessionLock(CreateSessionDTO $createSessionDTO, callable $change)
+    {
+        return DB::transaction(function () use ($createSessionDTO, $change) {
+            $for = $createSessionDTO->session->for;
+            $createSessionDTO->session = Session::query()->whereKey($createSessionDTO->session->id)->lockForUpdate()->first() ?? $createSessionDTO->session;
+            $createSessionDTO->session->setRelation('for', $for);
+
+            return $change();
+        });
     }
 }

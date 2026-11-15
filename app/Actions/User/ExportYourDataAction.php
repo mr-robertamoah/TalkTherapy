@@ -11,6 +11,7 @@ use App\Models\JournalEntry;
 use App\Models\Message;
 use App\Models\OutcomeCheckIn;
 use App\Models\Session;
+use App\Models\SessionAttendance;
 use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
@@ -34,6 +35,7 @@ use Illuminate\Support\Facades\DB;
 //  - their payments and (a counsellor's) payouts -- never a breakdown, transfer code or who started it, nor the amount
 //    of a charge an organisation paid;
 //  - their journal, in full (SCRUM-36);
+//  - their attendance at in-person sessions: the session, the mark and when (SCRUM-445) -- never the place or who marked;
 //  - every time the team opened their content: when and what, never who;
 //  - urgent help and safety records: the one fixed sentence (YourDataWording), nothing else.
 //
@@ -129,6 +131,13 @@ class ExportYourDataAction extends Action
                 : null,
             'score' => $checkIn->status === OutcomeCheckIn::COMPLETED ? (int) $checkIn->total_score : null,
             'level' => $checkIn->band,
+        ]);
+        // SCRUM-445: their own attendance marks -- never the session's place, nor the counsellor who marked them.
+        yield ',"attendance":';
+        yield from $this->list(YourDataScope::sessionAttendances($user)->select(['id', 'session_id', 'status', 'marked_at']), fn (SessionAttendance $attendance) => [
+            'sessionId' => $attendance->session_id,
+            'status' => $attendance->status,
+            'markedAt' => $attendance->marked_at?->toIso8601String(),
         ]);
         yield ',"teamAccess":';
         yield from $this->list(YourDataScope::teamAccess($user, $counsellor)->select(['id', 'resource', 'created_at']), fn (AdminContentAccess $access) => [

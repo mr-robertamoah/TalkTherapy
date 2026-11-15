@@ -20,6 +20,9 @@ class AdminContentAccess extends Model
 
     public const SESSION_MESSAGES = 'session_messages';
 
+    // SCRUM-445: an in-person session's attendance register.
+    public const SESSION_ATTENDANCE = 'session_attendance';
+
     public const TOPIC_MESSAGES = 'topic_messages';
 
     public const MESSAGE = 'message';
@@ -46,6 +49,7 @@ class AdminContentAccess extends Model
         self::THERAPY,
         self::SESSION,
         self::SESSION_MESSAGES,
+        self::SESSION_ATTENDANCE,
         self::TOPIC_MESSAGES,
         self::MESSAGE,
         self::MESSAGE_REPLIES,
