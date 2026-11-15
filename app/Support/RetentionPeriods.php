@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Actions\Notification\PruneNotificationsAction;
+use App\Actions\Session\ClearOldSessionPinsAction;
 
 // SCRUM-368: how long things are kept, in days, read from config on each call -- never copies that could drift from
 // what the scheduled jobs actually do. SCRUM-50: shared by the privacy policy and "What we hold about you".
@@ -21,6 +22,8 @@ class RetentionPeriods
             'helpChat' => config('help.transcript_retention_days'),
             // SCRUM-39 (TT-5.4d): notifications (each person can change theirs).
             'notifications' => PruneNotificationsAction::defaultDays(),
+            // SCRUM-447 (TT-2.9f): an in-person session's exact map pin.
+            'sessionPin' => ClearOldSessionPinsAction::days(),
         ];
     }
 }

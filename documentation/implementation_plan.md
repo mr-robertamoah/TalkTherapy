@@ -55,7 +55,7 @@ Fields: **Key** (Epic-Story) · **Type** · **Priority** (Critical/High/Medium/L
 | TT-2.9f | Easier location picker: Google place search on the session forms, directions link for participants, fallback to the plain map (SCRUM-444) | Story | Medium | 3 | SCRUM-115 (3 of 6) | TT-2.9b |
 | TT-2.9c | 🔄 **In review**. In-person attendance backend: the counsellor records present/absent per client (start to end+48h), clients see only their own, members by key, all absent → close as failed with no invoice line; never touches payments (SCRUM-445) | Story | High | 8 | SCRUM-115 (4 of 6) | TT-2.9b |
 | TT-2.9d | Attendance UI, no-show notice (no location), seed data, feature doc, two-browser QA (SCRUM-446) | Story | Medium | 5 | SCRUM-115 (5 of 6) | TT-2.9c |
-| TT-2.9e | Daily job clears an in-person session's exact pin 30 days after it ends, keeping the landmark; /privacy and Your data say so (SCRUM-447) | Task | Medium | 3 | SCRUM-115 (6 of 6) | TT-2.9b |
+| TT-2.9e | 🔄 **In review**. Daily job clears an in-person session's exact pin 30 days after it ends, keeping the landmark; /privacy and Your data say so (SCRUM-447) | Task | Medium | 3 | SCRUM-115 (6 of 6) | TT-2.9b |
 | TT-2.10 | `TherapyTrait::endSessions()` marks failed/abandoned sessions held, with no ended_at or invoice line (SCRUM-448, found planning SCRUM-115) | Bug | High | — | SCRUM-448 | — |
 | TT-2.11 | Group sessions send no "starting"/"failed" notices: `Session::getUsersAttribute()` is empty for groups (SCRUM-449, found planning SCRUM-115) | Bug | Medium | — | SCRUM-449 | — |
 

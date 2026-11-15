@@ -81,12 +81,13 @@
                 </div>
 
                 <!-- Location Section -->
-                <div v-if="session.lng && session.lat" class="bg-gradient-to-br from-neutral-50 to-neutral-100 p-6 rounded-xl shadow-md border border-neutral-200">
+                <!-- SCRUM-447 (review): the landmark stays after the pin is cleared, so the section shows for either. -->
+                <div v-if="(session.lng && session.lat) || session.landmark" class="bg-gradient-to-br from-neutral-50 to-neutral-100 p-6 rounded-xl shadow-md border border-neutral-200">
                     <div class="flex items-center mb-4">
                         <div class="w-2 h-8 bg-neutral-600 rounded-full mr-3"></div>
                         <h3 class="text-xl font-semibold text-gray-800 capitalize">Location</h3>
                     </div>
-                    <div :id="`session_${session.id}`" class="w-full h-[200px] bg-white rounded-lg shadow-sm mb-3"></div>
+                    <div v-if="session.lng && session.lat" :id="`session_${session.id}`" class="w-full h-[200px] bg-white rounded-lg shadow-sm mb-3"></div>
                     <p v-if="session.landmark" class="text-sm text-gray-600 font-medium">Landmark: {{ session.landmark }}</p>
                 </div>
 

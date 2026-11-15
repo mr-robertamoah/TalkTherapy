@@ -17,6 +17,7 @@ use App\Actions\Organization\SettleDueOrganizationInvoicesAction;
 use App\Actions\Request\DeleteExpiredIdentityDocumentsAction;
 use App\Actions\Safety\ReAlertSafetyFlagsAction;
 use App\Actions\Safety\SendDueSafetyNoticesAction;
+use App\Actions\Session\ClearOldSessionPinsAction;
 use App\Actions\Session\FailUnheldSessionsAction;
 use App\Actions\Session\NotifyParticipantsOfStartingSessionsAction;
 use App\Actions\Therapy\FindPaidTherapiesMissingPaymentDataAction;
@@ -105,6 +106,9 @@ Schedule::call(fn () => PruneHelpChatTranscriptsAction::new()->execute())->name(
 // SCRUM-39 (TT-5.4d): old notifications, by each person's period (never an unread safety notice).
 Schedule::call(fn () => PruneNotificationsAction::new()->execute())->name('prune-notifications')->dailyAt('02:30')->withoutOverlapping(60)->onOneServer()
     ->onFailure(fn () => Log::error('The notification retention sweep failed.'));
+// SCRUM-447 (TT-2.9f): in-person sessions' exact map pins, a set period after the session (the landmark stays).
+Schedule::call(fn () => ClearOldSessionPinsAction::new()->execute())->name('clear-old-session-pins')->dailyAt('02:45')->withoutOverlapping(60)->onOneServer()
+    ->onFailure(fn () => Log::error('The session pin retention sweep failed.'));
 
 Schedule::call(fn () => BroadcastStartedSessionsAndDiscussionsAction::new()->execute())->name('broadcast-started-sessions-and-discussions')->everyMinute();
 
