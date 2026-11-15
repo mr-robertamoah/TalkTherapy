@@ -247,7 +247,12 @@ these server-side waits on a Reverb terminate API that works with private channe
   to the account's current address -- the change was dropped and every session ended. Likely an account under attack:
   look at who asked (the request's log line) and help the person secure the account. `two_factor_during_wait` true
   (SCRUM-428/431): two-factor was turned on during the change or in the `EMAIL_STOP_TWO_FACTOR_LOOKBACK_DAYS` (14)
-  before it, so a cancellable two-factor reset was scheduled and both addresses told.
+  before it, so a cancellable two-factor reset was scheduled and both addresses told. `email_restored` true
+  (SCRUM-433): the account had no email, and its remembered address (remembered within `EMAIL_STOP_RESTORE_DAYS`, 30)
+  was put back. **`has_email` false** (SCRUM-433): the account now has no email at all -- its remembered address was
+  remembered too long ago, has no date (remembered before SCRUM-433), or belongs to another account -- so the owner
+  can't use "Forgot your password?" and was told to contact support. Follow up on every one: confirm who they are as
+  in `two-factor-reset-identity-check.md` before setting an address by hand.
 - `Email change warning not sent: the remembered address is another account's` (SCRUM-431, notice; `user_id`): the
   account's last verified address now belongs to another account that verified it, so the change's warnings (with
   "This wasn't me") weren't sent there -- the change still waits. Rare; a burst suggests someone registering or
@@ -259,6 +264,15 @@ these server-side waits on a Reverb terminate API that works with private channe
   again from their profile.
 - `Account email marked verified by an administrator` (SCRUM-425, notice): a super administrator ticked an address
   verified by hand. Rare; check it was the person's own address.
+## Data copy (SCRUM-432)
+
+- `Data copy downloaded` (notice; `user_id`): the person's password (and two-factor code) passed and their copy started
+  writing. It means started, not finished: an exception logged with the same request (`Data copy failed while
+  writing`, error) means they got a cut-off file. At most 3 per account an hour (the throttle; 429s on the route are
+  expected). A burst across accounts, or one soon after an `Account email change requested`, suggests a takeover.
+- `DataCopyDownloadedNotification` in `failed_jobs`: the owner wasn't told of a download -- it needs the queue worker
+  (`default`); retry with `queue:retry`.
+
 ## Signed-out tabs (SCRUM-423)
 
 - `GET /session/check` answers 401 to an ended session by design -- leave it out of any 4xx-rate alert. A burst of

@@ -105,6 +105,22 @@ Check every item before going live.
     higher level drops them.
   - Queue workers restart on deploy (`deploy.sh` does): the security notices are queued, and an old worker doesn't know
     the newer kinds.
+  - SCRUM-433, `EMAIL_STOP_RESTORE_DAYS` (optional, 7-90, default 30): "This wasn't me" on an account with no email
+    puts its remembered address back only if it was remembered that recently. After changing it, `config:clear` (or
+    in Docker `docker compose up -d --force-recreate php queue`). Before deploying, count the accounts that will go
+    to support instead (remembered before SCRUM-433, so no date) and brief support:
+    `SELECT COUNT(*) FROM users WHERE email IS NULL AND last_verified_email IS NOT NULL AND last_verified_email_at IS NULL;`
+  - Rolling back SCRUM-433: roll back the code, not the migration -- older code ignores `last_verified_email_at`. The
+    SCRUM-431 drop (`2026_12_02_100000`) and this add (`2026_12_03_100000`) reach production in the same deploy, so
+    they share a migrate batch: never a plain `migrate:rollback` -- `--step=1` undoes only this one (and loses every
+    date, so no address is put back afterwards; dump `id, last_verified_email_at` first).
+  - `LOG_LEVEL` `notice` or lower also keeps `Data copy downloaded` (SCRUM-432) and the stop line's `email_restored` /
+    `has_email` (a warning).
+  - SCRUM-432, streamed downloads: `POST /profile/your-data/download` writes the file as it goes
+    (`X-Accel-Buffering: no`). The production nginx must honour that header (no `fastcgi_ignore_headers
+    X-Accel-Buffering`), any proxy, load balancer or CDN must not buffer or cache that route, and php-fpm needs no
+    `request_terminate_timeout` shorter than a large export takes. Smoke-test one download after deploying (`jq .
+    file.json`). To switch the download off without a code rollback: `location = /profile/your-data/download { return 503; }`.
 
 ## The proxy
 
