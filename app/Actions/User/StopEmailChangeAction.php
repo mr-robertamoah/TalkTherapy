@@ -23,9 +23,19 @@ use Illuminate\Support\Str;
 // can't tell). It isn't removed at once: a two-factor reset is scheduled (the 48-hour
 // SCRUM-424 path), and both addresses are told with a cancel link. Never for a change a super administrator asked for
 // (no intruder session there).
+//
+// SCRUM-433: an account with no email gets its remembered address back only when it was remembered recently
+// (auth.email_stop_restore_days): a long-remembered mailbox may have passed to someone else, who could then reset the
+// password. Otherwise the account is left with no email and its owner goes through support.
 class StopEmailChangeAction extends Action
 {
-    public function execute(int $userId, string $hash): bool
+    public const STOPPED = 'stopped';
+
+    // Stopped, and the account has no email to reset the password through.
+    public const STOPPED_WITHOUT_EMAIL = 'stopped-without-email';
+
+    // STOPPED / STOPPED_WITHOUT_EMAIL, or null when the link is no longer valid.
+    public function execute(int $userId, string $hash): ?string
     {
         $stopped = DB::transaction(function () use ($userId, $hash) {
             $user = User::query()->whereKey($userId)->lockForUpdate()->first();
@@ -35,8 +45,10 @@ class StopEmailChangeAction extends Action
             }
 
             // The email was removed and this address is the one protected: put it back (security review: else
-            // "Forgot your password?" couldn't reach them) -- unless another account has taken it since.
+            // "Forgot your password?" couldn't reach them) -- unless another account has taken it since, or it was
+            // remembered too long ago (SCRUM-433; no date means before that was recorded: too long ago).
             $restore = ! $user->email && $user->last_verified_email
+                && $user->last_verified_email_at?->gte(now()->subDays((int) config('auth.email_stop_restore_days')))
                 && ! User::query()->whereKeyNot($user->id)->where('email', $user->last_verified_email)->exists();
 
             // SCRUM-431: or in the days before it was asked for -- an intruder can turn it on first.
@@ -56,20 +68,25 @@ class StopEmailChangeAction extends Action
                 'password' => Str::random(64),
             ])->save();
 
-            return ['two_factor_during_wait' => $twoFactorDuringWait, 'dropped' => $droppedEmail];
+            return ['two_factor_during_wait' => $twoFactorDuringWait, 'dropped' => $droppedEmail, 'has_email' => (bool) $user->email, 'restored' => $restore];
         });
 
         if (! $stopped) {
-            return false;
+            return null;
         }
 
-        Log::warning('Account email change stopped by its owner', ['user_id' => $userId, 'two_factor_during_wait' => $stopped['two_factor_during_wait']]);
+        Log::warning('Account email change stopped by its owner', [
+            'user_id' => $userId,
+            'two_factor_during_wait' => $stopped['two_factor_during_wait'],
+            'email_restored' => $stopped['restored'],
+            'has_email' => $stopped['has_email'],
+        ]);
 
         if ($stopped['two_factor_during_wait']) {
             $this->scheduleTwoFactorReset(User::query()->findOrFail($userId), $stopped['dropped']);
         }
 
-        return true;
+        return $stopped['has_email'] ? self::STOPPED : self::STOPPED_WITHOUT_EMAIL;
     }
 
     // The account's own address hears through RequestTwoFactorResetAction; the dropped new address is told too, with the

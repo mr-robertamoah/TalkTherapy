@@ -64,9 +64,12 @@ class ConfirmPendingEmailController extends Controller
             $request->session()->regenerateToken();
         }
 
-        return redirect()->route('login')->with('status', $stopped
-            ? 'The change was stopped and your account was signed out everywhere. Reset your password now (Forgot your password?).'
-            : 'That link is no longer valid -- the change may already have been stopped, or have taken effect. If it took effect, contact support.');
+        return redirect()->route('login')->with('status', match ($stopped) {
+            StopEmailChangeAction::STOPPED => 'The change was stopped and your account was signed out everywhere. Reset your password now (Forgot your password?).',
+            // SCRUM-433: no address to send a password reset to -- the team checks it's them, then sets one.
+            StopEmailChangeAction::STOPPED_WITHOUT_EMAIL => 'The change was stopped and your account was signed out everywhere. Your account has no email address to reset the password through, so please contact support to get back in.',
+            default => 'That link is no longer valid -- the change may already have been stopped, or have taken effect. If it took effect, contact support.',
+        });
     }
 
     public function resend(Request $request): JsonResponse

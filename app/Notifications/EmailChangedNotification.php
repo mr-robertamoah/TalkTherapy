@@ -91,12 +91,14 @@ class EmailChangedNotification extends Notification implements ShouldQueue
                 self::CONFIRMED => "The new address for your TalkTherapy account, {$to}, was confirmed on {$this->changedAt}. It becomes the account's email on {$this->effectiveAt}".($this->accountHasEmail ? ' -- until then this address stays the account\'s.' : '.'),
                 default => $this->accountHasEmail
                     ? "{$who} to change the email address on your TalkTherapy account from this one to {$to} on {$this->changedAt}. It only takes effect once the new address is confirmed -- until then this address stays the account's."
-                    : "{$who} on {$this->changedAt} to put {$to} on your TalkTherapy account, which this address was recently removed from. It only takes effect once that address is confirmed, and two days after that.",
+                    : "{$who} on {$this->changedAt} to put {$to} on your TalkTherapy account, which this address was removed from. It only takes effect once that address is confirmed, and two days after that.",
             });
 
         if ($this->stopUrl()) {
             $message->line($this->byTeam ? 'If you asked us to, no further action is needed.' : 'If you made this change, no further action is needed.')
-                ->line('If you did NOT, stop it now: it cancels the change and signs your account out everywhere. Then reset your password.')
+                // SCRUM-433: with no email on the account, a long-remembered address isn't put back -- support then.
+                ->line('If you did NOT, stop it now: it cancels the change and signs your account out everywhere. Then reset your password'
+                    .($this->accountHasEmail ? '.' : ' -- or, if the page says the account has no email to send it to, contact TalkTherapy support.'))
                 ->action('This wasn\'t me', $this->stopUrl());
         } else {
             $message->line('If you did NOT make this change, someone else may have access to your account: contact TalkTherapy support from this address straight away.');

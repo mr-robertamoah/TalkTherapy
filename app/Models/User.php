@@ -46,6 +46,8 @@ class User extends Authenticatable implements MustVerifyEmailContract
         // SCRUM-427
         'pending_email', 'pending_email_requested_at', 'pending_email_requested_by', 'pending_email_confirmed_at',
         'last_verified_email',
+        // SCRUM-433
+        'last_verified_email_at',
     ];
 
     /**
@@ -90,6 +92,7 @@ class User extends Authenticatable implements MustVerifyEmailContract
         'pending_email_requested_by',
         'pending_email_confirmed_at',
         'last_verified_email',
+        'last_verified_email_at',
         'session_version',
     ];
 
@@ -112,6 +115,7 @@ class User extends Authenticatable implements MustVerifyEmailContract
         'two_factor_confirmed_at' => 'datetime',
         'pending_email_requested_at' => 'datetime',
         'pending_email_confirmed_at' => 'datetime',
+        'last_verified_email_at' => 'datetime',
         'session_version' => 'integer',
     ];
 
@@ -209,6 +213,8 @@ class User extends Authenticatable implements MustVerifyEmailContract
             // Never on a closed account being anonymised (security review: it would write the address back).
             if ($user->exists && $was && $wasVerified && ! $user->anonymised_at && ($user->isDirty('email') || $user->email_verified_at === null)) {
                 $user->last_verified_email = $was;
+                // SCRUM-433: and when -- "This wasn't me" only puts a recently remembered address back.
+                $user->last_verified_email_at = now();
             }
         });
 
