@@ -26,16 +26,19 @@ use App\Services\LicenseService;
 use App\Support\MaskedEmail;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\DB;
 
 // SCRUM-50 (TT-8.2): the facts behind "What we hold about you" -- counts, yes/no, dates and the person's own profile
 // values, built from $user alone. The words (what, why, who sees it) live in the page, for legal to change.
 //
-// Only what the person OWNS is counted: therapies they started (`addedby`), sessions in those and in groups they are
-// or were in, messages they sent. Never the visibility scopes (TherapyTrait), which also reach a ward's or a client's
-// therapies. Nothing about anyone else: no names, no counsellor details, no counsellor notes or safety records, no
-// administrator. A fixed number of queries whatever the person holds (lists are of their own few organisations and
+// Only what the person OWNS is counted: therapies they started (`addedby`, deleted ones too -- still held), sessions
+// in those and in groups while they were in them, messages they sent. Never the visibility scopes (TherapyTrait),
+// which also reach a ward's or a client's therapies. Nothing about anyone else: no names, no counsellor details, no
+// counsellor notes or safety records, no administrator. Urgent help is never counted at all (not the chats, their
+// sessions or their messages): the page gives it one fixed sentence, as the user decided, so a count can't tip off
+// someone watching the account. A fixed number of queries whatever the person holds (lists are of their own few organisations and
 // documents, capped).
 class GetYourDataAction extends Action
 {
@@ -57,7 +60,9 @@ class GetYourDataAction extends Action
     public function execute(User $user): array
     {
         $row = $this->userRow($user);
-        $counsellor = Counsellor::query()->where('user_id', $user->id)->withCount(['sentMessages', 'notifications'])->first();
+        $counsellor = Counsellor::query()->where('user_id', $user->id)
+            ->withCount(['sentMessages' => fn (Builder $q) => $this->outsideHelpChats($q), 'notifications'])
+            ->first();
 
         return [
             'account' => $this->account($row),
@@ -108,12 +113,13 @@ class GetYourDataAction extends Action
                 'addedTherapies as therapies_ended_count' => fn ($q) => $ended($q->withoutHelpChats()->where('anonymous', false)),
                 'addedTherapies as anonymous_active_count' => fn ($q) => $active($q->withoutHelpChats()->where('anonymous', true)),
                 'addedTherapies as anonymous_ended_count' => fn ($q) => $ended($q->withoutHelpChats()->where('anonymous', true)),
-                'addedTherapies as help_chats_count' => fn ($q) => $q->where('is_help_chat', true),
+                // Deleted therapies stay held (and in ownTherapyIds()).
+                'addedTherapies as therapies_deleted_count' => fn ($q) => $q->onlyTrashed()->withoutHelpChats(),
                 'groupTherapies as groups_current_count',
                 'groupTherapies as groups_anonymous_count' => fn ($q) => $q->where('group_therapy_user.anonymous', true),
                 'allGroupTherapyMemberships as groups_left_count' => fn ($q) => $q->whereNotNull('group_therapy_user.left_at'),
                 'addedGroupTherapies as groups_started_count',
-                'sentMessages',
+                'sentMessages' => fn (Builder $q) => $this->outsideHelpChats($q),
                 'guardians as active_guardians_count' => fn ($q) => $q->active(),
                 'wards as active_wards_count' => fn ($q) => $q->active(),
                 'notifications',
@@ -159,7 +165,7 @@ class GetYourDataAction extends Action
             'ended' => (int) $row->therapies_ended_count,
             'anonymousActive' => (int) $row->anonymous_active_count,
             'anonymousEnded' => (int) $row->anonymous_ended_count,
-            'helpChats' => (int) $row->help_chats_count,
+            'deleted' => (int) $row->therapies_deleted_count,
         ];
     }
 
@@ -173,14 +179,18 @@ class GetYourDataAction extends Action
         ];
     }
 
-    // Sessions in the person's own therapies (not urgent help chats, counted on their own) and in the groups they
-    // are or were in.
+    // Sessions in the person's own therapies (not urgent help chats) and in groups while they were in them: for a group
+    // they left, only the sessions that started before they left.
     private function sessionsCount(User $user): int
     {
         return Session::query()
             ->where(fn (Builder $q) => $q
                 ->where(fn (Builder $q) => $q->where('for_type', (new Therapy)->getMorphClass())->whereIn('for_id', $this->ownTherapyIds($user)))
-                ->orWhere(fn (Builder $q) => $q->where('for_type', (new GroupTherapy)->getMorphClass())->whereIn('for_id', $this->groupIds($user))))
+                ->orWhere(fn (Builder $q) => $q->where('for_type', (new GroupTherapy)->getMorphClass())->whereExists(fn (QueryBuilder $q) => $q
+                    ->from('group_therapy_user')
+                    ->whereColumn('group_therapy_user.group_therapy_id', 'sessions.for_id')
+                    ->where('group_therapy_user.user_id', $user->id)
+                    ->where(fn (QueryBuilder $q) => $q->whereNull('group_therapy_user.left_at')->orWhereColumn('sessions.start_time', '<', 'group_therapy_user.left_at')))))
             ->count();
     }
 
@@ -290,13 +300,13 @@ class GetYourDataAction extends Action
     private function teamAccess(User $user, ?Counsellor $counsellor): array
     {
         $query = AdminContentAccess::query()->where(fn (Builder $q) => $q
-            ->orWhere(fn (Builder $q) => $this->accessTo($q, self::THERAPY_RESOURCES, Therapy::class, $this->ownTherapyIds($user)))
-            ->orWhere(fn (Builder $q) => $this->accessTo($q, self::SESSION_RESOURCES, Session::class, $this->ownSessionIds($user)))
-            ->orWhere(fn (Builder $q) => $this->accessTo($q, self::TOPIC_RESOURCES, TherapyTopic::class, $this->ownTopicIds($user)))
-            ->orWhere(fn (Builder $q) => $this->accessTo($q, self::MESSAGE_RESOURCES, Message::class, $this->sentMessageIds($user, $counsellor)))
-            ->orWhere(fn (Builder $q) => $this->accessTo($q, [AdminContentAccess::IDENTITY_DOCUMENT], Request::class, $this->identityRequestIds($user)))
+            ->orWhere(fn (Builder $q) => $this->accessTo($q, self::THERAPY_RESOURCES, new Therapy, $this->ownTherapyIds($user)))
+            ->orWhere(fn (Builder $q) => $this->accessTo($q, self::SESSION_RESOURCES, new Session, $this->ownSessionIds($user)))
+            ->orWhere(fn (Builder $q) => $this->accessTo($q, self::TOPIC_RESOURCES, new TherapyTopic, $this->ownTopicIds($user)))
+            ->orWhere(fn (Builder $q) => $this->accessTo($q, self::MESSAGE_RESOURCES, new Message, $this->sentMessageIds($user, $counsellor)))
+            ->orWhere(fn (Builder $q) => $this->accessTo($q, [AdminContentAccess::IDENTITY_DOCUMENT], new Request, $this->identityRequestIds($user)))
             ->when($counsellor, fn (Builder $q) => $q
-                ->orWhere(fn (Builder $q) => $this->accessTo($q, [AdminContentAccess::LICENSE_DOCUMENT], License::class, $this->licenseIds($counsellor)))));
+                ->orWhere(fn (Builder $q) => $this->accessTo($q, [AdminContentAccess::LICENSE_DOCUMENT], new License, $this->licenseIds($counsellor)))));
 
         return [
             'total' => (clone $query)->count(),
@@ -306,9 +316,9 @@ class GetYourDataAction extends Action
         ];
     }
 
-    private function accessTo(Builder $q, array $resources, string $subjectType, QueryBuilder $subjectIds): Builder
+    private function accessTo(Builder $q, array $resources, Model $subject, QueryBuilder $subjectIds): Builder
     {
-        return $q->whereIn('resource', $resources)->where('subject_type', $subjectType)->whereIn('subject_id', $subjectIds);
+        return $q->whereIn('resource', $resources)->where('subject_type', $subject->getMorphClass())->whereIn('subject_id', $subjectIds);
     }
 
     // The person's own individual therapies, deleted ones included -- never urgent help chats (whose reads may be
@@ -342,12 +352,16 @@ class GetYourDataAction extends Action
             ->whereIn('topicable_id', $this->ownTherapyIds($user));
     }
 
-    private function groupIds(User $user): QueryBuilder
+    // Messages counted as the person's: all but those in urgent help chats (never counted -- see the class comment).
+    private function outsideHelpChats(Builder $messages): Builder
     {
-        return DB::table('group_therapy_user')->select('group_therapy_id')->where('user_id', $user->id);
+        return $messages->whereNot(fn (Builder $q) => $q
+            ->where('for_type', (new Session)->getMorphClass())
+            ->whereIn('for_id', $this->helpChatSessionIds()));
     }
 
-    // Messages the person sent, as themselves or as a counsellor -- not in urgent help chats (see ownTherapyIds()).
+    // Messages the person sent in sessions, as themselves or as a counsellor -- never in a case discussion (a
+    // counsellor's discussion about a client) or an urgent help chat (see ownTherapyIds()).
     private function sentMessageIds(User $user, ?Counsellor $counsellor): QueryBuilder
     {
         return DB::table('messages')->select('id')
@@ -355,9 +369,8 @@ class GetYourDataAction extends Action
                 ->where(fn (QueryBuilder $q) => $q->where('from_type', $user->getMorphClass())->where('from_id', $user->id))
                 ->when($counsellor, fn (QueryBuilder $q) => $q
                     ->orWhere(fn (QueryBuilder $q) => $q->where('from_type', $counsellor->getMorphClass())->where('from_id', $counsellor->id))))
-            ->whereNot(fn (QueryBuilder $q) => $q
-                ->where('for_type', (new Session)->getMorphClass())
-                ->whereIn('for_id', $this->helpChatSessionIds()));
+            ->where('for_type', (new Session)->getMorphClass())
+            ->whereNotIn('for_id', $this->helpChatSessionIds());
     }
 
     private function identityRequestIds(User $user): QueryBuilder

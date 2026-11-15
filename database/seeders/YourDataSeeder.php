@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Enums\ConstantsEnum;
+use App\Enums\CounsellorPayoutStatusEnum;
 use App\Enums\LicensingAuthorityTypeEnum;
 use App\Enums\LicensingTypeEnum;
 use App\Enums\MessageStatusEnum;
@@ -24,6 +25,7 @@ use App\Models\Guardianship;
 use App\Models\License;
 use App\Models\LicensingAuthority;
 use App\Models\Message;
+use App\Models\Profession;
 use App\Models\Request;
 use App\Models\Session;
 use App\Models\Therapy;
@@ -38,7 +40,7 @@ use Illuminate\Support\Str;
 // SCRUM-50 (TT-8.2): "What we hold about you" (/profile/your-data) with something in every category. Passwords:
 // "password".
 // - your_data_demo: an adult client with a named therapy (a session, messages, a payment), an ended anonymous therapy,
-//   an urgent help chat, a group (joined anonymously), a ward, an accepted age check whose document is waiting to be
+//   a deleted therapy (still held, counted), an urgent help chat (never counted or listed), a group (joined anonymously), a ward, an accepted age check whose document is waiting to be
 //   deleted, notifications, and administrators' opens of their therapy, session and a message -- plus opens that
 //   must NOT be listed (their group's page, their help chat, an urgent-help identity reveal).
 // - your_data_demo_ward: their ward (15).
@@ -76,7 +78,7 @@ class YourDataSeeder extends Seeder
             CounsellorPayout::query()->create([
                 'counsellor_id' => $counsellor->id, 'initiated_by_id' => $counsellor->user_id,
                 'reference' => 'payout_your_data_demo_'.Str::lower(Str::random(10)), 'amount' => 12000, 'currency' => 'GHS',
-                'status' => 'SUCCEEDED',
+                'status' => CounsellorPayoutStatusEnum::succeeded->value,
             ]);
 
             $this->ageCheck($client);
@@ -123,7 +125,8 @@ class YourDataSeeder extends Seeder
             'email' => $user->email,
             'phone' => fake()->phoneNumber(),
             'email_verified_at' => now(),
-            'profession_id' => rand(1, 10),
+            // A real one (or none), so this seeder also runs alone on an existing database.
+            'profession_id' => Profession::query()->orderBy('id')->value('id'),
             'contact_visible' => true,
         ]);
         $counsellor->forceFill(['verified_at' => now()->subMonths(2), 'verification_expires_at' => now()->addMonths(10)])->save();
@@ -141,6 +144,7 @@ class YourDataSeeder extends Seeder
         $this->message($counsellor, $session, 'Take care until then.');
 
         $this->therapy($client, $counsellor, 'Your Data Demo Anonymous Therapy', ['status' => TherapyStatusEnum::ended->value, 'anonymous' => true]);
+        $this->therapy($client, $counsellor, 'Your Data Demo Deleted Therapy', ['status' => TherapyStatusEnum::ended->value])->delete();
 
         return [$therapy, $session, $message];
     }

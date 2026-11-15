@@ -89,7 +89,11 @@ class LicenseService extends Service
                 return $pending ? $item : null;
             })
             ->filter()
-            ->merge($abandoned->map(fn (License $license) => ['license' => $license->id, 'clearNumber' => $license->isNationalId(), 'reason' => 'abandoned upload']))
+            ->merge($abandoned->map(function (License $license) {
+                $rule = $this->documentRetentionFor($license, collect());
+
+                return ['license' => $license->id, 'clearNumber' => $rule['clearNumber'], 'reason' => $rule['reason']];
+            }))
             ->each(function (array $item) use ($licenses, $dryRun) {
                 if (! $dryRun) {
                     PurgeLicenseDocumentsAction::new()->execute($licenses->get($item['license']), $item['clearNumber']);
@@ -127,6 +131,10 @@ class LicenseService extends Service
     // licenseCitations()) -- when its documents go and what goes with them: ['at', 'clearNumber', 'reason'], or null
     // while they are kept (a pending request, or an accepted professional license). applyDocumentRetention() removes
     // them once 'at' has passed; "What we hold about you" shows 'at', so the two can't disagree.
+    /**
+     * @param  Collection<int, array{license: int, status: string, decidedAt: ?CarbonInterface}>  $citations
+     * @return array{at: CarbonInterface, clearNumber: bool, reason: string}|null
+     */
     public function documentRetentionFor(License $license, Collection $citations): ?array
     {
         $isNationalId = $license->isNationalId();
@@ -134,7 +142,7 @@ class LicenseService extends Service
         // SCRUM-362: never cited -- an abandoned upload, unless an administrator validated it.
         if ($citations->isEmpty()) {
             return $license->validated ? null : [
-                'at' => $license->created_at->copy()->addDays((int) config('counsellor.license_abandoned_retention_days')),
+                'at' => ($license->created_at?->copy() ?? now())->addDays((int) config('counsellor.license_abandoned_retention_days')),
                 'clearNumber' => $isNationalId,
                 'reason' => 'abandoned upload',
             ];
@@ -183,16 +191,20 @@ class LicenseService extends Service
         return $decidedAt ? $decidedAt->copy()->addDays((int) config($configKey)) : now();
     }
 
-    // SCRUM-362: licenses no verification request cites, with documents still to remove.
+    // SCRUM-362: licenses no verification request cites, with documents still to remove, whose time has come under
+    // documentRetentionFor()'s abandoned-upload rule -- the one place that rule lives (SCRUM-50: the page shows it).
     private function abandonedLicenses(Collection $citedIds): Collection
     {
         return License::query()
             ->with(['files', 'licensingAuthority'])
             ->whereNotIn('id', $citedIds)
-            ->where('validated', false)
-            ->where('created_at', '<=', now()->subDays(config('counsellor.license_abandoned_retention_days')))
             ->whereHas('files')
-            ->get();
+            // Only narrows what's loaded each night (SCRUM-50 code review); documentRetentionFor() still decides.
+            ->where('validated', false)
+            ->where('created_at', '<=', now()->subDays((int) config('counsellor.license_abandoned_retention_days')))
+            ->get()
+            ->filter(fn (License $license) => ($rule = $this->documentRetentionFor($license, collect())) && $rule['at'] <= now())
+            ->values();
     }
 
     // licenseId => [{status, decidedAt}, ...] across every counsellor verification request,

@@ -13,6 +13,7 @@ use App\Enums\TransactionStatusEnum;
 use App\Models\AdminContentAccess;
 use App\Models\Counsellor;
 use App\Models\CounsellorPayout;
+use App\Models\Discussion;
 use App\Models\File;
 use App\Models\GroupTherapy;
 use App\Models\Guardianship;
@@ -29,9 +30,9 @@ use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Services\LicenseService;
+use Carbon\Carbon;
 use Database\Seeders\YourDataSeeder;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 // SCRUM-50 (TT-8.2): "What we hold about you" -- the signed-in person's own data, why, for how long and who sees it.
 
@@ -55,11 +56,11 @@ function ydtSession(Therapy|GroupTherapy $for): Session
     return Session::factory()->create(['for_type' => $for::class, 'for_id' => $for->id]);
 }
 
-function ydtMessage(User|Counsellor $from, Session $session): Message
+function ydtMessage(User|Counsellor $from, Session|Discussion $for): Message
 {
     $message = Message::factory()->make(['type' => MessageTypeEnum::normal->value]);
     $message->from()->associate($from);
-    $message->for()->associate($session);
+    $message->for()->associate($for);
     $message->save();
 
     return $message;
@@ -123,15 +124,17 @@ function ydtLicense(Counsellor $counsellor, string $authorityName, string $numbe
 function ydtFill(User $user): void
 {
     $counsellor = ydtCounsellor();
+    $named = null;
     foreach ([['status' => TherapyStatusEnum::in_session->value], ['status' => TherapyStatusEnum::ended->value], ['anonymous' => true], ['is_help_chat' => true]] as $attributes) {
         $therapy = ydtTherapy($user, $counsellor, $attributes);
+        $named ??= $therapy;
         $session = ydtSession($therapy);
         ydtMessage($user, $session);
         ydtAccess(AdminContentAccess::THERAPY, Therapy::class, $therapy->id);
     }
     $group = ydtGroup($user, anonymous: true);
     ydtMessage($user, ydtSession($group));
-    Transaction::factory()->create(['user_id' => $user->id, 'for_type' => Therapy::class, 'for_id' => $therapy->id, 'status' => TransactionStatusEnum::success->value]);
+    Transaction::factory()->create(['user_id' => $user->id, 'for_type' => Therapy::class, 'for_id' => $named->id, 'status' => TransactionStatusEnum::success->value]);
     Transaction::factory()->create(['user_id' => $user->id, 'for_type' => GroupTherapy::class, 'for_id' => $group->id, 'currency' => 'USD']);
     Guardianship::query()->create(['guardian_id' => $user->id, 'ward_id' => User::factory()->create()->id]);
     OrganizationMember::factory()->create(['organization_id' => Organization::factory()->create()->id, 'user_id' => $user->id]);
@@ -161,10 +164,10 @@ test('the owner sees their own data on the page', function () {
         ->where('data.account.country', 'Ghana')
         ->where('data.security.passwordSet', true)
         ->where('data.security.twoFactorEnabled', false)
-        ->where('data.therapies', ['active' => 1, 'ended' => 1, 'anonymousActive' => 1, 'anonymousEnded' => 0, 'helpChats' => 1])
-        // Own therapies and the group, not the help chat's.
+        // Urgent help chats are never counted (the help chat, its session or its messages).
+        ->where('data.therapies', ['active' => 1, 'ended' => 1, 'anonymousActive' => 1, 'anonymousEnded' => 0, 'deleted' => 0])
         ->where('data.sessions.count', 4)
-        ->where('data.messages.sent', 5)
+        ->where('data.messages.sent', 4)
         ->where('data.messages.sentAsCounsellor', null)
         ->where('data.groups', ['current' => 1, 'anonymous' => 1, 'left' => 0, 'started' => 0])
         ->where('data.guardianship.wards', 1)
@@ -207,7 +210,7 @@ test('a guardian\'s page doesn\'t count their ward\'s therapies', function () {
 
     $data = ydtData($guardian);
 
-    expect($data['therapies'])->toBe(['active' => 0, 'ended' => 0, 'anonymousActive' => 0, 'anonymousEnded' => 0, 'helpChats' => 0])
+    expect($data['therapies'])->toBe(['active' => 0, 'ended' => 0, 'anonymousActive' => 0, 'anonymousEnded' => 0, 'deleted' => 0])
         ->and($data['sessions']['count'])->toBe(0)
         ->and($data['messages']['sent'])->toBe(0)
         ->and($data['payments']['transactions'])->toBe([])
@@ -378,18 +381,18 @@ test('the number of queries doesn\'t grow with what the person holds', function 
     ydtFill($busy);
     ydtFill($busy);
 
-    $emptyCounsellor = ydtCounsellor()->user;
+    // Both counsellors have a licence (with none, the issuers' eager load is skipped: one fewer query).
+    $quietCounsellor = ydtCounsellor();
+    ydtLicense($quietCounsellor, 'Counselling Board', 'PRO-Q');
     $busyCounsellor = ydtCounsellor()->user;
     ydtFill($busyCounsellor);
     ydtFill($busyCounsellor);
 
-    [$a, $b, $c, $d] = array_map(fn (User $user) => ydtQueries(fn () => GetYourDataAction::new()->execute($user)), [$empty->fresh(), $busy->fresh(), $emptyCounsellor->fresh(), $busyCounsellor->fresh()]);
+    [$a, $b, $c, $d] = array_map(fn (User $user) => ydtQueries(fn () => GetYourDataAction::new()->execute($user)), [$empty->fresh(), $busy->fresh(), $quietCounsellor->user->fresh(), $busyCounsellor->fresh()]);
 
-    // One ceiling for all four (a counsellor with no licences skips the issuers' eager load: one fewer).
-    expect($a)->toBe($b);
-    foreach ([$a, $b, $c, $d] as $count) {
-        expect($count)->toBeLessThanOrEqual(14);
-    }
+    expect($a)->toBe($b)
+        ->and($c)->toBe($d)
+        ->and($d)->toBeLessThanOrEqual(14);
 });
 
 test('the demo accounts seed once, with something in every category', function () {
@@ -402,9 +405,9 @@ test('the demo accounts seed once, with something in every category', function (
     $client = User::where('username', 'your_data_demo')->sole();
     $data = ydtData($client);
 
-    expect($data['therapies'])->toBe(['active' => 1, 'ended' => 0, 'anonymousActive' => 0, 'anonymousEnded' => 1, 'helpChats' => 1])
+    expect($data['therapies'])->toBe(['active' => 1, 'ended' => 0, 'anonymousActive' => 0, 'anonymousEnded' => 1, 'deleted' => 1])
         ->and($data['sessions']['count'])->toBe(2)
-        ->and($data['messages']['sent'])->toBe(4)
+        ->and($data['messages']['sent'])->toBe(3)
         ->and($data['groups']['anonymous'])->toBe(1)
         ->and($data['guardianship']['wards'])->toBe(1)
         ->and($data['payments']['transactions'])->toHaveCount(1)
@@ -425,5 +428,107 @@ test('the profile page and the privacy policy link to it', function () {
 
     expect($vue('Pages/Profile/Show.vue'))->toContain("route('profile.your-data')")
         ->and($vue('Pages/Privacy.vue'))->toContain("route('profile.your-data')")
-        ->and(Str::contains($vue('Pages/Profile/YourData.vue'), 'awaiting legal review'))->toBeTrue();
+        ->and($vue('Pages/Profile/YourData.vue'))->toContain('awaiting legal review');
+});
+
+test('deleted therapies are still held, so they are counted', function () {
+    $client = User::factory()->adult()->create();
+    ydtTherapy($client, ydtCounsellor());
+    $deleted = ydtTherapy($client, ydtCounsellor(), ['status' => TherapyStatusEnum::ended->value]);
+    ydtSession($deleted);
+    ydtAccess(AdminContentAccess::THERAPY, Therapy::class, $deleted->id);
+    $deleted->delete();
+    ydtTherapy($client, ydtCounsellor(), ['is_help_chat' => true])->delete();
+
+    $data = ydtData($client);
+
+    expect($data['therapies'])->toBe(['active' => 1, 'ended' => 0, 'anonymousActive' => 0, 'anonymousEnded' => 0, 'deleted' => 1])
+        ->and($data['sessions']['count'])->toBe(1)
+        ->and($data['teamAccess']['total'])->toBe(1);
+});
+
+test('urgent help is never counted: not the chat, its session or its messages', function () {
+    $client = User::factory()->adult()->create();
+    $counsellor = ydtCounsellor();
+    $session = ydtSession(ydtTherapy($client, $counsellor, ['is_help_chat' => true]));
+    ydtMessage($client, $session);
+    ydtMessage($counsellor, $session);
+
+    $data = ydtData($client);
+
+    expect($data['therapies'])->not->toHaveKey('helpChats')
+        ->and(array_sum($data['therapies']))->toBe(0)
+        ->and($data['sessions']['count'])->toBe(0)
+        ->and($data['messages']['sent'])->toBe(0)
+        ->and(ydtData($counsellor->user)['messages']['sentAsCounsellor'])->toBe(0);
+});
+
+test('team access never lists a counsellor\'s case-discussion messages', function () {
+    $counsellor = ydtCounsellor();
+    $therapy = ydtTherapy(User::factory()->adult()->create(), $counsellor);
+    $discussion = Discussion::factory()->create(['for_type' => Therapy::class, 'for_id' => $therapy->id]);
+    $inDiscussion = ydtMessage($counsellor, $discussion);
+    $inSession = ydtMessage($counsellor, ydtSession($therapy));
+
+    ydtAccess(AdminContentAccess::MESSAGE, Message::class, $inDiscussion->id);
+    ydtAccess(AdminContentAccess::MESSAGE_ATTACHMENT, Message::class, $inDiscussion->id);
+    ydtAccess(AdminContentAccess::MESSAGE, Message::class, $inSession->id);
+
+    $data = ydtData($counsellor->user);
+
+    expect($data['teamAccess']['total'])->toBe(1)
+        // Held, so still counted among what they sent.
+        ->and($data['messages']['sentAsCounsellor'])->toBe(2);
+});
+
+test('a group they left counts only the sessions from before they left', function () {
+    $me = User::factory()->adult()->create();
+    $left = ydtGroup($me);
+    Session::factory()->create(['for_type' => GroupTherapy::class, 'for_id' => $left->id, 'start_time' => now()->subDays(10), 'end_time' => now()->subDays(10)->addHour()]);
+    Session::factory()->create(['for_type' => GroupTherapy::class, 'for_id' => $left->id, 'start_time' => now()->subDays(2), 'end_time' => now()->subDays(2)->addHour()]);
+    DB::table('group_therapy_user')->where('group_therapy_id', $left->id)->where('user_id', $me->id)->update(['left_at' => now()->subDays(5)]);
+    ydtSession(ydtGroup($me));
+
+    $data = ydtData($me);
+
+    expect($data['sessions']['count'])->toBe(2)
+        ->and($data['groups'])->toMatchArray(['current' => 1, 'left' => 1]);
+});
+
+test('an abandoned upload\'s deletion date is the job\'s own', function () {
+    config(['counsellor.license_abandoned_retention_days' => 14]);
+    $counsellor = ydtCounsellor();
+    $license = ydtLicense($counsellor, 'Counselling Board', 'PRO-A');
+    License::query()->whereKey($license->id)->update(['created_at' => now()->subDays(4)]);
+
+    $deletesAt = ydtData($counsellor->user)['documents']['licenses'][0]['deletesAt'];
+
+    expect(substr($deletesAt, 0, 10))->toBe(now()->addDays(10)->toDateString())
+        ->and(LicenseService::new()->applyDocumentRetention(dryRun: true))->toHaveCount(0);
+    $this->travelTo(Carbon::parse($deletesAt)->subMinute());
+    expect(LicenseService::new()->applyDocumentRetention(dryRun: true))->toHaveCount(0);
+    $this->travelTo(Carbon::parse($deletesAt)->addMinute());
+    expect(LicenseService::new()->applyDocumentRetention(dryRun: true)->pluck('license')->all())->toBe([$license->id]);
+});
+
+test('a turned-down verification\'s deletion date is the job\'s own', function () {
+    config(['counsellor.license_rejected_retention_days' => 20]);
+    $counsellor = ydtCounsellor();
+    $license = ydtLicense($counsellor, 'Counselling Board', 'PRO-R');
+    $verification = Request::factory()->for($counsellor, 'from')->for($counsellor, 'for')->create([
+        'type' => RequestTypeEnum::counsellor->value,
+        'data' => ['otherLicense' => $license->id],
+        'status' => RequestStatusEnum::pending->value,
+    ]);
+    $verification->update(['status' => RequestStatusEnum::rejected->value]);
+    Request::query()->whereKey($verification->id)->update(['responded_at' => now()->subDays(6)]);
+
+    $deletesAt = ydtData($counsellor->user)['documents']['licenses'][0]['deletesAt'];
+
+    expect(substr($deletesAt, 0, 10))->toBe(now()->addDays(14)->toDateString())
+        ->and(LicenseService::new()->applyDocumentRetention(dryRun: true))->toHaveCount(0);
+    $this->travelTo(Carbon::parse($deletesAt)->subMinute());
+    expect(LicenseService::new()->applyDocumentRetention(dryRun: true))->toHaveCount(0);
+    $this->travelTo(Carbon::parse($deletesAt)->addMinute());
+    expect(LicenseService::new()->applyDocumentRetention(dryRun: true)->pluck('license')->all())->toBe([$license->id]);
 });

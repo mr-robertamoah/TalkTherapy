@@ -142,9 +142,8 @@ const counsellor = computed(() => props.data.counsellor)
                             {{ plural(therapies.anonymousActive + therapies.anonymousEnded, 'anonymous therapy', 'anonymous therapies') }}
                             ({{ therapies.anonymousActive }} going on). Your counsellor sees you as anonymous in these.
                         </li>
-                        <li>
-                            {{ plural(therapies.helpChats, 'urgent help chat', 'urgent help chats') }}. Their messages are deleted
-                            {{ retentionDays.helpChat }} days after the chat ended; a record that you asked for help is kept.
+                        <li v-if="therapies.deleted">
+                            {{ plural(therapies.deleted, 'deleted therapy', 'deleted therapies') }}, still held.
                         </li>
                     </ul>
                     <template #why>To run your therapy with your counsellor.</template>
@@ -157,7 +156,7 @@ const counsellor = computed(() => props.data.counsellor)
                 </YourDataSection>
 
                 <YourDataSection id="sessions" title="Sessions">
-                    <p>{{ plural(data.sessions.count, 'session', 'sessions') }} in your therapies and in groups you are or were in.</p>
+                    <p>{{ plural(data.sessions.count, 'session', 'sessions') }} in your therapies, and in groups while you were in them.</p>
                     <template #why>To schedule and hold your sessions.</template>
                     <template #kept>While your account is open.</template>
                     <template #who>The people in that therapy or group, and administrators (recorded).</template>
@@ -183,10 +182,10 @@ const counsellor = computed(() => props.data.counsellor)
                             In {{ plural(data.groups.current, 'group', 'groups') }} now<template v-if="data.groups.anonymous"> ({{ data.groups.anonymous }} anonymously)</template>;
                             left {{ data.groups.left }}; started {{ data.groups.started }}.
                         </li>
-                        <li v-for="membership in data.organizations.memberships" :key="`member-${membership.name}`">
+                        <li v-for="(membership, index) in data.organizations.memberships" :key="`member-${index}-${membership.name}-${membership.status}`">
                             Member of {{ membership.name }} ({{ words(membership.status) }})
                         </li>
-                        <li v-for="organization in data.organizations.administered" :key="`admin-${organization.name}`">
+                        <li v-for="(organization, index) in data.organizations.administered" :key="`admin-${index}-${organization.name}-${organization.role}`">
                             {{ words(organization.role) }} of {{ organization.name }}
                         </li>
                     </ul>
@@ -290,7 +289,9 @@ const counsellor = computed(() => props.data.counsellor)
                         </ul>
                     </template>
                     <p class="mt-2 text-gray-600">
-                        Opening a group's page, and anything to do with urgent help or a safety concern, isn't listed here.
+                        Not listed: opening a group's page, urgent help chats, and an administrator looking at who an urgent
+                        help request or a safety concern is about (or the reason for a concern). The record doesn't say why
+                        someone opened your therapy or messages, so those opens are listed whatever the reason.
                     </p>
                     <template #why>To keep TalkTherapy safe, and so every look is accounted for.</template>
                     <template #kept>Permanently. These records can't be changed or deleted.</template>
@@ -316,8 +317,10 @@ const counsellor = computed(() => props.data.counsellor)
                     <h2 class="text-lg font-semibold text-gray-900">Other records</h2>
                     <p class="mt-2">
                         Your counsellor may keep private notes about your sessions and messages, and the TalkTherapy team may
-                        hold records made to keep you safe, such as a request for urgent help or a safety concern a counsellor
-                        raised. They aren't listed on this page. To ask about them,
+                        hold records made to keep you safe, such as urgent help chats or a safety concern a counsellor raised.
+                        They aren't listed or counted on this page. An urgent help chat's messages are deleted
+                        {{ retentionDays.helpChat }} days after the chat ended; a record that help was asked for is kept. To ask
+                        about any of these,
                         <a :href="contactHref" class="text-indigo-700 underline hover:text-indigo-900">contact us</a>.
                     </p>
                 </div>
