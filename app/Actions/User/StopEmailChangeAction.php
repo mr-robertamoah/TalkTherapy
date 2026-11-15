@@ -48,7 +48,7 @@ class StopEmailChangeAction extends Action
             // "Forgot your password?" couldn't reach them) -- unless another account has taken it since, or it was
             // remembered too long ago (SCRUM-433; no date means before that was recorded: too long ago).
             $restore = ! $user->email && $user->last_verified_email
-                && $user->last_verified_email_at?->gte(now()->subDays((int) config('auth.email_stop_restore_days')))
+                && $user->lastVerifiedEmailIsRecent()
                 && ! User::query()->whereKeyNot($user->id)->where('email', $user->last_verified_email)->exists();
 
             // SCRUM-431: or in the days before it was asked for -- an intruder can turn it on first.

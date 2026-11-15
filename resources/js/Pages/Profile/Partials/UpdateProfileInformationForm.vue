@@ -230,7 +230,7 @@ function save() {
                 <InputLabel for="profile_current_password" value="Your current password" />
                 <p class="mt-1 text-xs text-gray-600">
                     Needed to change your email. We'll send a link to the new address; once it's confirmed it becomes your
-                    email{{ user.emailVerifiedAt ? ' two days later' : '' }}, and we'll let your current address know.
+                    email{{ user.emailVerifiedAt ? ' two days later' : '' }}{{ user.email ? ", and we'll let your current address know" : '' }}.
                 </p>
                 <TextInput
                     id="profile_current_password"

@@ -242,14 +242,38 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return $this->email && $this->email_verified_at ? $this->email : $this->last_verified_email;
     }
 
+    // SCRUM-433/434: whether the remembered address was remembered within auth.email_stop_restore_days -- the one test
+    // for "This wasn't me" putting it back, the download alert reaching it, and its warnings keeping their stop link.
+    // No date (remembered before SCRUM-433) is never recent.
+    public function lastVerifiedEmailIsRecent(): bool
+    {
+        return (bool) $this->last_verified_email_at?->gte(now()->subDays((int) config('auth.email_stop_restore_days')));
+    }
+
+    // SCRUM-434: whether the address warnings go to is a remembered one that isn't recent -- "This wasn't me" wouldn't
+    // put it back, and its mailbox may be someone else's now, so it gets a warning with nothing to act on
+    // (EmailChangedNotification $stale). Never the account's own current address, verified or not (code review: an
+    // address unticked by the team is remembered, but still the account's).
+    public function protectedEmailIsStale(): bool
+    {
+        if (($this->email && $this->email_verified_at) || ! $this->last_verified_email) {
+            return false;
+        }
+
+        if ($this->email && mb_strtolower($this->email) === mb_strtolower($this->last_verified_email)) {
+            return false;
+        }
+
+        return ! $this->lastVerifiedEmailIsRecent();
+    }
+
     // SCRUM-432 (security review): the verified address a change replaced within the last auth.email_stop_restore_days
     // -- told of a data download as well, since it may be the owner's -- unless another account has verified it since.
     public function recentlyReplacedEmail(): ?string
     {
         $previous = $this->last_verified_email;
 
-        if (! $previous || mb_strtolower($previous) === mb_strtolower((string) $this->email)
-            || ! $this->last_verified_email_at?->gte(now()->subDays((int) config('auth.email_stop_restore_days')))) {
+        if (! $previous || mb_strtolower($previous) === mb_strtolower((string) $this->email) || ! $this->lastVerifiedEmailIsRecent()) {
             return null;
         }
 

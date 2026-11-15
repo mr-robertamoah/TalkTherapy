@@ -39,6 +39,7 @@ class EmailChangedNotification extends Notification implements ShouldQueue
         public ?string $pendingHash = null,
         public ?string $effectiveAt = null,
         public bool $accountHasEmail = true,
+        public bool $stale = false,
     ) {
         $this->afterCommit();
     }
@@ -46,22 +47,30 @@ class EmailChangedNotification extends Notification implements ShouldQueue
     // The one way to send it: nothing when the current address isn't verified. $name is the one the account had before
     // the save that asked for the change.
     // $accountHasEmail false: this address was removed from the account (it's still the protected one).
-    public static function sendTo(?string $currentEmail, string $name, ?string $newEmail, bool $byTeam = false, string $stage = self::REQUESTED, ?int $userId = null, ?string $effectiveAt = null, ?string $pendingHash = null, bool $accountHasEmail = true): void
+    // SCRUM-434: $stale -- this is a remembered address from longer ago than auth.email_stop_restore_days (User::
+    // protectedEmailIsStale()). Its mailbox may have passed to someone else, so they're told only that a change was asked
+    // for and to contact support: no name, no new address, no "This wasn't me" (which would let a stranger stop the
+    // owner's real change and lock them out).
+    public static function sendTo(?string $currentEmail, string $name, ?string $newEmail, bool $byTeam = false, string $stage = self::REQUESTED, ?int $userId = null, ?string $effectiveAt = null, ?string $pendingHash = null, bool $accountHasEmail = true, bool $stale = false): void
     {
-        if (! $currentEmail) {
+        // SCRUM-434 (code review): a long-remembered address hears that a change was asked for and when it takes effect
+        // -- not a second, near-identical email when the new address is confirmed.
+        if (! $currentEmail || ($stale && $stage === self::CONFIRMED && $newEmail)) {
             return;
         }
 
         Notifications::route('mail', $currentEmail)->notify(new self(
-            $name,
-            $newEmail ? MaskedEmail::of($newEmail) : null,
+            // Not even queued with it (security review).
+            $stale ? '' : $name,
+            $newEmail && ! $stale ? MaskedEmail::of($newEmail) : null,
             now()->format('j F Y, H:i T'),
             $byTeam,
             $newEmail ? $stage : self::REMOVED,
             $userId,
-            $newEmail && $userId ? $pendingHash : null,
+            $newEmail && $userId && ! $stale ? $pendingHash : null,
             $effectiveAt,
             $accountHasEmail,
+            $stale,
         ));
     }
 
@@ -75,6 +84,10 @@ class EmailChangedNotification extends Notification implements ShouldQueue
 
     public function toMail(object $notifiable): MailMessage
     {
+        if ($this->stale) {
+            return $this->staleMail();
+        }
+
         $to = $this->maskedNewEmail;
         $who = $this->byTeam ? 'The TalkTherapy team asked' : 'Someone asked';
 
@@ -105,6 +118,21 @@ class EmailChangedNotification extends Notification implements ShouldQueue
         }
 
         return $message->line("Thank you for choosing to 'TalkTherapy'.");
+    }
+
+    // SCRUM-434: to a long-remembered address -- what happened and to contact support, nothing that names the account or
+    // lets the reader act on it.
+    private function staleMail(): MailMessage
+    {
+        return (new MailMessage)
+            ->subject($this->stage === self::APPLIED ? 'A TalkTherapy account email was changed' : 'A change of a TalkTherapy account email was requested')
+            ->greeting('Hello!')
+            ->line($this->stage === self::APPLIED
+                ? "The email address of a TalkTherapy account this address was once used for was changed on {$this->changedAt}."
+                : "A change of email address was requested on {$this->changedAt} for a TalkTherapy account this address was once used for. It takes effect once the new address is confirmed, and two days after that.")
+            ->line('If that account is yours and you did NOT make this change, contact TalkTherapy support straight away and we\'ll look into it.')
+            ->line('If it isn\'t your account, you can ignore this email.')
+            ->line("Thank you for choosing to 'TalkTherapy'.");
     }
 
     // Only while the change hasn't taken effect.
