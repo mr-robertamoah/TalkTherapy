@@ -430,7 +430,10 @@ TT-7.2 is fully implemented.
 | Key | Story | Type | Priority | Points | Source | Depends on |
 |---|---|---|---|---|---|---|
 | TT-8.1 | Admin dashboard: users, active sessions, system health | Story | High | 8 | Existing (7.1) | — |
-| TT-8.2 | Data-collection transparency page (GDPR-style "what we know about you") | Story | Medium | 5 | Existing (7.2) | — |
+| TT-8.2 | 🔄 **In review**. "What we hold about you": an owner-only page (`/profile/your-data`) listing each kind of data kept about the person -- counts and yes/no, never content -- with why, how long (the same periods as /privacy, `App\Support\RetentionPeriods`), who can see it and the control for it; when the team opened their content (when and what, never who; safety, urgent-help and group reads left out); no download yet (SCRUM-432) | Story | Medium | 8 | SCRUM-50 (7.2) | TT-4.16, TT-12.4 |
+| TT-8.3 | 🔄 **In review**. Admin facelift (the user's TODO): lists as tables with each row's actions in the row (Users, Counsellors, Suspensions, Requests, Counsellor verification, Testimonials; the existing tables restyled to match), stacked two-column rows on phones, a sidebar that stays in view while the page scrolls and stops above the footer; the dead "ban" button removed; role and suspended status on the users list (hidden from an administrator involved in the suspension) | Story | Medium | 8 | SCRUM-430 | TT-4.34 |
+
+TT-8.2 and TT-8.3 were pulled forward into the TT-12 box on 2026-11-15 (one PR with TT-12.8), not Sprint 7.
 
 **Sprint:** 7 — combined with the remaining TT-4 security items (2FA, password policy, audit trail) since both are "hardening" work with similar review overhead.
 
@@ -559,7 +562,8 @@ Four PRs into develop, one branch each off a freshly pulled develop. Order: B an
 | TT-12.4c | Seeded account with a pending reset (`two_factor_reset_demo`); the user's TODO: recovery codes downloadable as well as copied; identity-check procedure in `documentation/operations/`; feature doc, decision log, production checklist and monitoring | Task | Medium | 3 | SCRUM-424 | TT-12.4b |
 | TT-12.5 | ✅ **Done** (PR #341). Follow-ups from the reviews, in one PR: the admin user edit no longer lets any admin change anyone's email -- only a super admin, never an administrator's, a real unused address, never marked verified, the old address and the account told; ticking "verified" is a super admin's; ordinary admins can't edit administrators; `admin.users.update` 30/min (SCRUM-425). Unique route names so `route:cache` works, checked in CI; a group's sessions created on the group (SCRUM-426) | Task | High | 3 | SCRUM-425, SCRUM-426 | TT-12.2b |
 | TT-12.6 | ✅ **Done** (PR #342). A new email takes effect only once its owner confirms it; password reset never goes to an unconfirmed address (follow-up) | Task | Medium | 5 | SCRUM-427 | TT-12.5 |
-| TT-12.7 | 🔄 **In review**. "This wasn't me" schedules a cancellable 48-hour two-factor reset when two-factor was turned on while the email change waited (it may be an intruder's phone -- or the owner's), telling both addresses (SCRUM-428); demo seeders refuse to run outside local and testing unless ALLOW_DEMO_SEED=true (SCRUM-429) | Task | Low | 1 | SCRUM-428, SCRUM-429 | TT-12.6 |
+| TT-12.7 | ✅ **Done** (PR #343). "This wasn't me" schedules a cancellable 48-hour two-factor reset when two-factor was turned on while the email change waited (it may be an intruder's phone -- or the owner's), telling both addresses (SCRUM-428); demo seeders refuse to run outside local and testing unless ALLOW_DEMO_SEED=true (SCRUM-429) | Task | Low | 1 | SCRUM-428, SCRUM-429 | TT-12.6 |
+| TT-12.8 | 🔄 **In review**. The two gaps accepted in SCRUM-427/428: "This wasn't me" also resets two-factor turned on in the 14 days before the change was asked for (`EMAIL_STOP_TWO_FACTOR_LOOKBACK_DAYS`, 7-90); while an account's address is unverified its last verified one stays protected however long ago (`last_verified_email_until` dropped), and a remembered address another account has verified isn't warned (SCRUM-431). Follow-up: SCRUM-433 | Task | High | 3 | SCRUM-431 | TT-12.7 |
 
 ## Reconciled Sprint Roadmap
 
@@ -574,7 +578,7 @@ Four PRs into develop, one branch each off a freshly pulled develop. Order: B an
 | 7 | Admin, ops & remaining security | TT-8, TT-4.2/4.5/4.6 | Hardening work batched together |
 | 8 | Profile polish & icebox | TT-9 | Unchanged |
 | Next | Hardening follow-ups | TT-11 (SCRUM-402) | The open review follow-ups from urgent help, the notification center and the help safeguards, boxed together (2026-11-09) |
-| Next+1 | Account security & session hardening | TT-12 (SCRUM-409/422/423/424) | Email-change protection, cleaner signed-out tabs, a wait before two-factor resets, and the npm hold-backs removed, boxed together (2026-11-14) |
+| Next+1 | Account security & session hardening | TT-12 (SCRUM-409/422/423/424) + TT-8.2/8.3 (SCRUM-50, SCRUM-430) | Email-change protection, cleaner signed-out tabs, a wait before two-factor resets, and the npm hold-backs removed, boxed together (2026-11-14) |
 
 ---
 

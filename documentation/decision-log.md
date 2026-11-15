@@ -12570,30 +12570,57 @@ and safeguarding stay cards); no download button yet (SCRUM-432); team access sh
   back in with "Forgot your password?" (it goes to the current address). The older, pre-existing path -- "This wasn't
   me" on an account with no email restores the remembered address as verified -- is ticketed as SCRUM-433.
 - **Deploy**: the column drop runs after the new code is live (the old saving hook still writes that column).
+- **SCRUM-430 (admin facelift)**: one table layout for admin lists (`resources/js/Components/Admin/AdminTable`, `AdminRow`,
+  `AdminCell`, `AdminStatusPill`, `AdminActionButton`) -- a real table from md up, below it the same rows as a
+  two-column grid (short values side by side), one DOM for both. Each row's actions are in the row; long details and
+  their actions (a suspension's card, a renewal's history and revoke, a counsellor's admin view) open in a dialog.
+  The sidebar's menu is sticky inside a full-height aside (top 0: the top nav isn't fixed), so it stops above the
+  footer and scrolls on its own when taller than the window. The dead "ban" button is gone (suspensions come from a
+  report). The users list now shows a role and whether the account is suspended, loaded with the page (and sent back
+  the same way after an edit or a reset, `UserService::forAdminRow`). Delete (users and counsellors) shows only to
+  super administrators, as the server requires. Security review (Medium, fixed): the "suspended" flag is hidden from
+  an administrator involved in that suspension, as the suspensions list hides who was suspended from them; that check
+  asks a few questions per suspended row, as the suspensions list does (a page at most). Code review (fixed): the
+  counsellor row's "View" opens the admin view again (verification history, revoke, statistics); accessible names
+  start with the button's visible text. The cards only these pages used (`AdminUserComponent`,
+  `TestimonialComponent`, `VerificationRequest`) are removed; the public counsellor card loses its admin-only delete.
 
 - **SCRUM-50 (TT-8.2), "What we hold about you"** -- the decisions below.
 
 - **The user's decisions**: no download button (the page says "contact us", linking to `/privacy#contact`, the only
   contact route); team access shows when and what was opened, never which administrator; counsellor notes, safety
   flags and urgent-help records get one fixed sentence (no counts, no content); no journal category (there is no
-  journal feature); urgent help chats get one line with the help-chat retention.
+  journal feature).
+- **Urgent help chats: no count (review, replaces the earlier "one line" choice).** The first version counted help
+  chats on their own line. The user's rule is that urgent-help records get one fixed sentence with no counts, and a
+  count could tip off someone watching the account (security, Medium). Help chats are now folded into the "Other
+  records" sentence, with their retention wording. Nothing about them is counted anywhere: not the chats, their
+  sessions, or the messages sent in them (as the client or the counsellor). The action no longer sends a count.
 - **Ownership only**: therapies are the ones the person started (`addedby`), sessions are in those and in groups
-  they are or were in (`group_therapy_user`, left ones included), and messages are the ones they sent (as a
-  counsellor too). The visibility scopes are never reused, because they also reach wards' and clients' therapies.
+  while the person was in them, and messages are the ones they sent (as a counsellor too). The visibility scopes are
+  never reused, because they also reach wards' and clients' therapies.
+- **Deleted therapies are counted (review)**: a soft-deleted therapy is still held, so it gets a "deleted, still
+  held" line (`withTrashed`/`onlyTrashed`). Team access already included its opens (`ownTherapyIds()`).
+- **Groups the person left (review)**: only sessions that started before `left_at` are counted.
 - **Urgent help chats are left out of team access entirely** (the help chat's page, its session, and messages sent
   in it), not only the identity reveal. An administrator reads a help chat mostly to look into a report about it, and
-  the privacy policy promises the requester isn't told about a report. Help-chat sessions are left out of the
-  sessions count (help chats are counted on their own line). Messages sent in them still count among "messages you
-  sent", because they are held until the help-chat period ends.
+  the privacy policy promises the requester isn't told about a report.
 - **Team access is an allow-list** of resources the person owns (their own 1:1 therapies' THERAPY / SESSION /
-  SESSION_MESSAGES / TOPIC_MESSAGES, MESSAGE* for messages they sent, their own LICENSE_DOCUMENT /
-  IDENTITY_DOCUMENT). A resource added later stays off the page until someone chooses to add it. Labels are
+  SESSION_MESSAGES / TOPIC_MESSAGES, MESSAGE* for messages they sent in sessions, their own LICENSE_DOCUMENT /
+  IDENTITY_DOCUMENT). Messages in a case discussion are never listed (review): a counsellor's discussion is about a
+  client. They are still counted among the messages the counsellor sent, because they are held. The page's footnote
+  doesn't promise more than this: it says safety-flag and urgent-help reveals are left out, but the log doesn't record
+  why someone opened an ordinary therapy, so those opens are listed whatever the reason. A resource added later stays off the page until someone chooses to add it. Labels are
   copy, so they live in the Vue page. The server sends only `resource` and `at`.
 - **Deletion dates**: `LicenseService::documentRetentionFor()` is now the one rule. `applyDocumentRetention()` purges
   once its date has passed (same outcomes as before, and the existing retention tests pass unchanged), and the page
-  shows the date. `DeleteExpiredIdentityDocumentsAction::deletesAt()` does the same for identity documents.
+  shows the date. `DeleteExpiredIdentityDocumentsAction::deletesAt()` does the same for identity documents. Review:
+  the abandoned-upload rule now lives only in `documentRetentionFor()`. `abandonedLicenses()` loads uncited licences
+  that still have documents and keeps those whose date from the rule has passed. Tests cover an abandoned upload and a
+  turned-down verification on both sides of the date.
 - **Query count**: 9 for a client whatever they hold. A counsellor adds up to 5 (one fewer when they have no
-  licences, because the issuers' eager load is skipped). The test asserts the same ceiling (14) for an empty and a
-  busy account, and an exact match for clients.
+  licences, because the issuers' eager load is skipped). The test asserts exact equality between a quiet and a busy
+  client, and between a quiet and a busy counsellor who both have a licence (review: so an N+1 can't hide under the
+  ceiling), with a ceiling of 14.
 - **Counsellor "clients"**: distinct people in their individual therapies (urgent help chats excluded), never
   names.
