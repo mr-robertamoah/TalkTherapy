@@ -9,10 +9,12 @@ use App\Models\CounsellorPayout;
 use App\Models\GroupTherapy;
 use App\Models\JournalEntry;
 use App\Models\Message;
+use App\Models\OutcomeCheckIn;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Support\OutcomeMeasures\OutcomeMeasure;
 use App\Support\RetentionPeriods;
 use App\Support\YourDataScope;
 use App\Support\YourDataWording;
@@ -113,6 +115,20 @@ class ExportYourDataAction extends Action
             'content' => $entry->content,
             'createdAt' => $entry->created_at?->toIso8601String(),
             'updatedAt' => $entry->updated_at?->toIso8601String(),
+        ]);
+        // SCRUM-37: their check-ins, answers included -- they're theirs.
+        yield ',"checkIns":';
+        yield from $this->list(YourDataScope::outcomeCheckIns($user)->select(['id', 'measure', 'measure_version', 'status', 'requested_at', 'expires_at', 'completed_at', 'answers', 'total_score', 'band']), fn (OutcomeCheckIn $checkIn) => [
+            'questionnaire' => $checkIn->definition()->title(),
+            'version' => $checkIn->measure_version,
+            'state' => $checkIn->state(),
+            'sentAt' => $checkIn->requested_at?->toIso8601String(),
+            'answeredAt' => $checkIn->completed_at?->toIso8601String(),
+            'answers' => $checkIn->status === OutcomeCheckIn::COMPLETED
+                ? collect($checkIn->definition()->items())->map(fn ($item, $i) => ['question' => $item, 'answer' => OutcomeMeasure::OPTIONS[$checkIn->answers[$i] ?? -1] ?? null])->all()
+                : null,
+            'score' => $checkIn->status === OutcomeCheckIn::COMPLETED ? (int) $checkIn->total_score : null,
+            'level' => $checkIn->band,
         ]);
         yield ',"teamAccess":';
         yield from $this->list(YourDataScope::teamAccess($user, $counsellor)->select(['id', 'resource', 'created_at']), fn (AdminContentAccess $access) => [

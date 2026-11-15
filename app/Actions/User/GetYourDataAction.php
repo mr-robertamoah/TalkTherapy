@@ -15,6 +15,7 @@ use App\Models\Counsellor;
 use App\Models\CounsellorPayout;
 use App\Models\License;
 use App\Models\OrganizationMember;
+use App\Models\OutcomeCheckIn;
 use App\Models\Request;
 use App\Models\Therapy;
 use App\Models\Transaction;
@@ -65,6 +66,10 @@ class GetYourDataAction extends Action
             'journal' => [
                 'entries' => (int) $row->journal_entries_count,
                 'since' => $row->journal_first_written_on ? Carbon::parse($row->journal_first_written_on)->toDateString() : null,
+            ],
+            // SCRUM-37: check-ins they answered.
+            'checkIns' => [
+                'answered' => (int) $row->check_ins_answered_count,
             ],
             'groups' => $this->groups($row),
             'organizations' => $this->organizations($user),
@@ -128,6 +133,8 @@ class GetYourDataAction extends Action
                 'notifications',
                 // SCRUM-36
                 'journalEntries',
+                // SCRUM-37
+                'outcomeCheckIns as check_ins_answered_count' => fn ($q) => $q->where('status', OutcomeCheckIn::COMPLETED),
             ])
             ->withMin('journalEntries as journal_first_written_on', 'written_on')
             ->firstOrFail();

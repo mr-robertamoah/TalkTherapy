@@ -328,6 +328,12 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return ($this->notification_channels[$category->value][$channel] ?? true) !== false;
     }
 
+    // SCRUM-37: the outcome check-ins sent to them (as a therapy's client).
+    public function outcomeCheckIns(): HasMany
+    {
+        return $this->hasMany(OutcomeCheckIn::class, 'client_user_id');
+    }
+
     // SCRUM-36: the person's private journal -- read only through here, by its writer.
     public function journalEntries(): HasMany
     {

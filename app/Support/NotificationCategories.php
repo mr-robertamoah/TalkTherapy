@@ -31,6 +31,9 @@ class NotificationCategories
         Notifications\GroupTherapyMembershipRequestAcceptedNotification::class => Category::therapies,
         Notifications\GroupTherapyMembershipRequestRejectedNotification::class => Category::therapies,
         Notifications\GroupTherapyMemberLeftNotification::class => Category::therapies,
+        // SCRUM-37: a check-in to answer, and one answered (the attention notice is always sent).
+        Notifications\OutcomeCheckInRequestedNotification::class => Category::therapies,
+        Notifications\OutcomeCheckInCompletedNotification::class => Category::therapies,
 
         Notifications\DiscussionRequestNotification::class => Category::discussions,
         Notifications\DiscussionInclusionNotification::class => Category::discussions,

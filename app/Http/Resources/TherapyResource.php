@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Actions\Organization\GetRetainerCoveringOrganizationAction;
+use App\Actions\OutcomeCheckIn\CheckInAccess;
 use App\Actions\Safety\EnsureCanFlagClientAction;
 use App\Actions\Therapy\ResolveTherapySponsorAction;
 use App\Actions\VideoConsent\GetCurrentValidVideoConsentForTherapyAction;
@@ -127,6 +128,12 @@ class TherapyResource extends JsonResource
                 fn () => EnsureCanFlagClientAction::new()->canFlag(fn (EnsureCanFlagClientAction $can) => $can->forTherapy($user, $this->resource)),
             ),
             // SCRUM-384: the request form's limit, from the model rather than a copy in the UI.
+            // SCRUM-37: whether this therapy's check-ins panel shows -- its counsellor or its client, while the feature is
+            // on; the panel fetches the rest.
+            'checkInsEnabled' => $this->when(
+                (bool) config('check_ins.enabled') && (CheckInAccess::isCounsellor($user, $this->resource) || CheckInAccess::isClient($user, $this->resource)),
+                true,
+            ),
             'safeguardingExceptionMaxDays' => $this->when($pause['client'] === true, SafeguardingException::MAX_DAYS),
         ];
     }

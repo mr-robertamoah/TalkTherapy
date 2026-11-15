@@ -10,6 +10,7 @@ use App\Enums\SafetyFlagNoticeStateEnum;
 use App\Models\Contact;
 use App\Models\Counsellor;
 use App\Models\HelpRequest;
+use App\Models\OutcomeCheckIn;
 use App\Models\PushSubscription;
 use App\Models\Request;
 use App\Models\SafeguardingException;
@@ -48,6 +49,8 @@ use Illuminate\Support\Str;
 //  - the one-line note on its urgent help requests, and an administrator's close note on them
 //    (SCRUM-33; the chats themselves follow their own one-year retention).
 //  - its journal (SCRUM-36) -- already deleted when the account was closed (User::booted); again here, in case.
+//  - the answers, score and level of its outcome check-ins (SCRUM-37) -- the counsellor's record keeps that one was
+//    sent and when, and whether an answer needed their attention (a safety record, like a safety flag's).
 // What stays: the account row itself (soft-deleted), so what the person took part in still holds
 // together -- their messages stay in other people's conversations as "Deleted user", and payment,
 // complaint, suspension and audit records keep pointing at it. Guardianship and organisation
@@ -175,6 +178,7 @@ class AnonymiseClosedAccountAction extends Action
             }
             $user->tokens()->delete();
             $user->journalEntries()->delete();
+            OutcomeCheckIn::query()->where('client_user_id', $user->id)->update(['answers' => null, 'total_score' => null, 'band' => null]);
             Contact::query()->where('addedby_type', $user->getMorphClass())->where('addedby_id', $user->id)
                 ->update(['name' => null, 'email' => null]);
             DB::table('visitors')->where('user_id', $user->id)->update(['user_id' => null]);
