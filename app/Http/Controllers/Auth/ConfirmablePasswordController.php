@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Providers\RouteServiceProvider;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -26,10 +26,9 @@ class ConfirmablePasswordController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
-        if (! Auth::guard('web')->validate([
-            'email' => $request->user()->email,
-            'password' => $request->password,
-        ])) {
+        // SCRUM-435: checked against the signed-in account itself -- looking it up by email failed for an account
+        // with no email.
+        if (! is_string($request->password) || ! Hash::check($request->password, (string) $request->user()->getAuthPassword())) {
             throw ValidationException::withMessages([
                 'password' => __('auth.password'),
             ]);
