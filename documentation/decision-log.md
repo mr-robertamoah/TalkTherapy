@@ -12865,3 +12865,28 @@ paused/active status on guardians.
   of a ward who has turned 18 stay listed but are refused when used; tidying them is left for later.
 - **Dialogs:** `Modal` and `MiniModal` share one scroll lock (`useScrollLock`), so a dialog closing while another is
   open no longer lets the page behind scroll.
+
+## SCRUM-443 — in-person: start/end from the other side, a real place, adults only (2026-11-15)
+
+Part of SCRUM-115 (its plan and the user's decisions are logged with the SCRUM-442 hotfix).
+
+- **Who confirms (security review):** the second start or end step comes from the other side -- a client or member
+  for a counsellor's request, a counsellor or an administrator for a client's or member's. "Anyone else" let two
+  members (or a counsellor's second account) start, end and bill a group session without its counsellor. A session
+  asked for before this with no recorded asker can be confirmed by anyone (only old rows).
+- **Place:** in person needs a pin and a landmark (3–255); online stores none, switching to online clears it, an
+  edit that leaves the place out keeps it. Existing online sessions' 0,0 is cleared by a migration that can't be
+  undone (the values were meaningless). The map centres on Accra when the browser gives no location (QA: it was NaN).
+- **Proposals carry a place (the user's choice, over online-only proposals):** an in-person proposal needs one,
+  accepting books the session there; a counter-offer keeps it unless it switches to online.
+- **Adults only (the user's decision):** checked when in-person is switched on (or set on creation), not on every
+  edit, so a therapy switched on before the rule isn't refused for an unrelated change; its sessions still can't be
+  created, proposed or started while a minor takes part. No date of birth counts as under 18 (`isAdult()`'s rule). A
+  minor can't join an in-person group by any route. Turning it on for a group re-checks under the group's row lock.
+  The therapy forms lock the box for a minor while it's off (they can still switch an old one off).
+- **Not telling anyone another member's age:** group members and user creators get "In-person sessions aren't
+  available for this group right now."; a refused membership request's reason is neutral too. The counsellors (and a
+  1:1's own client) get the adults-only reason.
+- **Factories:** `allow_in_person` defaults to false; tests opt in.
+- **Development:** the vite container reads `.env`, not `.env.docker`, so `VITE_GOOGLE_API_KEY` must be in `.env` for
+  the map to load locally (QA found it missing there).
