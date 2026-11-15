@@ -15,6 +15,7 @@ use App\Actions\Session\EnsureCanEndSessionAction;
 use App\Actions\Session\EnsureCanUpdateSessionAction;
 use App\Actions\Session\EnsureCanUpdateSessionStatusAction;
 use App\Actions\Session\EnsureCanViewCounsellorCalendarAction;
+use App\Actions\Session\EnsureConfirmedByAnotherPersonAction;
 use App\Actions\Session\EnsureSessionDataIsValidAction;
 use App\Actions\Session\EnsureSessionExistsAction;
 use App\Actions\Session\EnsureTherapyExistsAction;
@@ -29,9 +30,11 @@ use App\DTOs\GetCounsellorCalendarSessionsDTO;
 use App\DTOs\GetSessionsDTO;
 use App\Enums\PaginationEnum;
 use App\Enums\SessionStatusEnum;
+use App\Enums\SessionTypeEnum;
 use App\Events\SessionTopicSetEvent;
 use App\Events\SessionTopicUnsetEvent;
 use App\Events\SessionUpdatedEvent;
+use App\Exceptions\SessionException;
 use App\Http\Resources\SessionResource;
 use App\Models\AdminContentAccess;
 use App\Models\Session;
@@ -39,6 +42,7 @@ use App\Models\User;
 use App\Notifications\SessionDeletedNotification;
 use App\Notifications\SessionStatusChangedNotification;
 use App\Notifications\SessionUpdatedNotification;
+use App\Support\InPerson;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Notification;
 
@@ -151,6 +155,8 @@ class SessionService extends Service
 
         EnsureCanEndSessionAction::new()->execute($createSessionDTO);
 
+        EnsureConfirmedByAnotherPersonAction::new()->execute($createSessionDTO, SessionStatusEnum::held->value);
+
         $session = ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::held->value);
 
         broadcast(new SessionUpdatedEvent($session))->toOthers();
@@ -170,6 +176,13 @@ class SessionService extends Service
         EnsureCanUpdateSessionStatusAction::new()->execute($createSessionDTO);
 
         EnsureTherapyCanProceedAction::new()->execute($createSessionDTO->user, $createSessionDTO->session->for);
+
+        EnsureConfirmedByAnotherPersonAction::new()->execute($createSessionDTO, SessionStatusEnum::in_session->value);
+
+        // SCRUM-443: an in-person session doesn't start while someone under 18 is taking part (one booked before the rule).
+        if ($createSessionDTO->session->type === SessionTypeEnum::in_person->value && InPerson::hasMinorClient($createSessionDTO->session->for)) {
+            throw new SessionException(InPerson::refusalFor($createSessionDTO->user, $createSessionDTO->session->for), 422);
+        }
 
         $session = ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::in_session->value);
 

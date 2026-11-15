@@ -48,7 +48,7 @@ class UpdateSessionRequest extends FormRequest
         return [
             'name' => ['nullable', 'string', 'max:255'],
             'about' => ['nullable', 'string'],
-            'landmark' => ['nullable', 'string'],
+            'landmark' => ['nullable', Rule::requiredIf($this->get('type') == SessionTypeEnum::in_person->value), 'string', 'min:3', 'max:255'],
             'lat' => ['nullable', Rule::requiredIf($this->get('type') == SessionTypeEnum::in_person->value), 'numeric', 'between:-90,90'],
             'lng' => ['nullable', Rule::requiredIf($this->get('type') == SessionTypeEnum::in_person->value), 'numeric', 'between:-180,180'],
             'startTime' => ['nullable', 'date', Rule::prohibitedIf(

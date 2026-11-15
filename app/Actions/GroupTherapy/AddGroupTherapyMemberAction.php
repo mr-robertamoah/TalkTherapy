@@ -13,6 +13,7 @@ use App\Models\GroupTherapy;
 use App\Models\User;
 use App\Notifications\GroupTherapyMemberJoinedGuardianNotification;
 use App\Support\BestEffort;
+use App\Support\InPerson;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
@@ -85,6 +86,11 @@ class AddGroupTherapyMemberAction extends Action
 
         if ($group->isFull()) {
             throw new CannotJoinGroupTherapyException(self::FULL, 422);
+        }
+
+        // SCRUM-443 (the user's decision): a group that meets in person is for adults only.
+        if ($group->allow_in_person && ! $user->isAdult()) {
+            throw new CannotJoinGroupTherapyException(InPerson::MINOR_CANNOT_JOIN, 422);
         }
 
         // SCRUM-31 (the user's decision): paused, not closed -- a membership request waiting on the

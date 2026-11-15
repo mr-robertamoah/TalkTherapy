@@ -70,6 +70,9 @@ function rejectWithReason() {
         <div v-if="proposal.proposal?.name" class="font-semibold">{{ proposal.proposal.name }}</div>
         <div>{{ toLocalDateTime(proposal.proposal?.startTime) }} &ndash; {{ toLocalDateTime(proposal.proposal?.endTime) }}</div>
         <div v-if="proposal.proposal?.about" class="text-gray-600">{{ proposal.proposal.about }}</div>
+        <div v-if="proposal.proposal?.type === 'IN_PERSON'" class="text-gray-700">
+          In person<template v-if="proposal.proposal.landmark">: {{ proposal.proposal.landmark }}</template>
+        </div>
         <div v-if="proposal.round" class="text-xs text-gray-500">round {{ proposal.round }}</div>
       </div>
 

@@ -815,6 +815,13 @@ class User extends Authenticatable implements MustVerifyEmailContract
             ->whereDoesntHave('safeguardingExceptions', fn ($q) => $q->active());
     }
 
+    // SCRUM-443: under 18 the way isAdult() counts it -- no date of birth, or born less than 18 years ago.
+    public function scopeWhereNotAdult($query)
+    {
+        return $query->where(fn ($q) => $q->whereNull('dob')
+            ->orWhereDate('dob', '>', now()->subYearsNoOverflow(18)->toDateString()));
+    }
+
     public function scopeWhereNotAccountSuspended($query)
     {
         return $query->whereDoesntHave('suspensions', fn ($q) => $q->active()->where('scope', SuspensionScopeEnum::account->value));

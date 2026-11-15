@@ -10,6 +10,7 @@ use App\Enums\TherapyStatusEnum;
 use App\Exceptions\SessionException;
 use App\Models\Session;
 use App\Models\User;
+use App\Support\InPerson;
 use Carbon\Carbon;
 
 class EnsureSessionDataIsValidAction extends Action
@@ -21,6 +22,35 @@ class EnsureSessionDataIsValidAction extends Action
         }
 
         $this->validateGroupTherapy($createSessionDTO);
+    }
+
+    // SCRUM-443: one rule for both kinds of therapy, about the session as it will be after this request (a partial update
+    // keeps the saved type and place): an in-person session needs the therapy to allow it, no client under 18, and a
+    // place -- a pin and a written landmark. Online sessions carry no place (CreateSessionAction/UpdateSessionAction).
+    private function ensureInPersonIsValid(CreateSessionDTO $createSessionDTO, string $kind): void
+    {
+        $session = $createSessionDTO->session;
+        $type = $createSessionDTO->type ?? $session?->type;
+
+        if ($type !== SessionTypeEnum::in_person->value) {
+            return;
+        }
+
+        if (! $createSessionDTO->for->allow_in_person) {
+            throw new SessionException("In-person sessions aren't allowed for this {$kind}.", 422);
+        }
+
+        if (InPerson::hasMinorClient($createSessionDTO->for)) {
+            throw new SessionException(InPerson::refusalFor($createSessionDTO->user, $createSessionDTO->for), 422);
+        }
+
+        $latitude = $createSessionDTO->latitude ?? $session?->latitude;
+        $longitude = $createSessionDTO->longitude ?? $session?->longitude;
+        $landmark = trim((string) ($createSessionDTO->landmark ?? $session?->landmark));
+
+        if (is_null($latitude) || is_null($longitude) || mb_strlen($landmark) < 3) {
+            throw new SessionException('An in-person session needs a place: pick it on the map and describe it (for example "Room 3, 2nd floor").', 422);
+        }
     }
 
     public function validateTherapy(CreateSessionDTO $createSessionDTO)
@@ -113,12 +143,7 @@ class EnsureSessionDataIsValidAction extends Action
             }
         }
 
-        if (
-            ! $createSessionDTO->for->allow_in_person &&
-            $createSessionDTO->type == SessionTypeEnum::in_person->value
-        ) {
-            throw new SessionException('You cannot create an in-persion session for a therapy that does not allow in-person sessions.', 422);
-        }
+        $this->ensureInPersonIsValid($createSessionDTO, 'therapy');
     }
 
     // SCRUM-108: mirrors validateTherapy() above -- the two checks that don't translate directly
@@ -220,11 +245,6 @@ class EnsureSessionDataIsValidAction extends Action
             }
         }
 
-        if (
-            ! $createSessionDTO->for->allow_in_person &&
-            $createSessionDTO->type == SessionTypeEnum::in_person->value
-        ) {
-            throw new SessionException('You cannot create an in-persion session for a group therapy that does not allow in-person sessions.', 422);
-        }
+        $this->ensureInPersonIsValid($createSessionDTO, 'group therapy');
     }
 }

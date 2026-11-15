@@ -11,6 +11,7 @@ use App\Enums\TherapySessionTypeEnum;
 use App\Enums\TherapyStatusEnum;
 use App\Exceptions\TherapyCreationDataIsNotValidException;
 use App\Models\Counsellor;
+use App\Support\InPerson;
 
 class EnsureTherapyDataIsValidAction extends Action
 {
@@ -52,6 +53,18 @@ class EnsureTherapyDataIsValidAction extends Action
         $effectiveCurrency = $dto->currency ?? data_get($therapy?->payment_data, 'currency');
         $effectivePer = $dto->per ?? data_get($therapy?->payment_data, 'per');
         $effectiveInPersonAmount = $dto->inPersonAmount ?? data_get($therapy?->payment_data, 'inPersonAmount');
+
+        // SCRUM-443 (the user's decision): in-person is for adults only -- checked when it is being turned on (or set on
+        // creation), so an unrelated edit that resends an unchanged setting is never refused for it.
+        if ($dto->allowInPerson === true && ! ($therapy?->allow_in_person)) {
+            $minor = $therapy
+                ? InPerson::hasMinorClient($therapy)
+                : ! ($dto instanceof GroupTherapyDTO && $dto->counsellor) && $dto->user && ! $dto->user->isAdult();
+
+            if ($minor) {
+                throw new TherapyCreationDataIsNotValidException($therapy ? InPerson::refusalFor($dto->user, $therapy) : InPerson::ADULTS_ONLY, 422);
+            }
+        }
 
         if (
             $effectiveSessionType == TherapySessionTypeEnum::periodic->value &&

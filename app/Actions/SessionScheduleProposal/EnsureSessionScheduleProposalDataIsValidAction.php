@@ -4,8 +4,10 @@ namespace App\Actions\SessionScheduleProposal;
 
 use App\Actions\Action;
 use App\DTOs\SessionScheduleProposalDTO;
+use App\Enums\SessionTypeEnum;
 use App\Enums\TherapyPaymentTypeEnum;
 use App\Exceptions\SessionException;
+use App\Support\InPerson;
 use Carbon\Carbon;
 
 class EnsureSessionScheduleProposalDataIsValidAction extends Action
@@ -33,6 +35,46 @@ class EnsureSessionScheduleProposalDataIsValidAction extends Action
         }
 
         $this->ensurePaymentTypeMatchesTherapy($dto);
+
+        $this->ensureInPersonIsValid($dto);
+    }
+
+    // SCRUM-443 (the user's decision): an in-person proposal is refused up front for what the
+    // therapy itself rules out -- in-person not allowed, or a client under 18 -- and must carry its
+    // place (a counter-offer keeps the place of the proposal it supersedes). Accepting re-checks all
+    // of it through EnsureSessionDataIsValidAction, since either can change in between. Runs after
+    // the participancy check, like the payment-type check above, so it discloses nothing to outsiders.
+    private function ensureInPersonIsValid(SessionScheduleProposalDTO $dto): void
+    {
+        $therapy = $dto->therapy ?? $dto->request?->for;
+        $current = $dto->request?->data ?? [];
+
+        if (($dto->type ?: $current['type'] ?? null) !== SessionTypeEnum::in_person->value || ! $therapy) {
+            return;
+        }
+
+        if (! $therapy->allow_in_person) {
+            throw new SessionException('In-person sessions aren\'t allowed for this therapy.', 422);
+        }
+
+        if (InPerson::hasMinorClient($therapy)) {
+            throw new SessionException(InPerson::refusalFor($dto->user, $therapy), 422);
+        }
+
+        [$landmark, $latitude, $longitude] = self::placeOf($dto);
+
+        if (is_null($latitude) || is_null($longitude) || mb_strlen((string) $landmark) < 3) {
+            throw new SessionException('An in-person session needs a place: pick it on the map and describe it (for example "Room 3, 2nd floor").', 422);
+        }
+    }
+
+    // The place a proposal will carry: what it sends, else (for a counter-offer) the superseded one's.
+    public static function placeOf(SessionScheduleProposalDTO $dto): array
+    {
+        $current = $dto->request?->data ?? [];
+        $landmark = filled($dto->landmark) ? trim($dto->landmark) : ($current['landmark'] ?? null);
+
+        return [$landmark, $dto->latitude ?? $current['latitude'] ?? null, $dto->longitude ?? $current['longitude'] ?? null];
     }
 
     // Security review (SCRUM-208): EnsureCanProposeSessionScheduleAction now lets EITHER

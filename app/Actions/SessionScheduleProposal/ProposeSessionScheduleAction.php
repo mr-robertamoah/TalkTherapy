@@ -26,6 +26,9 @@ class ProposeSessionScheduleAction extends Action
 
         $expiryDays = $dto->expiryDays ?? config('session_schedule_proposal.default_expiry_days');
 
+        $type = $dto->type ?: SessionTypeEnum::online->value;
+        $inPerson = $type === SessionTypeEnum::in_person->value;
+
         $request = CreateRequestAction::new()->execute(
             CreateRequestDTO::new()->fromArray([
                 'for' => $dto->therapy,
@@ -44,8 +47,13 @@ class ProposeSessionScheduleAction extends Action
                     // CreateSessionAction. A PAID therapy has no such default -- CreateSessionScheduleProposalRequest
                     // requires paymentType explicitly in that case, so $dto->paymentType is never
                     // empty here for a paid therapy.
-                    'type' => $dto->type ?: SessionTypeEnum::online->value,
+                    'type' => $type,
                     'paymentType' => $dto->paymentType ?: TherapyPaymentTypeEnum::free->value,
+                    // SCRUM-443: only an in-person proposal has a place (checked by
+                    // EnsureSessionScheduleProposalDataIsValidAction); accepting books it there.
+                    'landmark' => $inPerson ? trim($dto->landmark) : null,
+                    'latitude' => $inPerson ? $dto->latitude : null,
+                    'longitude' => $inPerson ? $dto->longitude : null,
                     'proposedById' => $dto->user->id,
                 ],
                 'expiresAt' => now()->addDays($expiryDays),

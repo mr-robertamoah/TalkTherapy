@@ -11,6 +11,7 @@ import MiniModal from './MiniModal.vue'
 import PrimaryButton from './PrimaryButton.vue'
 import SecondaryButton from './SecondaryButton.vue'
 import InputError from './InputError.vue'
+import InPersonNote from './InPersonNote.vue'
 import { refusalMessage } from '@/Composables/useOfferToHelp'
 import { usePage } from '@inertiajs/vue3'
 import useEnums from '@/Composables/useEnums'
@@ -85,6 +86,11 @@ async function confirm() {
                     </label>
                 </div>
                 <p v-if="group.anonymous" class="mt-2 text-xs text-gray-600">This group is anonymous, so every member is anonymous.</p>
+                <!-- SCRUM-443: an in-person group is for adults only; anonymous or not, the others there will see you. -->
+                <template v-if="group.allowInPerson">
+                    <p class="mt-2 text-xs text-gray-600">This group meets in person, so it's for adults (18 and over) only.</p>
+                    <InPersonNote :in-person="true" :anonymous="!!group.anonymous" :show-adults-only="false" />
+                </template>
             </fieldset>
 
             <InputError class="mt-3" :message="error" />

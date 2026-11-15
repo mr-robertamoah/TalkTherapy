@@ -29,7 +29,7 @@ class GroupTherapyFactory extends Factory
             'public' => true,
             'anonymous' => true,
             'allow_anyone' => true,
-            'allow_in_person' => true,
+            'allow_in_person' => false, // SCRUM-443: in-person excludes minors; tests opt in
         ];
     }
 }

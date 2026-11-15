@@ -36,6 +36,11 @@ class CounterOfferSessionScheduleProposalRequest extends FormRequest
             'about' => ['nullable', 'string'],
             'type' => ['nullable', Rule::in(SessionTypeEnum::values())],
             'paymentType' => ['nullable', Rule::in(TherapyPaymentTypeEnum::values())],
+            // SCRUM-443: a counter-offer keeps the superseded proposal's place unless it sends a new
+            // one; switching it to in person needs a place (CounterOfferSessionScheduleProposalAction).
+            'landmark' => ['nullable', Rule::requiredIf($this->get('type') == SessionTypeEnum::in_person->value), 'string', 'min:3', 'max:255'],
+            'lat' => ['nullable', Rule::requiredIf($this->get('type') == SessionTypeEnum::in_person->value), 'numeric', 'between:-90,90'],
+            'lng' => ['nullable', Rule::requiredIf($this->get('type') == SessionTypeEnum::in_person->value), 'numeric', 'between:-180,180'],
             'expiryDays' => ['nullable', 'integer', 'between:1,30'],
         ];
     }

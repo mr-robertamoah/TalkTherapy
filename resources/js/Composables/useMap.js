@@ -61,8 +61,14 @@ export default function useMap(zoom = 15) {
     function createMap(mapDiv, { lat, lng }) {
         if (!mapDetails.value?.Map || !mapDiv) return
 
+        // SCRUM-443 (QA): without the browser's location the centre was NaN, the map stayed grey and a click dropped the
+        // pin at the edge of the world -- centre on Accra instead until a place is known.
+        const centre = Number.isFinite(parseFloat(lat)) && Number.isFinite(parseFloat(lng))
+            ? { lat: parseFloat(lat), lng: parseFloat(lng) }
+            : { lat: 5.6037, lng: -0.1870 }
+
         const aMap = new mapDetails.value.Map(mapDiv, {
-            center: { lat: parseFloat(lat), lng: parseFloat(lng) },
+            center: centre,
             mapId: mapDiv.id,
             zoom
         })

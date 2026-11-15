@@ -10,6 +10,7 @@ import useAlert from "@/Composables/useAlert";
 import Alert from "./Alert.vue";
 import PrimaryButton from "./PrimaryButton.vue";
 import Checkbox from "./Checkbox.vue";
+import InPersonNote from "./InPersonNote.vue";
 import Select from "./Select.vue";
 import ProfileCaseSection from "@/Pages/Profile/Partials/ProfileCaseSection.vue";
 import { useForm, usePage } from '@inertiajs/vue3';
@@ -337,6 +338,7 @@ function closeModal() {
                                 </label>
 
                                 <div class="mt-2 text-xs text-gray-500">If you check this box, counsellors can schedule in-person sessions with you.</div>
+                                <InPersonNote :in-person="!!therapyForm.allowInPerson" :anonymous="!!therapyForm.anonymous" />
                                 <InputError class="mt-2" :message="therapyForm.errors.allowInPerson" />
                             </div>
 

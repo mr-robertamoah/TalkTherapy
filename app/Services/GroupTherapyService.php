@@ -38,6 +38,7 @@ use App\DTOs\JoinGroupTherapyDTO;
 use App\DTOs\TherapyAssistanceRequestDTO;
 use App\Enums\PaginationEnum;
 use App\Enums\StarTypeEnum;
+use App\Exceptions\TherapyCreationDataIsNotValidException;
 use App\Exceptions\TherapyException;
 use App\Models\AdminContentAccess;
 use App\Models\Counsellor;
@@ -45,6 +46,7 @@ use App\Models\GroupTherapy;
 use App\Models\Link;
 use App\Models\User;
 use App\Notifications\TherapyCreatedNotification;
+use App\Support\InPerson;
 use App\Support\PreferenceMatch;
 use App\Support\PreferenceRanking;
 use App\Support\VideoJoinLock;
@@ -172,11 +174,26 @@ class GroupTherapyService extends Service
         // one unmasked, full-video token.
         // Decided under the lock, after the refresh (security review: deciding "already anonymous" from the
         // copy loaded before the lock could skip the check).
-        if ($groupTherapyDTO->anonymous) {
-            return DB::transaction(function () use ($groupTherapyDTO) {
-                VideoJoinLock::lockSessionRows($groupTherapyDTO->groupTherapy);
+        // SCRUM-443: turning in-person on is re-checked under the group row lock that joins take
+        // (JoinGroupTherapyAction, membership-request accepts, invitation links), so a minor can't join
+        // between EnsureTherapyDataIsValidAction's check and this save.
+        $turningOnInPerson = $groupTherapyDTO->allowInPerson === true && ! $groupTherapyDTO->groupTherapy->allow_in_person;
 
-                EnsureGroupTherapyCanBecomeAnonymousAction::new()->execute($groupTherapyDTO->groupTherapy->refresh(), $groupTherapyDTO->anonymous);
+        if ($groupTherapyDTO->anonymous || $turningOnInPerson) {
+            return DB::transaction(function () use ($groupTherapyDTO, $turningOnInPerson) {
+                if ($turningOnInPerson) {
+                    GroupTherapy::query()->lockForUpdate()->findOrFail($groupTherapyDTO->groupTherapy->id);
+
+                    if (InPerson::hasMinorClient($groupTherapyDTO->groupTherapy->refresh())) {
+                        throw new TherapyCreationDataIsNotValidException(InPerson::refusalFor($groupTherapyDTO->user, $groupTherapyDTO->groupTherapy), 422);
+                    }
+                }
+
+                if ($groupTherapyDTO->anonymous) {
+                    VideoJoinLock::lockSessionRows($groupTherapyDTO->groupTherapy);
+
+                    EnsureGroupTherapyCanBecomeAnonymousAction::new()->execute($groupTherapyDTO->groupTherapy->refresh(), $groupTherapyDTO->anonymous);
+                }
 
                 return UpdateGroupTherapyAction::new()->execute($groupTherapyDTO);
             });

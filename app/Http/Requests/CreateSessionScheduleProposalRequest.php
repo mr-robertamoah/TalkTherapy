@@ -55,6 +55,11 @@ class CreateSessionScheduleProposalRequest extends FormRequest
             // authorization check, for both propose and counter-offer.
             'type' => ['nullable', Rule::in(SessionTypeEnum::values())],
             'paymentType' => ['nullable', Rule::in(TherapyPaymentTypeEnum::values())],
+            // SCRUM-443 (the user's decision): an in-person proposal carries its place, with
+            // CreateSessionRequest's rules, so accepting it books a session that can be found.
+            'landmark' => ['nullable', Rule::requiredIf($this->get('type') == SessionTypeEnum::in_person->value), 'string', 'min:3', 'max:255'],
+            'lat' => ['nullable', Rule::requiredIf($this->get('type') == SessionTypeEnum::in_person->value), 'numeric', 'between:-90,90'],
+            'lng' => ['nullable', Rule::requiredIf($this->get('type') == SessionTypeEnum::in_person->value), 'numeric', 'between:-180,180'],
             'expiryDays' => ['nullable', 'integer', 'between:1,30'],
         ];
     }

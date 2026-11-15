@@ -1020,7 +1020,7 @@ function confirmSessionHeld() {
 function confirmInSession() {
     const message = props.isCounsellor
         ? 'User has started the session on his/her end. Please start the session on your end.'
-        : 'Counsellor ended the session on his/her end. Please start the session on your end.'
+        : 'Counsellor has started the session on his/her end. Please start the session on your end.'
 
     setSuccessAlertData({message})
 }
