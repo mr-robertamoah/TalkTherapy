@@ -12912,3 +12912,21 @@ found on the way filed separately (SCRUM-448 `endSessions()`, SCRUM-449 group se
   model hides the three fields too, so nothing outside `SessionResource` can send them. Administrators reading the
   session list aren't logged per read (as for the rest of the list today); a paused participant still sees their own
   session's place.
+
+## SCRUM-447 — an in-person session's pin cleared after 30 days (2026-11-15)
+
+The user's decision (SCRUM-115): no GPS check; the exact pin goes 30 days after the session, the written landmark
+stays.
+
+- A daily job at 02:45 (`clear-old-session-pins`, scheduled like the other retention sweeps: without overlapping, on
+  one server) nulls the latitude and longitude of in-person sessions whose scheduled end is more than
+  `SESSION_PIN_RETENTION_DAYS` (default 30) days ago -- deleted sessions too, in chunks, without touching `updated_at`.
+- Its setting lives in a new `config/in_person.php` (each area keeps its own retention period; `config/session.php`
+  is Laravel's). Empty or 0 means 30; a negative or non-numeric value skips the run and logs an error (as
+  `PruneNotificationsAction` does) rather than clearing pins after a day by mistake.
+- /privacy and "Your data" say how long the pin is kept, from config, and who sees the place.
+- The cut-off is the scheduled end (`end_time`), as the ticket says. A new index on it also serves the scheduled
+  fail job's `wherePastEndTime()`.
+- The session view now shows the landmark on its own once the pin is gone (code review: the whole location card
+  used to hide without a pin, so "the landmark is kept" would have been invisible).
+- The first run clears every in-person pin older than 30 days at once; rolling back doesn't bring them back.
