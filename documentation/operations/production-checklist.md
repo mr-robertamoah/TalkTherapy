@@ -123,6 +123,27 @@ Check every item before going live.
     listener and switched-off notifications go out anyway), and `event:clear` before rolling back.
   - Rolling back SCRUM-36/40: roll back the code, not the migrations -- the old code ignores `journal_entries` and
     `users.notification_channels`. Dropping `journal_entries` deletes people's private journals for good; dump it first.
+  - SCRUM-437, counsellor notes encrypted at rest: the deploy that brings `2026_12_05_100000` rewrites every
+    `session_notes` / `message_notes` row (soft-deleted too) under maintenance mode, at about 300-500 rows a second
+    (measured). Before promoting to `main`: count them
+    (`SELECT (SELECT COUNT(*) FROM session_notes) + (SELECT COUNT(*) FROM message_notes);`) -- over about 500,000, run
+    the migration by hand in a maintenance window (`artisan down` / `migrate --force` / `up` over SSM) rather than in
+    the 60-minute CI deploy; free disk for one more copy of each table; dump the two tables first
+    (`mysqldump --single-transaction <db> session_notes message_notes | gzip > notes-pre-437.sql.gz` -- plaintext
+    clinical notes: keep it encrypted and delete it once the deploy is confirmed; older backups also still hold them).
+    If it stops partway the site stays in maintenance mode: fix the cause and re-run -- rows already encrypted are left
+    alone. Never rotate `APP_KEY` in the same deploy. From here on `APP_KEY` (with `APP_PREVIOUS_KEYS` kept for good
+    when it rotates) is the only way to read any counsellor note or check-in answer.
+  - Rolling back SCRUM-437: never by deploying an older commit (the notes stay encrypted and the old code shows
+    ciphertext). By hand, with the new code still checked out: `artisan down`, then roll back only that migration
+    (`migrate:rollback --path=database/migrations/2026_12_05_100000_encrypt_session_and_message_notes_content.php --force`
+    -- it refuses if any note doesn't decrypt with the current key), then check out the previous SHA. Never a plain
+    `migrate:rollback`: the batch may also hold `outcome_check_ins` and the journal's tables.
+  - SCRUM-37, outcome check-ins: off in production unless `CHECK_INS_ENABLED=true` (every route a 404, the panel
+    hidden). Switch it on only after the clinical and legal wording is approved, then `config:clear` (Docker:
+    `docker compose up -d --force-recreate php queue`). The self-harm attention notice goes on the `urgent` queue, so
+    that worker must run. Before switching it off again, check no attention answer is left unacknowledged:
+    `SELECT COUNT(*) FROM outcome_check_ins WHERE needs_attention = 1 AND attention_acknowledged_at IS NULL;`
   - SCRUM-434, support: someone writing from an account's long-remembered address (warnings there now say only to
     contact support) is **not** proof they own the account -- that mailbox may have passed to someone else. Check who
     they are another way (`two-factor-reset-identity-check.md`; the account's identity-check records) before setting

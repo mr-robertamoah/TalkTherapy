@@ -287,6 +287,21 @@ these server-side waits on a Reverb terminate API that works with private channe
 - "I never got X": check `users.notification_channels` first (null means everything is sent; only what is off is
   stored). A switched-off notice is simply not sent -- no log line.
 
+## Outcome check-ins (SCRUM-37) and encrypted notes (SCRUM-437)
+
+- `Check-in answer needing attention arrived too late to be saved` (warning; `check_in_id`): a client gave a self-harm
+  answer on a check-in that had expired, been withdrawn or whose therapy ended. The counsellor was still sent the
+  attention notice -- alert on any and confirm it was delivered.
+- `Check-in notice had no counsellor to go to` (warning; `check_in_id`, `notice`): with
+  `notice = OutcomeCheckInAttentionNotification`, a self-harm answer reached no one -- follow up through support.
+- `OutcomeCheckInAttentionNotification` in `failed_jobs` (queue `urgent`): the counsellor wasn't told an answer needs
+  their attention -- `queue:retry` at once and check the worker.
+- Daily: unacknowledged attention answers older than two days --
+  `SELECT id, counsellor_id, completed_at FROM outcome_check_ins WHERE needs_attention = 1 AND attention_acknowledged_at IS NULL AND completed_at < NOW() - INTERVAL 48 HOUR;`
+- 404s on `api.check_ins.*` mean `CHECK_INS_ENABLED` is off; 429s are the throttles or the per-counsellor daily cap.
+- `DecryptException` on notes, check-ins or the data copy: `APP_KEY` changed without `APP_PREVIOUS_KEYS`, or
+  `2026_12_05_100000` stopped partway (`migrate:status` shows it Pending).
+
 ## Signed-out tabs (SCRUM-423)
 
 - `GET /session/check` answers 401 to an ended session by design -- leave it out of any 4xx-rate alert. A burst of
