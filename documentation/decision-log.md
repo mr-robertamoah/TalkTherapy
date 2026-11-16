@@ -13065,3 +13065,31 @@ Planned with the product-owner, architect and project-manager; split into SCRUM-
 - **Not in the action:** firing `Registered`, signing in and redirecting stay in `RegisteredUserController`. Google's finish step will want a different redirect.
 - **`TOO_MANY`:** moved to the action. `RegisteredUserController::TOO_MANY` is kept as an alias so existing tests and callers are unchanged.
 - **`BeginSignInAction::execute(Request, User, bool $remember): RedirectResponse`:** holds the "2FA challenge or `CompleteLoginAction` + intended redirect" decision that was in `AuthenticatedSessionController::store`. It's an action of its own rather than a static on `CompleteLoginAction`, because that action means "every step has passed".
+
+## SCRUM-453 — Google sign-in for connected accounts (2026-11-16)
+
+- **Result type, not exceptions:** `ResolveGoogleAccountAction` returns an `App\DTOs\GoogleAccountResolution` with an
+  explicit outcome (`GoogleAccountOutcomeEnum`: `SignIn` or `Refused`), and the controller `match`es on it. SCRUM-454
+  adds a "start a new account" case to the enum and a matching controller method. Socialite stays in the controller;
+  the action takes a plain `GoogleAccount` DTO (`sub`, email, `emailVerified`). `GoogleAccount::fromClaims` counts
+  `email_verified` only when it is exactly `true`.
+- **One availability check (review):** `App\Support\GoogleSignIn::available()` means the switch is on and
+  `services.google.client_id` and `services.google.redirect` are both set. The `google_sign_in` middleware (the routes
+  are a 404 until it's true) and Login's `googleSignIn` prop both use it, so a half-configured server shows nothing.
+- **State and PKCE (security review):** never `stateless()`. `enablePKCE()` is used on both the redirect and the
+  callback's `user()`, so an intercepted code can't be exchanged without this session's verifier. On `?error=` and on
+  any failure, the session's `state` and `code_verifier` are forgotten, so nothing of an unfinished attempt can be
+  replayed.
+- **SCRUM-455 (connect from profile)** will use its own route and callback URL, outside the `guest` group. That is a
+  second redirect URI registered on the Google client, set per call with `redirectUrl()`. This guest callback never
+  links anything.
+- **One message for "nothing connected":** an unknown `sub`, whether or not its email matches an account here, and a
+  closed or anonymised account still holding the `sub` all get `ResolveGoogleAccountAction::NOT_CONNECTED`. An
+  unverified Google email gets its own message: it is about the Google account, so it reveals nothing about ours.
+- **Shown as a validation error (`errors.google`), not `status`:** `status` is styled green as a success on Login.
+  The refusal is a neutral grey box. Google's `error`/`error_description` are never echoed. Any failure reading the
+  callback other than a state mismatch is reported to the log (`report()`), since it may be a misconfigured client.
+- **"Continue with Google"** is a `googleSignIn` prop on Login only, not a shared prop. It is shown when
+  `GoogleSignIn::available()` is true.
+- **Seed data:** `GoogleSignInSeeder` (`google_only_demo`, `google_2fa_demo`), with made-up Google ids. These only
+  work with a real Google client whose test account has that `sub`, or in tests.
