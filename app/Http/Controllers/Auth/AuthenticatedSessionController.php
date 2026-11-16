@@ -2,11 +2,9 @@
 
 namespace App\Http\Controllers\Auth;
 
-use App\Actions\Auth\CompleteLoginAction;
+use App\Actions\Auth\BeginSignInAction;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
-use App\Providers\RouteServiceProvider;
-use App\Support\TwoFactorLogin;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -38,17 +36,7 @@ class AuthenticatedSessionController extends Controller
     {
         $user = $request->authenticate();
 
-        // SCRUM-34b: with two-factor sign-in on, the code comes next -- nobody is signed in until it's right. Whatever
-        // the feature switch says: it only hides setting it up, never protection someone already turned on.
-        if ($user->hasTwoFactorEnabled()) {
-            TwoFactorLogin::begin($request, $user, $request->boolean('remember'));
-
-            return redirect()->route('two_factor.challenge');
-        }
-
-        CompleteLoginAction::new()->execute($request, $user, $request->boolean('remember'));
-
-        return redirect()->intended(RouteServiceProvider::HOME);
+        return BeginSignInAction::new()->execute($request, $user, $request->boolean('remember'));
     }
 
     // SCRUM-423: an open page asking whether it is still signed in -- as the person it was shown to (security review:
