@@ -155,4 +155,10 @@ return [
         'window' => 1,
     ],
 
+    // SCRUM-452 (Google sign-in, SCRUM-112): off until the sign-in and linking flows are in (SCRUM-454/455); while off,
+    // its routes are a plain 404 (EnsureGoogleSignInIsEnabled).
+    'google' => [
+        'enabled' => (bool) env('GOOGLE_SIGN_IN_ENABLED', false),
+    ],
+
 ];

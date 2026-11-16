@@ -50,6 +50,8 @@ class User extends Authenticatable implements MustVerifyEmailContract
         'last_verified_email',
         // SCRUM-433
         'last_verified_email_at',
+        // SCRUM-452: already cleared when the account was closed (User::booted); again here, in case.
+        'google_id', 'google_linked_at',
     ];
 
     /**
@@ -98,6 +100,10 @@ class User extends Authenticatable implements MustVerifyEmailContract
         'session_version',
         // SCRUM-40: only the person's own profile shows these.
         'notification_channels',
+        // SCRUM-452: the linked Google account's id is never serialized (and never mass assignable -- set with forceFill
+        // by the sign-in flow only).
+        'google_id',
+        'google_linked_at',
     ];
 
     /**
@@ -123,6 +129,8 @@ class User extends Authenticatable implements MustVerifyEmailContract
         // SCRUM-40
         'notification_channels' => 'array',
         'session_version' => 'integer',
+        // SCRUM-452
+        'google_linked_at' => 'datetime',
     ];
 
     public function getAgeAttribute()
@@ -208,6 +216,14 @@ class User extends Authenticatable implements MustVerifyEmailContract
 
     // SCRUM-423: a change that ends the account's other sessions (EndStaleSessions::fingerprint -- the password or the
     // two-factor state) tells its open pages to check whether they're still signed in.
+    // SCRUM-452 (security review): an account made with Google has no password -- '' rather than null to everything that
+    // reads it (hash checks fail on an empty hash; the session and remember-me checks hash it without PHP's null warnings,
+    // which a later PHP turns into errors).
+    public function getAuthPassword(): string
+    {
+        return (string) $this->password;
+    }
+
     protected static function booted(): void
     {
         // SCRUM-427: when a verified address stops being one (removed, replaced, or unticked), remember it: a new address
@@ -228,6 +244,15 @@ class User extends Authenticatable implements MustVerifyEmailContract
         // cascade) -- nothing needs it while the account waits to be anonymised, and there is no restore.
         static::deleting(function (User $user) {
             $user->journalEntries()->delete();
+
+            // SCRUM-452: and lets go of its Google account at once, so that Google account can sign up afresh (the id is
+            // unique) and never signs in to a closed account. A soft delete saves only deleted_at, hence its own update.
+            // Straight to the row, whatever this instance was loaded with (security review: one loaded before the link
+            // was made would skip it), and without saving anything else a caller left changed on it.
+            if (! $user->isForceDeleting()) {
+                static::query()->withTrashed()->whereKey($user->getKey())->update(['google_id' => null, 'google_linked_at' => null]);
+                $user->setRawAttributes([...$user->getAttributes(), 'google_id' => null, 'google_linked_at' => null], true);
+            }
         });
 
         static::updated(function (User $user) {

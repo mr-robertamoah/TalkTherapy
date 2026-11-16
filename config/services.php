@@ -60,4 +60,12 @@ return [
         'media_region' => env('CHIME_MEDIA_REGION', 'us-east-1'),
     ],
 
+    // SCRUM-452 (Google sign-in, SCRUM-112): the Google Cloud OAuth client Socialite uses. The redirect must be
+    // registered on that client exactly, on the https APP_URL. Unused while auth.google.enabled is off.
+    'google' => [
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+        'redirect' => env('GOOGLE_REDIRECT_URI'),
+    ],
+
 ];

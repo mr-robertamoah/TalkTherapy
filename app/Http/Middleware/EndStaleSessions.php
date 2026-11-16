@@ -56,6 +56,8 @@ class EndStaleSessions
         // administrator asked for). Only once it's been raised -- 0 leaves every existing session's fingerprint as it was.
         $version = (int) $user->session_version > 0 ? '|v'.$user->session_version : '';
 
-        return hash_hmac('sha256', $user->getAuthPassword().'|'.($user->two_factor_confirmed_at?->getTimestamp() ?? '').$version, (string) config('app.key'));
+        // SCRUM-452: an account with no password (made with Google) has none to fingerprint -- an empty one; setting a
+        // password later still changes it.
+        return hash_hmac('sha256', ((string) $user->getAuthPassword()).'|'.($user->two_factor_confirmed_at?->getTimestamp() ?? '').$version, (string) config('app.key'));
     }
 }
