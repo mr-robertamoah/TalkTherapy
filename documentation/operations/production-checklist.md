@@ -159,6 +159,25 @@ Check every item before going live.
     X-Accel-Buffering`), any proxy, load balancer or CDN must not buffer or cache that route, and php-fpm needs no
     `request_terminate_timeout` shorter than a large export takes. Smoke-test one download after deploying (`jq .
     file.json`). To switch the download off without a code rollback: `location = /profile/your-data/download { return 503; }`.
+- [ ] **Google sign-in (SCRUM-112; schema and switch from SCRUM-452):**
+  - `GOOGLE_SIGN_IN_ENABLED` stays `false` (its routes are a 404) until both SCRUM-454 (sign-in) and SCRUM-455
+    (linking) are merged and deployed. After changing it, `php artisan config:clear` (Docker:
+    `docker compose up -d --force-recreate php queue`).
+  - A Google Cloud OAuth client (type "Web application") for production, with its consent screen published (in
+    "Testing" mode it admits only listed test users, at most 100). Only openid, email and profile are asked for, so no
+    Google security review is needed; adding a logo starts brand verification.
+    `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` live only in the deployed env file or secret store, never in git.
+  - `GOOGLE_REDIRECT_URI` is registered on that client **exactly** -- character for character, scheme, host, path and
+    any trailing slash -- and built on the https `APP_URL`. Google refuses any mismatch, and an `http` one means the
+    proxy settings are wrong. Each environment that tries Google sign-in (testing, local) needs its own redirect URI on
+    the client, or its own client.
+  - `TRUSTED_PROXIES` is correct (above): behind a proxy without it, the request looks like `http` and the callback URL
+    Laravel builds won't match the registered one.
+  - `users.password` is nullable from `2026_12_09_100000`: an account made with Google has no password, and every
+    password check refuses it. The old code works with this schema, so rolling back the code needs no schema rollback.
+    To undo the schema anyway: set `GOOGLE_SIGN_IN_ENABLED=false`, run `php artisan migrate:rollback
+    --path=database/migrations/2026_12_09_100000_add_google_sign_in_to_users_table.php` on the **current** code
+    (accounts without a password get a random one and reset it by email), then deploy the old code.
 
 ## The proxy
 

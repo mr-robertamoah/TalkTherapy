@@ -34,7 +34,8 @@ use Illuminate\Support\Str;
 // SCRUM-367 (user decision 2026-11-01): a closed account's personal details are erased once its
 // retention period has passed. What goes:
 //  - on the account: names, username, email, date of birth, gender, country, preferences, photo
-//    (and the password, replaced with a random one);
+//    (and the password, replaced with a random one), and its link to a Google account (SCRUM-452 -- already
+//    cleared when the account was closed, User::booted; again here, in case);
 //  - its counsellor profile, if any: name, email, phone, about, photo and cover (the profile row
 //    itself is purged after its own grace period, SCRUM-134);
 //  - its age and date-of-birth requests: the dates of birth in them, and any identity document
