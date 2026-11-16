@@ -13093,3 +13093,65 @@ Planned with the product-owner, architect and project-manager; split into SCRUM-
   `GoogleSignIn::available()` is true.
 - **Seed data:** `GoogleSignInSeeder` (`google_only_demo`, `google_2fa_demo`), with made-up Google ids. These only
   work with a real Google client whose test account has that `sub`, or in tests.
+
+## SCRUM-454 — Google sign-up for new users (2026-11-16)
+
+- **New outcome, not a refusal:** a verified Google account whose `sub` is connected to nothing now gets
+  `GoogleAccountOutcomeEnum::StartSignUp` instead of `NOT_CONNECTED`. The lookup is still by `sub` only. A closed or
+  anonymised account still holding the `sub` is still refused with `NOT_CONNECTED`, and an unverified Google email with
+  `UNVERIFIED`. `GoogleSignInController` gained only the match arm and a `startSignUp()` method; the finish step is its
+  own `GoogleSignUpController` (`create`/`store`), to stay clear of SCRUM-455's edits.
+- **Pending sign-up in the session only:** `App\Support\PendingGoogleSignUp` (like `TwoFactorLogin`) keeps `sub`, the
+  email if it can be used, and an expiry of 10 minutes. The session id is regenerated on `begin`. No account exists
+  until the form is sent. Google's name and photo are never kept or used (the user's decision).
+- **Shared devices (security review):** the window is 10 minutes, not 15. The pending sign-up is also forgotten whenever
+  the Login or Register page is shown (`AuthenticatedSessionController::create`, `RegisteredUserController::create`) and
+  on any successful sign-in (`BeginSignInAction`, used by both the password and Google sign-ins). That way one person's
+  unfinished sign-up isn't left for the next person on the device to finish.
+- **Which Google emails count as confirmed (security review):** Google's `email_verified` is only authoritative for
+  `@gmail.com`/`@googlemail.com` addresses or Workspace accounts (an `hd` claim). `GoogleAccount::fromClaims` now takes
+  `hd`, and `GoogleAccount::emailIsAuthoritative()` decides. Any other address on a Google account isn't kept, and the
+  account is made with no email, which looks exactly like a taken address. Signing in by `sub` is unaffected.
+- **"Don't link by email", now that sign-up exists:** Google's email is kept only if Google vouches for it (above) and no
+  account here uses it: `email` (closed accounts included), `pending_email` or `last_verified_email`. Otherwise the new account
+  has no email. The page never shows the email or says whether it was kept, so the sign-up confirms nothing about anyone
+  else's account. It always shows "Already have a TalkTherapy account? Sign in with it instead and connect Google from
+  your profile." The check matches the address as given and lower-cased. MySQL's collation already ignores case;
+  SQLite (tests) doesn't.
+- **Finish step:** a username (`App\Support\UsernameRules`, now also used by `RegisteredUserController`) and an optional
+  date of birth (`App\Support\DobRules`, now also used by `ProfileUpdateRequest` and `AdminUpdateUserRequest`). No name
+  fields. `DobRules` adds `bail`: `MinimumAgeForDobRule` parses the value, so a non-date used to throw a 500 on the
+  profile and admin edit too. It also adds `before:today` (security review): the age check measures the gap either way,
+  so a future date passed. Both apply to the profile and admin edit as well. The finish form's date input has
+  `max` = today.
+- **Creating the account:** through `CreateAccountAction` (`password` => null), so the per-address registration limit is
+  shared with the form. The action now takes optional `google_id`, `google_linked_at`, `email_verified_at` (only when
+  the email was kept) and `dob` details, force-filled in its single insert (review). A unique clash therefore happens
+  inside the action's handler, which gives the registration count back. Inside the action's closure the `sub` is checked
+  again (connected meanwhile: a `ValidationException` redirecting to login with the "expired" message) and so is the
+  email (taken meanwhile: not kept). If a unique clash happens anyway at the same moment:
+  - on the Google id, the visitor gets the "expired" answer;
+  - on the username, a normal `username` error, and the sign-up stays;
+  - on the email, "please try again" under the username, and the retry leaves the email out.
+
+  Then `Registered` is fired (no verification email for a kept, already-verified email), the pending sign-up
+  forgotten, and `CompleteLoginAction` signs in with remember off. A new account has no 2FA, so `BeginSignInAction`
+  isn't needed. It lands on `/preferences`, as registration does.
+- **Expired or missing sign-up:** both finish routes send the visitor to login with "That sign-up has expired. Continue
+  with Google again." in `errors.google`, the neutral box Login already shows.
+- **"Continue with Google" on Register too:** `GoogleSignInButton.vue` is a generic Google-branded button. With an
+  `href` prop it renders a link; without one it renders a `<button type="button">` that emits `click`. Its default slot
+  holds the label, "Continue with Google" by default. There is no divider in it and no hard-coded route, so SCRUM-455 can
+  reuse it on the profile. The "or" divider is a separate small `OrDivider.vue`. Login and Register pass
+  `:href="route('auth.google.redirect')"`. Register gets `googleSignIn` from `GoogleSignIn::available()`.
+- **Socialite in one place:** `App\Support\GoogleSignIn` now also has `redirect(?string $redirectUrl)` (PKCE, scopes
+  openid/email/profile, `prompt=select_account`), `account(?string $redirectUrl): ?GoogleAccount` (passes `hd` through;
+  null on a state mismatch or any other failure, the latter reported) and `forgetState(Request)` (forgets `state` and
+  `code_verifier`). `GoogleSignInController` uses them. SCRUM-455 reuses them with its own callback URL.
+- **Known follow-ups, not fixed here:**
+  - `User`'s age maths uses an unsigned year gap, so a future date of birth already stored would count as an age.
+  - Usernames use `alpha_dash`, not `alpha_dash:ascii`, so non-ASCII look-alike usernames are allowed.
+  - Closing an account clears `google_id`, so an account an admin closed can sign up again with the same Google account.
+    Keeping a hash of the `sub` would stop that.
+  - `PendingGoogleSignUp::emailIsFree` looks up `pending_email` and `last_verified_email`, which have no index. It's
+    fine at sign-up volume, but it is a table scan.
