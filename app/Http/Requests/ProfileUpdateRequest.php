@@ -4,7 +4,7 @@ namespace App\Http\Requests;
 
 use App\Enums\GenderEnum;
 use App\Models\User;
-use App\Rules\MinimumAgeForDobRule;
+use App\Support\DobRules;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -22,7 +22,7 @@ class ProfileUpdateRequest extends FormRequest
             'lastName' => ['nullable', 'string', 'max:255'],
             'otherNames' => ['nullable', 'string', 'max:255'],
             'email' => ['nullable', 'string', 'email', 'max:255', Rule::unique(User::class)->ignore($this->user()->id)],
-            'dob' => ['nullable', 'date', new MinimumAgeForDobRule],
+            'dob' => DobRules::for(),
             'gender' => ['nullable', 'string', Rule::in(GenderEnum::values())],
             'country' => ['nullable', 'string', 'max:255'],
             // SCRUM-422: changing the email (adding, replacing or clearing it) needs the current password -- otherwise

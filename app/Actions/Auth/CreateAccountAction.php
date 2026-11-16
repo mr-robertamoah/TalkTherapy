@@ -21,10 +21,13 @@ use Throwable;
 // password-less account by forgetting it). Firing Registered and signing in stay with the caller.
 class CreateAccountAction extends Action
 {
+    // What else a caller may set on the new account, besides the username, email and password. Anything else is ignored.
+    private const OPTIONAL_DETAILS = ['google_id', 'google_linked_at', 'email_verified_at', 'dob'];
+
     public const TOO_MANY = 'Too many accounts have been created from this network recently. Please try again later. If you need help urgently, please contact your local emergency services or a crisis line.';
 
     /**
-     * @param  Closure(): array{username: string, email?: ?string, password: ?string}  $input
+     * @param  Closure(): array{username: string, email?: ?string, password: ?string, google_id?: string, google_linked_at?: mixed, email_verified_at?: mixed, dob?: ?string}  $input
      *
      * @throws ValidationException
      */
@@ -59,11 +62,15 @@ class CreateAccountAction extends Action
 
         $password = $details['password'];
 
-        $user = User::create([
+        // One insert, with any of the optional details a sign-up path gives (SCRUM-454: Google's id, a confirmed email, a
+        // date of birth), so a unique clash at the same moment happens here -- and the limit's count is given back.
+        $user = (new User)->forceFill([
             'username' => $details['username'],
             'email' => $details['email'] ?? null,
             'password' => $password === null ? null : Hash::make($password),
+            ...array_intersect_key($details, array_flip(self::OPTIONAL_DETAILS)),
         ]);
+        $user->save();
 
         // SCRUM-35b: it has just met the whole policy, the breached-list check included.
         if ($password !== null && config('auth.password_policy.uncompromised')) {

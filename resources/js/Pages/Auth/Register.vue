@@ -1,11 +1,21 @@
 <script setup>
+import GoogleSignInButton from '@/Components/GoogleSignInButton.vue';
 import GuestLayout from '@/Layouts/GuestLayout.vue';
 import InputError from '@/Components/InputError.vue';
-import PasswordHints from '@/Components/PasswordHints.vue';
 import InputLabel from '@/Components/InputLabel.vue';
+import OrDivider from '@/Components/OrDivider.vue';
+import PasswordHints from '@/Components/PasswordHints.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
+
+defineProps({
+    // SCRUM-454: "Continue with Google" -- only when it's switched on and configured.
+    googleSignIn: {
+        type: Boolean,
+        default: false,
+    },
+});
 
 const form = useForm({
     username: '',
@@ -23,6 +33,11 @@ const submit = () => {
 <template>
     <GuestLayout>
         <Head title="Register" />
+
+        <template v-if="googleSignIn">
+            <GoogleSignInButton :href="route('auth.google.redirect')" />
+            <OrDivider />
+        </template>
 
         <form @submit.prevent="submit">
             <div>
