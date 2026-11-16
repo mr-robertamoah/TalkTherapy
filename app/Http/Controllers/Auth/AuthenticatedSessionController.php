@@ -6,6 +6,7 @@ use App\Actions\Auth\BeginSignInAction;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Support\GoogleSignIn;
+use App\Support\PendingGoogleSignUp;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -18,11 +19,14 @@ class AuthenticatedSessionController extends Controller
     /**
      * Display the login view.
      */
-    public function create(): Response
+    public function create(Request $request): Response
     {
         // SCRUM-406: whoever reaches the login page -- signed out, or a session that expired -- leaves no
         // readable history behind: earlier pages' props can't be decrypted, so the back button refetches them.
         Inertia::clearHistory();
+
+        // SCRUM-454 (security review): an unfinished Google sign-up isn't left for whoever uses this browser next.
+        PendingGoogleSignUp::forget($request);
 
         return Inertia::render('Auth/Login', [
             'canResetPassword' => Route::has('password.request'),

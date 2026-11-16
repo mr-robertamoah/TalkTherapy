@@ -5,6 +5,7 @@ namespace App\Actions\Auth;
 use App\Actions\Action;
 use App\Models\User;
 use App\Providers\RouteServiceProvider;
+use App\Support\PendingGoogleSignUp;
 use App\Support\TwoFactorLogin;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -15,6 +16,9 @@ class BeginSignInAction extends Action
 {
     public function execute(Request $request, User $user, bool $remember): RedirectResponse
     {
+        // SCRUM-454 (security review): signing in to an account ends any unfinished Google sign-up in this browser.
+        PendingGoogleSignUp::forget($request);
+
         // SCRUM-34b: with two-factor sign-in on, the code comes next -- nobody is signed in until it's right. Whatever
         // the feature switch says: it only hides setting it up, never protection someone already turned on.
         if ($user->hasTwoFactorEnabled()) {

@@ -133,6 +133,7 @@ test('a Google account whose email Google has not confirmed is refused, even if 
     $this->assertGuest();
 })->with([false, 'true', 1, null]);
 
+// SCRUM-454: connected to nothing now starts a new account -- never linked to one found by email.
 test('a Google account connected to nothing gets the same answer whether or not its email has an account here', function () {
     $existing = User::factory()->adult()->create(['email' => 'taken@gmail.com']);
     $closed = User::factory()->adult()->create(['email' => 'closed@gmail.com']);
@@ -148,10 +149,11 @@ test('a Google account connected to nothing gets the same answer whether or not 
         });
 
     expect($answers->unique()->count())->toBe(1)
-        ->and($answers->first())->toBe([302, route('login'), [ResolveGoogleAccountAction::NOT_CONNECTED]])
-        // Never linked by email.
+        ->and($answers->first())->toBe([302, route('auth.google.finish'), null])
+        // Never linked by email, and nothing is made until the sign-up is finished.
         ->and($existing->fresh()->google_id)->toBeNull()
-        ->and(User::query()->withTrashed()->whereNotNull('google_id')->count())->toBe(0);
+        ->and(User::query()->withTrashed()->whereNotNull('google_id')->count())->toBe(0)
+        ->and(User::query()->withTrashed()->count())->toBe(2);
 });
 
 test('a closed account still holding a Google id is refused, never signed in or revived', function () {

@@ -4,7 +4,7 @@ namespace App\Http\Requests;
 
 use App\Actions\User\EnsureCanUpdateUserByAdminAction;
 use App\Models\User;
-use App\Rules\MinimumAgeForDobRule;
+use App\Support\DobRules;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -41,7 +41,7 @@ class AdminUpdateUserRequest extends FormRequest
             // SCRUM-425: a real address, not someone else's (it was only "a string").
             'email' => ['nullable', 'string', 'email', 'max:255', Rule::unique(User::class)->ignore($this->route('userId'))],
             'emailVerified' => ['nullable', 'boolean'],
-            'dob' => ['nullable', 'date', new MinimumAgeForDobRule],
+            'dob' => DobRules::for(),
         ];
     }
 }

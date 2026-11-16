@@ -6,6 +6,7 @@ use App\Http\Controllers\Auth\ConfirmPendingEmailController;
 use App\Http\Controllers\Auth\EmailVerificationNotificationController;
 use App\Http\Controllers\Auth\EmailVerificationPromptController;
 use App\Http\Controllers\Auth\GoogleSignInController;
+use App\Http\Controllers\Auth\GoogleSignUpController;
 use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\PasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
@@ -40,6 +41,9 @@ Route::middleware('guest')->group(function () {
     Route::middleware('google_sign_in')->group(function () {
         Route::get('auth/google/redirect', [GoogleSignInController::class, 'redirect'])->name('auth.google.redirect')->middleware('throttle:30,1,auth.google.redirect');
         Route::get('auth/google/callback', [GoogleSignInController::class, 'callback'])->name('auth.google.callback')->middleware('throttle:30,1,auth.google.callback');
+        // SCRUM-454: "Finish setting up" a new account for a Google account connected to nothing (PendingGoogleSignUp).
+        Route::get('auth/google/finish', [GoogleSignUpController::class, 'create'])->name('auth.google.finish')->middleware('throttle:30,1,auth.google.finish');
+        Route::post('auth/google/finish', [GoogleSignUpController::class, 'store'])->name('auth.google.finish.store')->middleware('throttle:10,1,auth.google.finish.store');
     });
 
     Route::get('forgot-password', [PasswordResetLinkController::class, 'create'])

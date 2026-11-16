@@ -5,8 +5,8 @@ namespace App\DTOs;
 use App\Enums\GoogleAccountOutcomeEnum;
 use App\Models\User;
 
-// SCRUM-453: what ResolveGoogleAccountAction decided -- sign this account in, or refuse with a message written for
-// people (never Google's own text). Built only through its named constructors, so each outcome carries what it needs.
+// SCRUM-453: what ResolveGoogleAccountAction decided -- sign this account in, start a new one (SCRUM-454), or refuse
+// with a message written for people (never Google's own text). Built only through its named constructors, so each outcome carries what it needs.
 final class GoogleAccountResolution
 {
     private function __construct(
@@ -18,6 +18,12 @@ final class GoogleAccountResolution
     public static function signIn(User $user): self
     {
         return new self(GoogleAccountOutcomeEnum::SignIn, user: $user);
+    }
+
+    // SCRUM-454: nothing is connected to this Google account -- it may start a new one.
+    public static function startSignUp(): self
+    {
+        return new self(GoogleAccountOutcomeEnum::StartSignUp);
     }
 
     public static function refuse(string $message): self
