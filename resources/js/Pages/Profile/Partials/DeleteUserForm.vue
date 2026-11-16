@@ -6,8 +6,12 @@ import InputLabel from '@/Components/InputLabel.vue';
 import Modal from '@/Components/Modal.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
+import SetPasswordPointer from '@/Components/SetPasswordPointer.vue';
 import { Link, useForm } from '@inertiajs/vue3';
 import { nextTick, ref } from 'vue';
+import usePasswordSet from '@/Composables/usePasswordSet';
+
+const passwordSet = usePasswordSet();
 
 const confirmingUserDeletion = ref(false);
 const passwordInput = ref(null);
@@ -48,7 +52,9 @@ const closeModal = () => {
                 your account, see <Link :href="route('profile.your-data')" class="underline text-gray-800 hover:text-gray-900">what we hold about you</Link>
                 -- contact us if you'd like a copy of any of it.
             </p>
-            <CardActions>
+            <!-- SCRUM-455: closing asks for the password, which an account made with Google may not have. -->
+            <SetPasswordPointer v-if="!passwordSet" class="mt-4" action="close your account" />
+            <CardActions v-else>
                 <DangerButton @click="confirmUserDeletion">Delete Account</DangerButton>
             </CardActions>
         </header>

@@ -20,7 +20,7 @@ class ConfirmItsYouAction extends Action
     public function requirements(User $user): array
     {
         return [
-            'passwordSet' => filled($user->getRawOriginal('password')),
+            'passwordSet' => $user->hasPassword(),
             'twoFactorEnabled' => $user->hasTwoFactorEnabled(),
             'emailChangeWaiting' => (bool) $user->pending_email,
         ];

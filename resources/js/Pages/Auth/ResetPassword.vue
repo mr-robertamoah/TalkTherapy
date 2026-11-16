@@ -16,6 +16,11 @@ const props = defineProps({
         type: String,
         required: true,
     },
+    // SCRUM-455: signed in as another account than the link's -- nothing to do here until signed out.
+    otherAccount: {
+        type: String,
+        default: null,
+    },
 });
 
 const form = useForm({
@@ -36,7 +41,11 @@ const submit = () => {
     <GuestLayout>
         <Head title="Reset Password" />
 
-        <form @submit.prevent="submit">
+        <p v-if="otherAccount" role="alert" class="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+            {{ otherAccount }}
+        </p>
+
+        <form v-else @submit.prevent="submit">
             <div>
                 <InputLabel for="email" value="Email" />
 

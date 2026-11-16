@@ -9,9 +9,11 @@ import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import Select from '@/Components/Select.vue';
 import TextInput from '@/Components/TextInput.vue';
+import SetPasswordPointer from '@/Components/SetPasswordPointer.vue';
 import { router, useForm, usePage } from '@inertiajs/vue3';
 import { computed, nextTick, ref } from 'vue';
 import { format, subYears } from 'date-fns';
+import usePasswordSet from '@/Composables/usePasswordSet';
 
 defineProps({
     dobChangePendingApproval: {
@@ -23,6 +25,8 @@ defineProps({
 const page = usePage();
 // Always the latest saved values (a one-off copy went stale after a save, and Cancel brought old edits back).
 const user = computed(() => page.props.auth.user ?? {});
+// SCRUM-455
+const passwordSet = usePasswordSet();
 
 // A date of birth is a calendar day: read its YYYY-MM-DD as is. (new Date(...) on the server's value shifted it a day
 // in timezones behind UTC.)
@@ -226,7 +230,9 @@ function save() {
                 <InputError class="mt-2" :message="form.errors.email" />
             </div>
 
-            <div v-if="changingEmail" class="rounded-md border border-gray-200 bg-gray-50 p-4">
+            <!-- SCRUM-455: an account made with Google may have no password to confirm the change with. -->
+            <SetPasswordPointer v-if="changingEmail && !passwordSet" action="change your email" />
+            <div v-else-if="changingEmail" class="rounded-md border border-gray-200 bg-gray-50 p-4">
                 <InputLabel for="profile_current_password" value="Your current password" />
                 <p class="mt-1 text-xs text-gray-600">
                     Needed to change your email. We'll send a link to the new address; once it's confirmed it becomes your

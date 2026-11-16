@@ -8,12 +8,13 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 // SCRUM-452: the Google sign-in routes (SCRUM-454/455) are a plain 404 until GOOGLE_SIGN_IN_ENABLED is switched on --
-// and (SCRUM-453) the Google client is configured.
+// and (SCRUM-453) the Google client is configured. SCRUM-455: `google_sign_in:connect` also needs the profile's own
+// callback URL (GoogleSignIn::connectable()).
 class EnsureGoogleSignInIsEnabled
 {
-    public function handle(Request $request, Closure $next): Response
+    public function handle(Request $request, Closure $next, ?string $for = null): Response
     {
-        abort_unless(GoogleSignIn::available(), 404);
+        abort_unless($for === 'connect' ? GoogleSignIn::connectable() : GoogleSignIn::available(), 404);
 
         return $next($request);
     }

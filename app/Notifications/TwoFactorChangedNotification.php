@@ -40,7 +40,10 @@ class TwoFactorChangedNotification extends Notification implements ShouldQueue, 
         self::RECOVERY_CODE_USED => ['Signed in with a recovery code', 'Someone signed in to your account with one of your two-factor recovery codes. That code no longer works.'],
     ];
 
-    public function __construct(public string $change)
+    // SCRUM-455: the team's reset also disconnected Google sign-in (ResetTwoFactorAction) -- said in the same notice.
+    private const GOOGLE_DISCONNECTED = 'Google sign-in was disconnected from your account too. You can connect it again from your profile once you\'re signed in.';
+
+    public function __construct(public string $change, public bool $googleDisconnected = false)
     {
         $this->afterCommit();
     }
@@ -67,6 +70,7 @@ class TwoFactorChangedNotification extends Notification implements ShouldQueue, 
             ->subject($title)
             ->greeting("Hello {$notifiable->name}!")
             ->line($message)
+            ->lineIf($this->googleDisconnected, self::GOOGLE_DISCONNECTED)
             ->line(match ($this->change) {
                 self::RESET_BY_ADMIN => 'If you asked us to, no further action is needed -- you can set it up again from your profile.',
                 self::RESET_CANCELLED => 'If you cancelled it, or signed in with your code, no further action is needed.',
@@ -82,13 +86,15 @@ class TwoFactorChangedNotification extends Notification implements ShouldQueue, 
      */
     public function toArray(object $notifiable): array
     {
-        return ['change' => $this->change];
+        return ['change' => $this->change, ...($this->googleDisconnected ? ['googleDisconnected' => true] : [])];
     }
 
     public static function present(array $data): NotificationEntry
     {
         [$title, $message] = self::TEXT[$data['change'] ?? null] ?? ['Two-factor sign-in changed', 'A two-factor sign-in setting changed on your account.'];
 
-        return new NotificationEntry($title, $message.' Not you? Change your password now.', NotificationEntry::link('profile.show', []));
+        $google = ($data['googleDisconnected'] ?? false) ? ' '.self::GOOGLE_DISCONNECTED : '';
+
+        return new NotificationEntry($title, $message.$google.' Not you? Change your password now.', NotificationEntry::link('profile.show', []));
     }
 }

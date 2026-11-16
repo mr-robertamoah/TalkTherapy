@@ -176,9 +176,11 @@ const counsellor = computed(() => props.data.counsellor)
                         clients, so they are counted, not included.</template>
                     </p>
 
+                    <!-- SCRUM-455: an account made with Google sets one through the reset email first. -->
                     <p v-if="!data.security.passwordSet" class="mt-3">
                         Your account has no password, so we can't check it's you here.
-                        <a :href="contactHref" class="text-indigo-700 underline hover:text-indigo-900">Contact us</a> for a copy.
+                        <a :href="profile('profile-password-id')" class="text-indigo-700 underline hover:text-indigo-900">Set a password</a>
+                        first, then come back to download a copy.
                     </p>
                     <p v-else-if="account.pendingEmail" class="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-900">
                         A new email address is waiting on your account. You can download a copy once that change is
@@ -244,9 +246,18 @@ const counsellor = computed(() => props.data.counsellor)
                         <li v-if="data.security.twoFactorResetDueAt">
                             A reset of your two-step sign-in is scheduled for {{ date(data.security.twoFactorResetDueAt) }}.
                         </li>
+                        <!-- SCRUM-455: never the Google account's id or email. -->
+                        <li>
+                            Google sign-in:
+                            {{ data.security.googleConnected ? (data.security.googleConnectedSince ? `connected since ${date(data.security.googleConnectedSince)}` : 'connected') : 'not connected' }}
+                        </li>
                     </ul>
                     <template #why>To keep your account yours.</template>
-                    <template #kept>While your account is open.</template>
+                    <template #kept>
+                        While your account is open. For Google sign-in we keep only Google's id for your Google account and
+                        when it was connected -- never your Google password or any Google access -- and let go of it when you
+                        disconnect Google or close your account.
+                    </template>
                     <template #who>Nobody can see your password, including the TalkTherapy team.</template>
                 </YourDataSection>
 

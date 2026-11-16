@@ -39,6 +39,7 @@ defineProps({
                         <ul class="flex flex-wrap gap-x-4 gap-y-1 text-gray-700">
                             <li><a href="#who-we-are" class="underline hover:text-gray-900">Who we are</a></li>
                             <li><a href="#what-we-collect" class="underline hover:text-gray-900">What we collect</a></li>
+                            <li><a href="#google-sign-in" class="underline hover:text-gray-900">Signing in with Google</a></li>
                             <li><a href="#why" class="underline hover:text-gray-900">Why</a></li>
                             <li><a href="#sharing" class="underline hover:text-gray-900">Who sees it</a></li>
                             <li><a href="#confidential-messages" class="underline hover:text-gray-900">Confidential messages</a></li>
@@ -76,6 +77,20 @@ defineProps({
                         <li><strong>Age and identity checks:</strong> the documents you upload when asked to confirm your age or identity, and the details of a guardian who looks after a minor's account.</li>
                         <li><strong>Payments:</strong> what was paid, by whom and for what. Card payments are handled by Paystack; we never see or store your full card number.</li>
                         <li><strong>Technical information:</strong> the network address and time of your visits (deleted every day), and — when an administrator reads content — the device and network address they used.</li>
+                    </ul>
+                </section>
+
+                <!-- SCRUM-455 (Google sign-in, SCRUM-112) -->
+                <section id="google-sign-in" class="space-y-2">
+                    <h2 class="text-lg font-semibold text-gray-900">Signing in with Google</h2>
+                    <p>
+                        You can sign up or sign in with a Google account instead of, or as well as, a password. When you do,
+                        Google tells us that account's id, its email address and its name.
+                    </p>
+                    <ul class="list-disc pl-5 space-y-1">
+                        <li><strong>What we keep:</strong> the Google account's id and when you connected it. When you sign up with Google, we also keep its email address as your account's email if it is a Gmail or Google Workspace address and no other account uses it.</li>
+                        <li><strong>What we don't keep:</strong> the name on your Google account (you choose a username instead), your Google photo, your Google password, or any Google access -- we can't read anything else in your Google account or act for you there.</li>
+                        <li><strong>Disconnecting:</strong> you can disconnect Google from your profile at any time once your account has a password. Closing your account disconnects it at once.</li>
                     </ul>
                 </section>
 

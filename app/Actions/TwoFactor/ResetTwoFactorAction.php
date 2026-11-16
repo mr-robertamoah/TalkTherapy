@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Notifications\TwoFactorChangedNotification;
 use App\Support\TwoFactorAttempts;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 // SCRUM-34c/d: the team turns off someone's two-factor sign-in (a lost phone and codes) -- from the admin users list
 // (ResetTwoFactorByAdminAction, which checks who may) or on the server (`user:two-factor-reset`). The same as the person
@@ -27,7 +28,20 @@ class ResetTwoFactorAction extends Action
 
             $locked->turnOffTwoFactor();
 
-            $locked->notify(new TwoFactorChangedNotification(TwoFactorChangedNotification::RESET_BY_ADMIN));
+            // SCRUM-455 (security review): account recovery lets go of a connected Google account too -- it may be how
+            // someone else gets in, and without two-factor nothing else would stop them. Unless it's the only way left
+            // in (no password, and no verified email to set one through): then it stays, and the team is told.
+            $googleDisconnected = false;
+            if (filled($locked->google_id)) {
+                if ($locked->canSignInWithoutGoogle()) {
+                    $locked->forgetGoogle()->forceFill(['session_version' => (int) $locked->session_version + 1])->save();
+                    $googleDisconnected = true;
+                } else {
+                    Log::warning('Two-factor reset left Google sign-in connected: it is the account\'s only way in', ['user_id' => $locked->id]);
+                }
+            }
+
+            $locked->notify(new TwoFactorChangedNotification(TwoFactorChangedNotification::RESET_BY_ADMIN, googleDisconnected: $googleDisconnected));
         });
 
         TwoFactorAttempts::forget($user);

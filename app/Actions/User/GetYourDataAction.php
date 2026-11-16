@@ -162,18 +162,22 @@ class GetYourDataAction extends Action
         ];
     }
 
-    // Whether things are set -- never the password, secret or recovery codes themselves.
+    // Whether things are set -- never the password, secret, recovery codes or Google account themselves.
     private function security(User $row): array
     {
         $twoFactor = $row->hasTwoFactorEnabled();
 
         return [
-            'passwordSet' => filled($row->getRawOriginal('password')),
+            'passwordSet' => $row->hasPassword(),
             'twoFactorEnabled' => $twoFactor,
             // As UserResource shows it: only while two-factor is on (a reset of nothing means nothing).
             'twoFactorResetDueAt' => $twoFactor && $row->two_factor_reset_due_at
                 ? Carbon::parse($row->two_factor_reset_due_at)->toIso8601String()
                 : null,
+            // SCRUM-455: whether Google sign-in is connected, and since when -- never the Google account's id or email,
+            // which TalkTherapy doesn't show anywhere.
+            'googleConnected' => filled($row->google_id),
+            'googleConnectedSince' => filled($row->google_id) ? $row->google_linked_at?->toIso8601String() : null,
         ];
     }
 

@@ -7,6 +7,7 @@ import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { useForm, usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
+import usePasswordSet from '@/Composables/usePasswordSet'
 
 const update = ref(false);
 const passwordInput = ref(null);
@@ -49,10 +50,44 @@ const weakReasonText = computed(() => ({
 function clickedUpdate() {
     update.value = true
 }
+
+// SCRUM-455: an account without a password (made with Google) sets one through the reset email -- the link goes to
+// its verified address.
+const page = usePage()
+const passwordSet = usePasswordSet()
+const hasVerifiedEmail = computed(() => !!(page.props.auth?.user?.email && page.props.auth?.user?.emailVerifiedAt))
+const linkForm = useForm({})
+const linkSent = computed(() => page.props.status === 'password-link-sent')
+const linkError = computed(() => page.props.errors?.password_link)
+
+function sendLink() {
+    linkForm.post(route('profile.password.link'), { preserveScroll: true })
+}
 </script>
 
 <template>
-    <section>
+    <section v-if="!passwordSet" aria-labelledby="set-password-title">
+        <h2 id="set-password-title" class="text-lg font-medium text-gray-900">Set a password</h2>
+        <p class="mt-1 text-sm text-gray-600">
+            Your account has no password. Set one to change your email, close your account, turn on two-factor or
+            download your data.
+        </p>
+        <p v-if="hasVerifiedEmail" class="mt-1 text-sm text-gray-600">
+            We'll email a link to {{ page.props.auth.user.email }}. Open it to choose your password; you'll then sign in again.
+        </p>
+        <p v-else class="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            Add an email address to your account and confirm it first -- the link to set a password is sent there.
+        </p>
+        <p v-if="linkSent" role="status" class="mt-3 rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-900">
+            We've sent the link -- check your email.
+        </p>
+        <InputError class="mt-3" :message="linkError" />
+        <CardActions v-if="hasVerifiedEmail">
+            <PrimaryButton type="button" :disabled="linkForm.processing" @click="sendLink">Email me a link</PrimaryButton>
+        </CardActions>
+    </section>
+
+    <section v-else>
         <header>
             <h2 class="text-lg font-medium text-gray-900">Update Password</h2>
 

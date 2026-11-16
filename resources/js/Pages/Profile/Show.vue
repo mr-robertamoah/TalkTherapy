@@ -4,6 +4,7 @@ import DeleteUserForm from './Partials/DeleteUserForm.vue';
 import UpdateAvatarForm from './Partials/UpdateAvatarForm.vue';
 import UpdatePasswordForm from './Partials/UpdatePasswordForm.vue';
 import TwoFactorSection from './Partials/TwoFactorSection.vue';
+import GoogleSignInSection from './Partials/GoogleSignInSection.vue';
 import NotificationRetentionForm from './Partials/NotificationRetentionForm.vue';
 import NotificationChannelsForm from './Partials/NotificationChannelsForm.vue';
 import UpdateProfileInformationForm from './Partials/UpdateProfileInformationForm.vue';
@@ -46,6 +47,11 @@ const props = defineProps({
     // SCRUM-40 (TT-5.5)
     notificationChannels: {
         type: Array,
+        default: null,
+    },
+    // SCRUM-455: null while Google sign-in is off and the account isn't connected.
+    googleSignIn: {
+        type: Object,
         default: null,
     },
 });
@@ -164,6 +170,12 @@ function changeStep(value) {
                 <div id="profile-password-id" class="relative"></div>
                 <div class="p-8 bg-white shadow-xl border border-gray-100 rounded-xl">
                     <UpdatePasswordForm class="max-w-xl" />
+                </div>
+
+                <!-- SCRUM-455: while Google sign-in is on, or the account is connected (it can always be disconnected). -->
+                <div id="profile-google-id" class="relative"></div>
+                <div v-if="googleSignIn" class="p-8 bg-white shadow-xl border border-gray-100 rounded-xl">
+                    <GoogleSignInSection :google="googleSignIn" class="max-w-xl" />
                 </div>
 
                 <!-- SCRUM-34: only while the deployment has two-factor sign-in switched on. -->
