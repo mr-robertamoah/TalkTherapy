@@ -19,23 +19,25 @@ export default function useMap(zoom = 15) {
         markerPosition.value.lng = lng ? String(lng) : null
     }
     
-    async function initMap() {
-        if (mapDetails.value.Map && mapDetails.value.Marker) return
-        
-        const loader = new Loader({
+    // The loader is a singleton per set of options, so the map and the place search share one script.
+    function loader() {
+        return new Loader({
             apiKey: import.meta.env.VITE_GOOGLE_API_KEY,
             version: 'weekly'
         })
+    }
+
+    async function initMap() {
+        if (mapDetails.value.Map && mapDetails.value.Marker) return
+        
+        const mapsLoader = loader()
 
         if (!mapDetails.value.Map) {
-            await loader.importLibrary('maps')
+            await mapsLoader.importLibrary('maps')
                 .then(data => {
-                    console.log(data, 'map')
                     mapDetails.value.Map = data.Map
                 })
-                .catch(err => {
-                    console.log(err)
-                    
+                .catch(() => {
                     setFailedAlertData({
                         message: 'Something happened while getting google maps.',
                     })
@@ -43,19 +45,31 @@ export default function useMap(zoom = 15) {
         }
             
         if (!mapDetails.value.Marker) {
-            await loader.importLibrary('marker')
+            await mapsLoader.importLibrary('marker')
                 .then(data => {
-                    console.log(data, 'marker')
                     mapDetails.value.Marker = data.AdvancedMarkerElement
                 })
-                .catch(err => {
-                    console.log(err)
-                    
+                .catch(() => {
                     setFailedAlertData({
                         message: 'Something happened while getting google map markers.',
                     })
                 })
             }
+    }
+
+    // SCRUM-444: the place search (Places API, new). Resolves to the PlaceAutocompleteElement class, or null when
+    // there's no key or the library can't load -- the caller falls back to the plain map, with no alert: the map and the
+    // landmark still work without search.
+    async function initPlaces() {
+        if (!import.meta.env.VITE_GOOGLE_API_KEY) return null
+
+        try {
+            const { PlaceAutocompleteElement } = await loader().importLibrary('places')
+
+            return PlaceAutocompleteElement ?? null
+        } catch {
+            return null
+        }
     }
 
     function createMap(mapDiv, { lat, lng }) {
@@ -111,6 +125,6 @@ export default function useMap(zoom = 15) {
     }
 
     return {
-        setMarkerPosition, addMarker, mapDetails, markerPosition, createMap, initMap, map
+        setMarkerPosition, addMarker, mapDetails, markerPosition, createMap, initMap, initPlaces, map
     }
 }

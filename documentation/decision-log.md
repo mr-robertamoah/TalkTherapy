@@ -12975,3 +12975,18 @@ Part of SCRUM-115 (the user's decision: the counsellor marks attendance; it neve
 - **Demo data (`InPersonAttendanceSeeder`):** reuses the in-person demo therapy and group, adds `amy_taylor` to the group
   anonymously, and makes two sessions that ended an hour before seeding (re-run it to reopen the 48-hour window). It
   backdates only the demo members' memberships so they're on the register.
+
+## SCRUM-444 — place search and directions for in-person sessions (2026-11-16)
+
+The user's decision (SCRUM-115): keep Google Maps and add place search.
+
+- **Places API (New):** the picker uses Google's `PlaceAutocompleteElement` (the legacy Places API can't be enabled on
+  new projects), biased -- not limited -- to Ghana, loaded only when the picker shows, through the one shared Loader.
+  Choosing a place moves the pin and fills an empty "where exactly" with its name (or offers to replace what's there).
+- **Fallback:** no key, or the library won't load → no search box, a short note, the plain map. Places not enabled →
+  the box goes on the first search (`gmp-error` carries no detail, so it's hidden for good); a fetch failure that
+  doesn't look like a key problem keeps the box with "try again". No test request at load (it would be billed).
+- **Directions:** an "Open in Google Maps" link on the session view, built only from the coordinates the server
+  already sends that viewer (SCRUM-442), checked as real numbers and encoded; no link once the pin is cleared.
+- **Not verified in a browser:** live search needs `VITE_GOOGLE_API_KEY` in `.env` (Vite reads it, even under Docker)
+  with Places API (New) on; QA covered the fallback and the directions link.
