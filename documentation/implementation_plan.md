@@ -586,6 +586,12 @@ Four PRs into develop, one branch each off a freshly pulled develop. Order: B an
 | TT-12.9 | ✅ **Done** (PR #345). "This wasn't me" puts a remembered address back only if it was remembered within `EMAIL_STOP_RESTORE_DAYS` (30, 7-90): new `users.last_verified_email_at`; none recorded (before this) means support; the stop page and warning say so; super admins see the remembered address and date. Follow-up: SCRUM-434 | Task | High | 3 | SCRUM-433 | TT-12.8 |
 | TT-12.10 | ✅ **Done** (PR #346). Warnings to a remembered address that isn't recent (or has no date) carry no name, no new address and no stop link -- they point to support; never for the account's own address; no second email on confirmation | Task | Medium | 2 | SCRUM-434 | TT-12.9 |
 | TT-12.11 | ✅ **Done** (PR #346). Password confirmation (`ConfirmablePasswordController`) checks the signed-in account's own password, so it works without an email | Bug | Low | 1 | SCRUM-435 | — |
+| TT-12.12 | Google sign-in (SCRUM-112), planned 2026-11-16: `laravel/socialite`, Google only (openid email profile, account chooser, no stored tokens); `GOOGLE_SIGN_IN_ENABLED` (404 when off) stays off outside local until TT-12.12d and TT-12.12e have both merged; split into TT-12.12a-e | Story | Medium | 26 | SCRUM-112 | TT-12.11 |
+| TT-12.12a | Refactor, no behaviour change: `CreateAccountAction` out of `RegisteredUserController` (with the per-address registration limit) and one sign-in-or-two-factor helper used by `AuthenticatedSessionController` | Task | High | 3 | SCRUM-451 (SCRUM-112 1 of 5) | — |
+| TT-12.12b | `users.google_id` (nullable unique, hidden) + `google_linked_at`; `users.password` nullable; Google config and env (+ production checklist); closing and anonymising an account clear `google_id`; a null-password test on every current-password gate | Task | High | 5 | SCRUM-452 (SCRUM-112 2 of 5) | — (parallel with TT-12.12a) |
+| TT-12.12c | Sign in with Google for linked accounts: verified Google email required, closed accounts refused, through the TT-12.12a helper (2FA applies), session-only (no remember me); an email clash isn't linked (neutral "sign in with your password, then connect Google"); Login button; seeded linked accounts | Story | Medium | 5 | SCRUM-453 (SCRUM-112 3 of 5) | TT-12.12a, TT-12.12b |
+| TT-12.12d | New users: pending sign-up in the session only (~15 min), "Finish setting up" (username, optional date of birth with a why-we-ask note; no Google name or photo), `CreateAccountAction`, then /preferences; Register button | Story | Medium | 5 | SCRUM-454 (SCRUM-112 4 of 5) | TT-12.12c |
+| TT-12.12e | Profile connect/disconnect (disconnect needs a password), "Set a password" via the reset email for Google-only accounts, Your data + export, /privacy, feature doc, Playwright with Google faked | Story | Medium | 8 | SCRUM-455 (SCRUM-112 5 of 5) | TT-12.12c (parallel with TT-12.12d) |
 
 ## Reconciled Sprint Roadmap
 
@@ -607,6 +613,7 @@ Four PRs into develop, one branch each off a freshly pulled develop. Order: B an
 | Next+5 | Journal days, guardian display, notes PDF | TT-5.8, TT-5.9, TT-5.10 (SCRUM-438/439/440) | The user's TODO (guardian display; journal as searchable day notes) boxed with the follow-up SCRUM-438 (2026-11-15) |
 | Next+6 | Guardians for under-18s, dialog scroll lock | TT-5.11 (SCRUM-441) | The PR #349 follow-ups; SCRUM-421 closed as "still not now" (the user's decision, 2026-11-15) |
 | Next+7 | In-person sessions: location privacy, safer start/end, attendance | TT-2.9a–f (SCRUM-442–447) | SCRUM-115 planned 2026-11-15: the location leak fixed first as a hotfix, then start/end and location fixes with minors excluded, the Google place search, attendance, and the pin cleared after 30 days |
+| Next+8 | Google sign-in | TT-12.12a–e (SCRUM-451–455) | SCRUM-112 planned 2026-11-16: the refactor and schema PRs in parallel, then sign-in for linked accounts, then sign-up and profile connect in parallel; the switch stays off until both of those have merged |
 
 ---
 
