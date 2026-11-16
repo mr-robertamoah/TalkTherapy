@@ -59,6 +59,7 @@ Fields: **Key** (Epic-Story) · **Type** · **Priority** (Critical/High/Medium/L
 | TT-2.10 | ✅ **Done** (PR #357). `TherapyTrait::endSessions()` marked failed/abandoned sessions held, with no ended_at; now each open session is failed or abandoned under a row lock, never held or billed (SCRUM-448, found planning SCRUM-115) | Bug | High | — | SCRUM-448 | — |
 | TT-2.11 | ✅ **Done** (PR #357). Group sessions sent no "starting"/"failed" notices: `Session::getUsersAttribute()` is empty for groups; now `GroupTherapy::sessionParticipants()` (SCRUM-449, found planning SCRUM-115) | Bug | Medium | — | SCRUM-449 | — |
 | TT-2.12 | ✅ **Done** (PR #357). `/fail` only for a session that never started -- never a held, abandoned or under-way one (SCRUM-450, found in the SCRUM-445 reviews) | Bug | Medium | — | SCRUM-450 | — |
+| TT-2.13 | A manual `/fail` and other status-change notices on group sessions go to the same people as the scheduler's (`GroupTherapy::sessionParticipants()`), not `getOtherUsers()`, which includes inactive counsellors and paused minors | Bug | Low | 2 | SCRUM-457 | TT-2.11 |
 
 **Sprint:** 2 (unchanged from original plan).
 
@@ -594,6 +595,7 @@ Four PRs into develop, one branch each off a freshly pulled develop. Order: B an
 | TT-12.12c | 🔄 **In review**. Sign in with Google for linked accounts: verified Google email required, closed accounts refused, through the TT-12.12a helper (2FA applies), session-only (no remember me); an email clash isn't linked (neutral "sign in with your password, then connect Google"); Login button; seeded linked accounts | Story | Medium | 5 | SCRUM-453 (SCRUM-112 3 of 5) | TT-12.12a, TT-12.12b |
 | TT-12.12d | ✅ **Done** (PR #362). New users: pending sign-up in the session only (~15 min), "Finish setting up" (username, optional date of birth with a why-we-ask note; no Google name or photo), `CreateAccountAction`, then /preferences; Register button | Story | Medium | 5 | SCRUM-454 (SCRUM-112 4 of 5) | TT-12.12c |
 | TT-12.12e | 🔄 **In review**. Profile connect/disconnect (disconnect needs a password), "Set a password" via the reset email for Google-only accounts, Your data + export, /privacy, feature doc, Playwright with Google faked | Story | Medium | 8 | SCRUM-455 (SCRUM-112 5 of 5) | TT-12.12c (parallel with TT-12.12d) |
+| TT-12.13 | Google sign-in follow-ups from the SCRUM-454/455 reviews: signed age maths (a future date of birth never counts as an age), `alpha_dash:ascii` usernames (check existing ones first), a hash of the Google id on admin-closed accounts so they can't sign up again at once, indexes behind the free-email check, an explicit confirmation before an admin's two-factor reset of a Google-only account, and optionally a longer sign-in timebox | Task | Low | 5 | SCRUM-456 | TT-12.12e |
 
 ## Reconciled Sprint Roadmap
 
@@ -616,6 +618,7 @@ Four PRs into develop, one branch each off a freshly pulled develop. Order: B an
 | Next+6 | Guardians for under-18s, dialog scroll lock | TT-5.11 (SCRUM-441) | The PR #349 follow-ups; SCRUM-421 closed as "still not now" (the user's decision, 2026-11-15) |
 | Next+7 | In-person sessions: location privacy, safer start/end, attendance | TT-2.9a–f (SCRUM-442–447) | SCRUM-115 planned 2026-11-15: the location leak fixed first as a hotfix, then start/end and location fixes with minors excluded, the Google place search, attendance, and the pin cleared after 30 days |
 | Next+8 | Google sign-in | TT-12.12a–e (SCRUM-451–455) | SCRUM-112 planned 2026-11-16: the refactor and schema PRs in parallel, then sign-in for linked accounts, then sign-up and profile connect in parallel; the switch stays off until both of those have merged |
+| Next+9 | Google sign-in and session follow-ups | TT-12.13 (SCRUM-456), TT-2.13 (SCRUM-457) | Boxed 2026-11-16 at the user's request, after Google sign-in: the review follow-ups that didn't block it, and the group status-notice mismatch left by SCRUM-449 |
 
 ---
 
