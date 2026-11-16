@@ -13220,3 +13220,23 @@ Planned with the product-owner, architect and project-manager; split into SCRUM-
 - **Known follow-up (security LOW-1), not built (tracked in SCRUM-456):** a super administrator's two-factor reset of a Google-only account
   (no password) should confirm with the admin that Google stays the way in -- today it silently keeps the link
   (logged). To file as its own ticket.
+
+## SCRUM-457 — group session notice recipients (2026-11-16)
+
+- **One helper, `Session::otherParticipants(User $actor)`:** every session notice sent by `SessionService` (created,
+  updated, started, ended, failed, abandoned, deleted), `AfterSessionCreatedAction` and
+  `SessionAttendanceService::closeAsNoShow` now goes through it. For a group it is `GroupTherapy::sessionParticipants()`
+  minus the actor -- the same people the scheduler's "starting" and "failed" notices reach (SCRUM-449). What actually
+  changes: inactive counsellors, minors paused for a missing guardian and a counsellor creator whose counsellor profile
+  was deleted are no longer told. Former members and closed (soft-deleted) member accounts were already left out by the
+  `users` relation; the tests pin that down too. Applied to all
+  session notices, not only status changes: an inactive counsellor or paused minor has no more use for "a session was
+  booked/moved/deleted" than for "it started". One-to-one recipients are unchanged (`Therapy::getOtherUsers()`).
+- **Guardians kept, for parity with one-to-one:** `Therapy::getOtherUsers()` adds a minor client's guardians, so a
+  one-to-one session's manual notices reach them. A group's notices likewise still go to a minor *creator's* guardians
+  (as `GroupTherapy::getOtherUsers()` did); minor members' guardians weren't told before and still aren't. The
+  scheduler's own notices (`Session::users`) still add no guardians for either kind -- a pre-existing difference
+  between scheduler and manual notices, left as it is.
+- `GroupTherapy::getOtherUsers()` has no callers left. It stays in place with a comment pointing to
+  `Session::otherParticipants()`. Removing it, along with its unit tests (`GroupTherapyParticipantTest`,
+  `TherapyParticipantMinorSnapshotTest`), is a possible chore.

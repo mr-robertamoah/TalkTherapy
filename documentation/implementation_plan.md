@@ -59,7 +59,7 @@ Fields: **Key** (Epic-Story) · **Type** · **Priority** (Critical/High/Medium/L
 | TT-2.10 | ✅ **Done** (PR #357). `TherapyTrait::endSessions()` marked failed/abandoned sessions held, with no ended_at; now each open session is failed or abandoned under a row lock, never held or billed (SCRUM-448, found planning SCRUM-115) | Bug | High | — | SCRUM-448 | — |
 | TT-2.11 | ✅ **Done** (PR #357). Group sessions sent no "starting"/"failed" notices: `Session::getUsersAttribute()` is empty for groups; now `GroupTherapy::sessionParticipants()` (SCRUM-449, found planning SCRUM-115) | Bug | Medium | — | SCRUM-449 | — |
 | TT-2.12 | ✅ **Done** (PR #357). `/fail` only for a session that never started -- never a held, abandoned or under-way one (SCRUM-450, found in the SCRUM-445 reviews) | Bug | Medium | — | SCRUM-450 | — |
-| TT-2.13 | A manual `/fail` and other status-change notices on group sessions go to the same people as the scheduler's (`GroupTherapy::sessionParticipants()`), not `getOtherUsers()`, which includes inactive counsellors and paused minors | Bug | Low | 2 | SCRUM-457 | TT-2.11 |
+| TT-2.13 | 🔄 **In review**. A manual `/fail` and other session notices on group sessions go to the same people as the scheduler's (`GroupTherapy::sessionParticipants()`), not `getOtherUsers()`, which includes inactive counsellors and paused minors | Bug | Low | 2 | SCRUM-457 | TT-2.11 |
 
 **Sprint:** 2 (unchanged from original plan).
 
