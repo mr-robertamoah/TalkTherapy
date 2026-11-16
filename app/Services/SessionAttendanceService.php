@@ -93,7 +93,7 @@ class SessionAttendanceService extends Service
 
         broadcast(new SessionUpdatedEvent($session))->toOthers();
 
-        Notification::send($session->for->getOtherUsers($dto->user), new SessionStatusChangedNotification($session));
+        Notification::send($session->otherParticipants($dto->user), new SessionStatusChangedNotification($session));
 
         return $session;
     }

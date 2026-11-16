@@ -483,6 +483,7 @@ class GroupTherapy extends Model
             ->values();
     }
 
+    // SCRUM-457: not used for session notices; use Session::otherParticipants().
     public function getOtherUsers(User $user)
     {
         $users = collect();
