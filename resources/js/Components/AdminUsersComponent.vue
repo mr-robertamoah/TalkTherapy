@@ -66,10 +66,12 @@
                     recovery codes (follow the identity-check procedure). It turns two-factor sign-in off after a
                     waiting period, unless they cancel it: they can then sign in with their password alone.
                 </p>
-                <p v-if="selected.emailVerified">They're told now, by email with a link to cancel it, and signed out everywhere when it applies.</p>
-                <p v-if="!selected.emailVerified" class="rounded-md border border-amber-200 bg-amber-50 p-2 text-amber-900">
+                <p v-if="selected.emailVerified && !selected.googleOnlyNotice">They're told now, by email with a link to cancel it, and signed out everywhere when it applies.</p>
+                <p v-if="!selected.emailVerified && !selected.googleOnlyNotice" class="rounded-md border border-amber-200 bg-amber-50 p-2 text-amber-900">
                     This account has no verified email, so they couldn't cancel it. Reset it on the server instead.
                 </p>
+                <!-- SCRUM-456: what a reset means when Google is the only way in -- done on the server, which asks to confirm it. -->
+                <p v-if="selected.googleOnlyNotice" class="rounded-md border border-amber-200 bg-amber-50 p-2 text-amber-900">{{ selected.googleOnlyNotice }}</p>
                 <div>
                     <InputLabel for="reset_two_factor_password" value="Your password" />
                     <TextInput
@@ -108,7 +110,7 @@
 
             <div class="flex space-x-2 justify-end items-center w-full p-2">
                 <SecondaryButton type="button" @click="() => closeModal()" class="shrink-0">cancel</SecondaryButton>
-                <DangerButton type="submit" :disabled="saving || !selected.emailVerified || !resetPassword || ($page.props.auth.user?.twoFactorEnabled && !resetCode)" class="shrink-0">schedule reset</DangerButton>
+                <DangerButton type="submit" :disabled="saving || !selected.emailVerified || !!selected.googleOnlyNotice || !resetPassword || ($page.props.auth.user?.twoFactorEnabled && !resetCode)" class="shrink-0">schedule reset</DangerButton>
             </div>
         </form>
     </MiniModal>

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Actions\Auth\CompleteLoginAction;
 use App\Actions\Auth\CreateAccountAction;
 use App\Http\Controllers\Controller;
+use App\Models\BlockedGoogleIdentity;
 use App\Models\User;
 use App\Support\DobRules;
 use App\Support\PendingGoogleSignUp;
@@ -85,7 +86,8 @@ class GoogleSignUpController extends Controller
 
             // Connected to an account since Google answered (another tab finished first): nothing is made. Thrown, so
             // the limit's count is given back; sent to sign-in, where continuing with Google now signs in.
-            if (User::query()->withTrashed()->where('google_id', $pending['sub'])->exists()) {
+            // SCRUM-456: likewise if, meanwhile, an administrator closed an account it was connected to (blocked).
+            if (User::query()->withTrashed()->where('google_id', $pending['sub'])->exists() || BlockedGoogleIdentity::isBlocked($pending['sub'])) {
                 PendingGoogleSignUp::forget($request);
 
                 throw ValidationException::withMessages(['google' => self::EXPIRED])->redirectTo(route('login'));

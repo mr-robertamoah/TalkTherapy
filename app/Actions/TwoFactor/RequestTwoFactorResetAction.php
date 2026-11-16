@@ -15,9 +15,11 @@ use Illuminate\Support\Facades\DB;
 // check; who asked is the caller's log line.
 class RequestTwoFactorResetAction extends Action
 {
-    public function execute(User $user, ?User $requestedBy, string $source, ?string $reason = null): TwoFactorReset
+    // SCRUM-456: $googleOnlyConfirmed -- the person asking agreed (user:two-factor-reset) that the reset may leave Google
+    // as the account's only way in; without it, one that would is cancelled when due (ApplyDueTwoFactorResetsAction).
+    public function execute(User $user, ?User $requestedBy, string $source, ?string $reason = null, bool $googleOnlyConfirmed = false): TwoFactorReset
     {
-        return DB::transaction(function () use ($user, $requestedBy, $source, $reason) {
+        return DB::transaction(function () use ($user, $requestedBy, $source, $reason, $googleOnlyConfirmed) {
             // The user row first, as every reset step does: one lock order.
             $locked = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
 
@@ -38,6 +40,7 @@ class RequestTwoFactorResetAction extends Action
                 'due_at' => now()->addHours((int) config('auth.two_factor.reset_wait_hours')),
                 // Ops review: it only applies once this email has gone out (TwoFactorResetRequestedNotification).
                 'mail_required' => (bool) ($locked->email && $locked->email_verified_at),
+                'google_only_confirmed_at' => $googleOnlyConfirmed ? now() : null,
             ]);
 
             $locked->notify(TwoFactorResetRequestedNotification::for($reset));

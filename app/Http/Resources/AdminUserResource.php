@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Actions\TwoFactor\ResetTwoFactorByAdminAction;
 use App\Enums\AdministratorTypeEnum;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -63,6 +64,11 @@ class AdminUserResource extends JsonResource
             'avatar' => $this->avatar?->url,
             // SCRUM-34c: whether they have two-factor sign-in on -- for a super administrator only (they can reset it).
             'twoFactorEnabled' => $request->user()?->isSuperAdmin() ? $this->hasTwoFactorEnabled() : null,
+            // SCRUM-456: Google is the account's only way in (no password, no verified email) -- what the reset modal says a
+            // reset (on the server) then means; null otherwise. Super administrators only. The wording lives on the action.
+            'googleOnlyNotice' => $request->user()?->isSuperAdmin() && $this->signsInOnlyWithGoogle()
+                ? ResetTwoFactorByAdminAction::GOOGLE_ONLY.' '.ResetTwoFactorByAdminAction::GOOGLE_ONLY_ON_SERVER
+                : null,
             // SCRUM-427: a new address waiting for its owner to confirm it (super administrators only).
             'pendingEmail' => $request->user()?->isSuperAdmin() ? $this->pending_email : null,
             // SCRUM-433: the last verified address the account had, and when it was remembered (super administrators

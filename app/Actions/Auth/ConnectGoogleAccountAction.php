@@ -4,6 +4,7 @@ namespace App\Actions\Auth;
 
 use App\Actions\Action;
 use App\DTOs\GoogleAccount;
+use App\Models\BlockedGoogleIdentity;
 use App\Models\User;
 use App\Notifications\GoogleSignInChangedNotification;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -41,7 +42,9 @@ class ConnectGoogleAccountAction extends Action
                     return self::ALREADY_CONNECTED;
                 }
 
-                if (User::query()->withTrashed()->whereKeyNot($locked->id)->where('google_id', $google->sub)->exists()) {
+                // SCRUM-456: a Google account whose account an administrator closed gets the same words as a taken one.
+                if (BlockedGoogleIdentity::isBlocked($google->sub)
+                    || User::query()->withTrashed()->whereKeyNot($locked->id)->where('google_id', $google->sub)->exists()) {
                     return self::TAKEN;
                 }
 

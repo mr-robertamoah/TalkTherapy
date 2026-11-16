@@ -5,6 +5,7 @@ namespace App\Actions\Auth;
 use App\Actions\Action;
 use App\DTOs\GoogleAccount;
 use App\DTOs\GoogleAccountResolution;
+use App\Models\BlockedGoogleIdentity;
 use App\Models\User;
 
 // SCRUM-453 (Google sign-in, SCRUM-112): which account, if any, a Google sign-in is for. Only an account already
@@ -27,8 +28,12 @@ class ResolveGoogleAccountAction extends Action
 
         // SCRUM-454: by `sub` only -- an email matching an account here is never linked; the new account just goes
         // without that email (PendingGoogleSignUp).
+        // SCRUM-456: unless an administrator closed the account it was connected to -- then it can't start another,
+        // and it's told what any unconnected Google account would be told elsewhere (never that it's blocked).
         if (! $user) {
-            return GoogleAccountResolution::startSignUp();
+            return BlockedGoogleIdentity::isBlocked($google->sub)
+                ? GoogleAccountResolution::refuse(self::NOT_CONNECTED)
+                : GoogleAccountResolution::startSignUp();
         }
 
         // A closed or anonymised account is never signed in or revived. Closing clears the link (SCRUM-452); this is

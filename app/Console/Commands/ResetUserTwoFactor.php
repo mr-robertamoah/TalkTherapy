@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Actions\TwoFactor\CancelTwoFactorResetAction;
 use App\Actions\TwoFactor\RequestTwoFactorResetAction;
 use App\Actions\TwoFactor\ResetTwoFactorAction;
+use App\Actions\TwoFactor\ResetTwoFactorByAdminAction;
 use App\Exceptions\TwoFactorException;
 use App\Models\TwoFactorReset;
 use App\Models\User;
@@ -29,7 +30,8 @@ class ResetUserTwoFactor extends Command
                             {--reason= : A ticket number or short note, kept with the reset (never shown to the person; no health or personal details)}
                             {--cancel : Cancel a scheduled reset instead}
                             {--now : Apply at once instead of after the wait (typed by hand only, with --reason)}
-                            {--force : Don\'t ask for confirmation (not with --now)}';
+                            {--force : Don\'t ask for confirmation (not with --now)}
+                            {--google-only-ok : Answers the "Google is the only way in" question in advance (needed with --force or without a terminal)}';
 
     protected $description = 'Schedule (or cancel, or with --now apply) a reset of an account\'s two-factor sign-in, once the person\'s identity is confirmed.';
 
@@ -76,6 +78,10 @@ class ResetUserTwoFactor extends Command
             }
         }
 
+        if (! $this->confirmGoogleOnly($user)) {
+            return self::FAILURE;
+        }
+
         if (! $this->option('force') && ! $this->confirm("Schedule a reset of two-factor sign-in for {$who}? It applies in {$hours} hours unless they cancel it; they'll be told now.")) {
             $this->line('Nothing changed.');
 
@@ -83,7 +89,9 @@ class ResetUserTwoFactor extends Command
         }
 
         try {
-            $reset = RequestTwoFactorResetAction::new()->execute($user, null, TwoFactorReset::SOURCE_SERVER, $this->option('reason'));
+            // SCRUM-456: Google-only now, so agreed to just above -- recorded, so the scheduler applies it (and cancels
+            // one that only becomes Google-only during the wait, which nobody agreed to).
+            $reset = RequestTwoFactorResetAction::new()->execute($user, null, TwoFactorReset::SOURCE_SERVER, $this->option('reason'), googleOnlyConfirmed: $user->signsInOnlyWithGoogle());
         } catch (TwoFactorException $exception) {
             $this->warn($exception->getMessage());
 
@@ -108,6 +116,10 @@ class ResetUserTwoFactor extends Command
         if (blank($this->option('reason'))) {
             $this->error('--now needs a --reason (for example the ticket number).');
 
+            return self::FAILURE;
+        }
+
+        if (! $this->confirmGoogleOnly($user)) {
             return self::FAILURE;
         }
 
@@ -137,6 +149,36 @@ class ResetUserTwoFactor extends Command
         $this->info("Two-factor sign-in is off for {$who}. They can sign in with their password and set it up again.");
 
         return self::SUCCESS;
+    }
+
+    // SCRUM-456: the reset leaves Google connected when it's the account's only way in (ResetTwoFactorAction) -- so
+    // whoever holds that Google account alone gets in afterwards. Said, and agreed to on its own: asked at a terminal,
+    // or --google-only-ok given; --force alone doesn't answer it.
+    private function confirmGoogleOnly(User $user): bool
+    {
+        if (! $user->signsInOnlyWithGoogle()) {
+            return true;
+        }
+
+        $this->warn(ResetTwoFactorByAdminAction::GOOGLE_ONLY);
+
+        if ($this->option('google-only-ok')) {
+            return true;
+        }
+
+        if ($this->option('force') || ! $this->input->isInteractive()) {
+            $this->error('Confirm that yourself, or pass --google-only-ok.');
+
+            return false;
+        }
+
+        if (! $this->confirm('Reset it anyway, leaving the Google account as the way in?')) {
+            $this->line('Nothing changed.');
+
+            return false;
+        }
+
+        return true;
     }
 
     private function cancel(User $user, string $who): int
