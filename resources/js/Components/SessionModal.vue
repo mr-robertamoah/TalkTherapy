@@ -93,6 +93,14 @@
                     </div>
                     <div v-if="session.lng && session.lat" :id="`session_${session.id}`" class="w-full h-[200px] bg-white rounded-lg shadow-sm mb-3"></div>
                     <p v-if="session.landmark" class="text-sm text-gray-600 font-medium">Landmark: {{ session.landmark }}</p>
+                    <!-- SCRUM-444: directions, only from a pin the server sent (it hides it from people who can't see it). -->
+                    <a
+                        v-if="directionsUrl"
+                        :href="directionsUrl"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="inline-block mt-3 text-sm font-medium text-blue-700 bg-blue-100 hover:bg-blue-700 hover:text-blue-100 py-1 px-2 rounded transition duration-75 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >Open in Google Maps<span class="sr-only"> (opens in a new tab)</span></a>
                 </div>
 
                 <!-- Schedule Section -->
@@ -127,6 +135,7 @@
 </template>
 
 <script setup>
+import { computed } from 'vue';
 import useLocalDateTimed from '@/Composables/useLocalDateTime';
 import useLocation from '@/Composables/useLocation';
 import useMap from '@/Composables/useMap';
@@ -149,6 +158,16 @@ const props = defineProps({
     session: {
         default: null
     }
+})
+
+// SCRUM-444: no pin (none set, or cleared after 30 days) -- no link.
+const directionsUrl = computed(() => {
+    const lat = parseFloat(props.session?.lat)
+    const lng = parseFloat(props.session?.lng)
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return null
+
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lng}`)}`
 })
 
 function closeModal() {
