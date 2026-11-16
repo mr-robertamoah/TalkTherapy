@@ -108,6 +108,25 @@ Emails (reset links, security notices) land in Mailpit: http://localhost:8027.
   `googleConnectedSince`, and no Google id anywhere.
 - **/privacy**: the "Signing in with Google" section.
 
+### Follow-ups (SCRUM-456)
+
+- **Admin-closed accounts:** a super administrator deletes an account connected to Google (Administrator -> Users ->
+  delete). That Google account then gets "There's no TalkTherapy account connected to this Google account..." on
+  "Continue with Google" (no new account), and "That Google account can't be connected..." when connected from another
+  profile. A keyed hash of its id is kept in `blocked_google_identities`; the id itself isn't. Closing your own account
+  (Profile -> Delete Account) blocks nothing.
+- **Usernames:** new usernames are ASCII only (letters, digits, `-`, `_`) on Register and "Finish setting up".
+- **Two-factor reset of `google_only_no_email_demo`:** as a super administrator, Administrator -> Users -> its
+  "reset two-factor": the modal says "This account signs in only with Google and has no verified email; after the
+  reset, the Google account alone gets in. Reset it on the server, which asks you to confirm that." and the button is
+  disabled. On the server,
+  `docker compose exec php php artisan user:two-factor-reset google_only_no_email_demo` prints the same sentence and asks
+  "Reset it anyway, leaving the Google account as the way in?" before the usual question. Run it at a terminal: an
+  account like this has no verified email, so `--force` is refused anyway. `--google-only-ok` answers the Google
+  question in advance, but only matters for the rare row with a verified-at date and no email.
+- **A reset that becomes Google-only while it waits** (say, the email's verification is removed) is cancelled when due
+  unless the server command was told it may leave Google as the only way in; the log has a warning.
+
 ## Test data
 
 See `documentation/seeded-data.md` ("Accounts connected to Google"):
@@ -117,6 +136,8 @@ See `documentation/seeded-data.md` ("Accounts connected to Google"):
 - `google_2fa_demo` / `password` -- connected to `demo-google-sub-2`, two-factor on (code from the documented demo key):
   disconnect and connect again; a Google sign-in still asks for the code.
 - `john_davis` / `password` (or any seeded account with a password) -- connect a Google account.
+- `google_only_no_email_demo` -- no password, no email, two-factor on (SCRUM-456): the Google-only two-factor reset.
+  Sign in as the super admin `mr_robertamoah` (password: `SUPER_PASSWORD` in `.env.docker`) to see the admin side.
 
 The seeded Google ids are made up: a real Google sign-in reaches `google_only_demo` / `google_2fa_demo` only if your
 test Google account's `sub` is that id (set it with `tinker` on the row if you need to). Connecting a real Google

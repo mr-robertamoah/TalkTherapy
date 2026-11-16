@@ -673,7 +673,7 @@ them with "show details" under "Most Recent Sessions" (the newest 5).
 
 ## Accounts connected to Google (SCRUM-453, `GoogleSignInSeeder`)
 
-Local and testing only; each skipped if it already exists. Both are adults with a verified email. Their Google ids are
+Local and testing only; each skipped if it already exists. All are adults; the first two have a verified email. Their Google ids are
 made up, so **"Continue with Google" only reaches them with a real Google OAuth client whose test Google account's id
 (`sub`) is the one below** (set `GOOGLE_SIGN_IN_ENABLED=true`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and
 `GOOGLE_REDIRECT_URI`) — or in tests, with Socialite mocked. Any other Google account gets the neutral "no TalkTherapy
@@ -683,6 +683,7 @@ account connected" message.
 |---|---|---|---|
 | `google_only_demo` | none (Google is its only way in) | `demo-google-sub-1` | A password-less account: signs straight in with Google. Password sign-in is refused. |
 | `google_2fa_demo` | `password` | `demo-google-sub-2` | Connected to Google with two-factor on (same fixed demo key and recovery codes as `two_factor_demo`): a Google sign-in still asks for the code. |
+| `google_only_no_email_demo` | none | `demo-google-sub-3` | SCRUM-456: no password **and no email**, two-factor on (the same demo key) -- Google is its only way in. A super administrator's two-factor reset of it (Administrator -> Users) explains it must be done on the server and stays disabled; `php artisan user:two-factor-reset google_only_no_email_demo` says "after the reset, the Google account alone gets in" and asks before going on. |
 
 SCRUM-455 (profile, with `GOOGLE_CONNECT_REDIRECT_URI` set too): `google_only_demo` is the account to try **"Set a
 password"** on (Profile, "Set a password" card; the link lands in Mailpit) and to see the password-gated forms point

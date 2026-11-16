@@ -10160,7 +10160,22 @@ therapy 18 after the last QA pass.
     exclude soft-deleted and anonymised accounts.
   - **Moved lists:** the users and how-tos lists keep their load-more paging, so only the counsellor
     search and the verification status filter go in the URL.
-  - **Indexes:** added only where they were missing: requests (status, type, to_id), and status plus
+  - **Reviews (security, reviewer, devops):**
+  - **M1, key rotation:** the HMAC input is labelled (`'blocked-google:'.$sub`). `isBlocked()` also checks the hash under
+    each `app.previous_keys` key and, on such a match, writes the current key's hash too, so a block outlives a rotation
+    once tried. `BlockedGoogleIdentity::lift($sub)` removes it under every key (the checklist's runbook).
+  - **M2, a reset that becomes Google-only during the wait:** `ApplyDueTwoFactorResetsAction::applyOne()`, under its
+    lock, cancels (`TwoFactorReset::WOULD_LEAVE_GOOGLE_ONLY`, logged at warning, quiet to the person like the other
+    closures) a reset that would leave Google as the only way in, unless it was agreed to when asked:
+    `two_factor_resets.google_only_confirmed_at`, set by `RequestTwoFactorResetAction` when `user:two-factor-reset`
+    schedules a reset for an account that is Google-only at that moment (an interactive yes or `--google-only-ok`). Every
+    source, the email stop's included. A timestamp column, not a flag, so it also says when.
+  - **L1:** `DeleteUserAction` reads `google_id` with `lockForUpdate()`.
+  - **L2, accepted:** a Google account disconnected before the administrator closes the account isn't blocked (nothing
+    links them any more), and accounts closed before this deploy can't be backfilled (their `google_id` was cleared).
+  - **L3:** `ageForDob()` compares calendar dates in the app's timezone (a time on the value is dropped; a Carbon value
+    is reduced to its date first). A 29 February birthday comes round on 1 March in other years.
+- **Indexes:** added only where they were missing: requests (status, type, to_id), and status plus
     date on transactions, sessions, payouts, earnings, refunds and invoices, plus users.created_at
     and video_sessions.started_at.
 - **SCRUM-386 realtime calls (mine):**
@@ -13240,3 +13255,43 @@ Planned with the product-owner, architect and project-manager; split into SCRUM-
 - `GroupTherapy::getOtherUsers()` has no callers left. It stays in place with a comment pointing to
   `Session::otherParticipants()`. Removing it, along with its unit tests (`GroupTherapyParticipantTest`,
   `TherapyParticipantMinorSnapshotTest`), is a possible chore.
+
+## SCRUM-456 — Google sign-in follow-ups (TT-12.13, 2026-11-16)
+
+- **Age maths:** one calculation, `User::ageForDob()` -- whole years from the date of birth to now, signed, and never
+  below 0. `age`, `isAdult()`, `isAdultForDob()`, `MinimumAgeForDobRule` and `EnsureUserCanBecomeCounsellorAction` (it
+  had its own `diffInYears()`) all use it, so a future date of birth already stored or imported is age 0 and not an
+  adult. The forms already refuse one (`before:today`, SCRUM-454).
+- **Usernames:** `UsernameRules` is `alpha_dash:ascii`. Checked where usernames are validated: only registration and
+  Google's finish step set one (both use `UsernameRules`); the profile and admin edits don't change usernames, so there
+  was nothing else to switch. Existing non-ASCII usernames are left alone and still sign in -- we can't see production
+  data from here, so the production checklist has the SQL an administrator runs **before deploying** to list them.
+- **Admin-closed accounts and their Google account:** `blocked_google_identities` (`sub_hash` unique, `blocked_at`,
+  `reason`), not a column on `users` (closing clears `google_id` at once and anonymising wipes the row). The hash is
+  `hash_hmac('sha256', 'blocked-google:'.sub, app.key)`, never the raw id (key rotation: see M1 below). Written by `DeleteUserAction` (only the administrator path, `UserService::deleteUserByAdmin`), reading
+  `google_id` from the row, in the deletion's transaction. **Not** when a super administrator closes their own account
+  through the admin list (that's closing your own account), and never from `ProfileController::destroy`.
+  `ResolveGoogleAccountAction` answers a blocked, unconnected `sub` with `NOT_CONNECTED`; `ConnectGoogleAccountAction`
+  with `TAKEN`; the finish step's re-check sends a waiting sign-up back with `EXPIRED` -- never anything saying
+  "blocked". No way to lift a block in the app yet (`BlockedGoogleIdentity::lift()` from tinker; the checklist's runbook).
+- **Indexes:** `users.pending_email` and `users.last_verified_email` (neither existed), in their own migration.
+- **Two-factor reset of an account Google is the only way into** (`User::signsInOnlyWithGoogle()`: `google_id` set
+  and `canSignInWithoutGoogle()` false -- no password, no verified email). **Deviation from the ticket's wording:** the
+  admin list can't schedule a reset for such an account at all -- SCRUM-424 already refuses any account without a
+  verified email ("reset it on the server"), so an acknowledgement checkbox there could never be submitted. Instead:
+  - the admin list's reset modal shows "This account signs in only with Google and has no verified email; after the
+    reset, the Google account alone gets in." with "Reset it on the server, which asks you to confirm that", and the
+    button stays disabled (`AdminUserResource.signsInOnlyWithGoogle`, super administrators only);
+  - `ResetTwoFactorByAdminAction` refuses such an account outright (`GOOGLE_ONLY`), which also covers the odd row with
+    no email but a verified-at date;
+  - `user:two-factor-reset` (schedule and `--now`) prints the same sentence and asks its own question, "Reset it anyway,
+    leaving the Google account as the way in?". `--force` doesn't answer it; `--google-only-ok` does. In practice a
+    Google-only account has no email, and the command already refuses `--force` without a verified email, so someone
+    has to be at a terminal anyway: `--google-only-ok` only matters for the odd row with a verified-at date but no email.
+  - The sentence lives once, `ResetTwoFactorByAdminAction::GOOGLE_ONLY`; the command uses it and the page gets it from
+    `AdminUserResource.googleOnlyNotice` (review).
+  If a product owner wants the admin list itself to do these resets, that's a change to SCRUM-424's "verified email
+  only" rule, not done here.
+- **Sign-in timebox:** `auth.timebox_duration` is unchanged (Laravel's 200 ms). The production checklist suggests
+  measuring bcrypt on the production hardware and setting it above that, so a password-less account's quick refusal
+  can't be timed apart from a wrong password.
