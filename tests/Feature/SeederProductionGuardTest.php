@@ -3,6 +3,7 @@
 use App\Models\User;
 use Database\Seeders\CounsellorSeeder;
 use Database\Seeders\DatabaseSeeder;
+use Database\Seeders\GoogleSignInSeeder;
 use Database\Seeders\NotificationCenterSeeder;
 use Database\Seeders\YourDataSeeder;
 
@@ -29,6 +30,7 @@ test('seeding refuses anywhere but local and testing, and creates nobody', funct
     ['production', CounsellorSeeder::class],
     ['production', NotificationCenterSeeder::class],
     ['production', YourDataSeeder::class],
+    ['production', GoogleSignInSeeder::class],
 ]);
 
 test('the override works outside production, but never in production', function () {

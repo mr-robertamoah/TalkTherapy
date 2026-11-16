@@ -284,6 +284,8 @@ class DatabaseSeeder extends Seeder
         $this->call(InPersonSessionSeeder::class);
         // SCRUM-446: in-person sessions that ended an hour ago, to mark attendance (re-run it to reopen the window).
         $this->call(InPersonAttendanceSeeder::class);
+        // SCRUM-453: accounts connected to Google (google_only_demo, google_2fa_demo).
+        $this->call(GoogleSignInSeeder::class);
     }
 
     // SCRUM-32 (TT-4.3a): counsellors' safety flags. Passwords: "password". The feature is off by default:

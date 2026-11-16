@@ -670,3 +670,16 @@ docker compose exec -T -u www-data php php artisan db:seed --class=InPersonAtten
 was a member at the time); only the three demo members' memberships are touched, and if `amy_taylor` left the group
 she is put back as an anonymous member. Both sessions have ended, so they are never the therapy's active session: open
 them with "show details" under "Most Recent Sessions" (the newest 5).
+
+## Accounts connected to Google (SCRUM-453, `GoogleSignInSeeder`)
+
+Local and testing only; each skipped if it already exists. Both are adults with a verified email. Their Google ids are
+made up, so **"Continue with Google" only reaches them with a real Google OAuth client whose test Google account's id
+(`sub`) is the one below** (set `GOOGLE_SIGN_IN_ENABLED=true`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and
+`GOOGLE_REDIRECT_URI`) — or in tests, with Socialite mocked. Any other Google account gets the neutral "no TalkTherapy
+account connected" message.
+
+| Username | Password | Google id (`google_id`) | Purpose |
+|---|---|---|---|
+| `google_only_demo` | none (Google is its only way in) | `demo-google-sub-1` | A password-less account: signs straight in with Google. Password sign-in is refused. |
+| `google_2fa_demo` | `password` | `demo-google-sub-2` | Connected to Google with two-factor on (same fixed demo key and recovery codes as `two_factor_demo`): a Google sign-in still asks for the code. |
