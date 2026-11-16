@@ -5,6 +5,7 @@ use App\Http\Controllers\Auth\ConfirmablePasswordController;
 use App\Http\Controllers\Auth\ConfirmPendingEmailController;
 use App\Http\Controllers\Auth\EmailVerificationNotificationController;
 use App\Http\Controllers\Auth\EmailVerificationPromptController;
+use App\Http\Controllers\Auth\GoogleSignInController;
 use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\PasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
@@ -34,6 +35,12 @@ Route::middleware('guest')->group(function () {
     // account (TwoFactorAttempts). Not behind the feature switch: two-factor someone turned on is always asked for.
     Route::get('two-factor-challenge', [TwoFactorChallengeController::class, 'create'])->name('two_factor.challenge');
     Route::post('two-factor-challenge', [TwoFactorChallengeController::class, 'store'])->name('two_factor.challenge.store')->middleware('throttle:30,1,two_factor.challenge.store');
+
+    // SCRUM-453 (Google sign-in, SCRUM-112): a plain 404 while GOOGLE_SIGN_IN_ENABLED is off.
+    Route::middleware('google_sign_in')->group(function () {
+        Route::get('auth/google/redirect', [GoogleSignInController::class, 'redirect'])->name('auth.google.redirect')->middleware('throttle:30,1,auth.google.redirect');
+        Route::get('auth/google/callback', [GoogleSignInController::class, 'callback'])->name('auth.google.callback')->middleware('throttle:30,1,auth.google.callback');
+    });
 
     Route::get('forgot-password', [PasswordResetLinkController::class, 'create'])
         ->name('password.request');

@@ -231,7 +231,11 @@ test('the Google sign-in switch is off by default, and its routes are a 404 whil
     expect(config('auth.google.enabled'))->toBeFalse();
     $this->get('/pag-google-switch')->assertNotFound();
 
-    config(['auth.google.enabled' => true]);
+    // SCRUM-453: on, but not configured, is still a 404 -- they open only once the Google client is set up.
+    config(['auth.google.enabled' => true, 'services.google.client_id' => null, 'services.google.redirect' => null]);
+    $this->get('/pag-google-switch')->assertNotFound();
+
+    config(['services.google.client_id' => 'pag-client', 'services.google.redirect' => 'https://talktherapy.test/auth/google/callback']);
     $this->get('/pag-google-switch')->assertOk();
 });
 
