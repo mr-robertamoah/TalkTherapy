@@ -12990,3 +12990,27 @@ The user's decision (SCRUM-115): keep Google Maps and add place search.
   already sends that viewer (SCRUM-442), checked as real numbers and encoded; no link once the pin is cleared.
 - **Not verified in a browser:** live search needs `VITE_GOOGLE_API_KEY` in `.env` (Vite reads it, even under Docker)
   with Places API (New) on; QA covered the fallback and the directions link.
+
+## SCRUM-448, 449, 450 — session lifecycle fixes (2026-11-16)
+
+Fixed together in one PR, at the user's request.
+
+- **Ending or deleting a therapy (SCRUM-448):** each open session is closed, under its own row lock and re-read, instead
+  of a bulk update. Never started (PENDING, or a start not yet confirmed) → FAILED. Started but not ended by both
+  sides (IN_SESSION, HELD_CONFIRMATION) → ABANDONED. Never HELD, so never billed: nobody acts here, so a one-sided
+  "it was held" can't be confirmed, and ending or deleting a therapy mustn't bill an organisation for it (security
+  review). This also means a session under way past its end is now ABANDONED where the old code made it HELD.
+  Every one gets `ended_at` (an existing one is kept), so a future session that fails this way has an `ended_at` before
+  its `start_time`. Failed, abandoned and held sessions are left alone. The scheduler's `FailUnheldSessionsAction` now
+  sets `ended_at` too.
+- **Group session participants (SCRUM-449):** `GroupTherapy::sessionParticipants()` -- its active counsellors (a
+  counsellor creator among them, unless that profile was deleted), its user creator and its current members, without a
+  closed account or a client paused for a missing guardian (one query; the pause rule isn't applied to counsellors).
+  Inactive counsellors and former members aren't told; guardians aren't added, as for a one-to-one session.
+  `SessionFailedNotification` now emails only a verified address, since it reaches group members (minors included).
+  Known difference, left as is: a manual `/fail` still notifies through `getOtherUsers()`, which includes inactive
+  counsellors and paused minors.
+- **Failing a session (SCRUM-450):** `/fail` accepts only PENDING and IN_SESSION_CONFIRMATION, checked under the
+  session lock; anything else gets "Only a session that never started can be marked as failed." No page calls it today.
+  A manual fail of an in-person session inside its attendance window is still allowed (the scheduler waits; a
+  participant choosing to fail it doesn't).
