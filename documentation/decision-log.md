@@ -13014,3 +13014,24 @@ Fixed together in one PR, at the user's request.
   session lock; anything else gets "Only a session that never started can be marked as failed." No page calls it today.
   A manual fail of an in-person session inside its attendance window is still allowed (the scheduler waits; a
   participant choosing to fail it doesn't).
+
+## SCRUM-112 — Google sign-in, planned (2026-11-16)
+
+Planned with the product-owner, architect and project-manager; split into SCRUM-451–455 (TT-12.12a–e). Not built yet.
+
+- **The user's decisions:**
+  - **Email clash:** a Google email matching an account not linked to Google is not linked. The person signs in with their password and connects Google from their profile, and the message doesn't confirm the account exists. Auto-linking would hand the account to whoever controls that Google mailbox.
+  - **Name and photo:** Google's name and photo aren't used. The finish step asks for a username only.
+  - **Date of birth:** optional on the finish step, with a why-we-ask note. Without one the person counts as under 18, as for normal sign-up.
+  - **Remember me:** never offered for Google sign-ins (shared phones).
+- **Defaults taken (recommended, not asked):**
+  - Counsellors and admins can use Google too, with 2FA still applying.
+  - Connecting and disconnecting from the profile is in scope; disconnecting needs a password.
+  - Google-only accounts set a password through the reset email before any password-gated action. A fresh Google sign-in isn't accepted in place of the password.
+- **Design:**
+  - **Storage:** a `users.google_id` column, not a separate table (Google only). No tokens are stored.
+  - **Password:** `password` is nullable, so Google-only accounts are honestly password-less and the existing "no password" UI applies. That migration can't be cleanly reversed once null rows exist.
+  - **Sign-in path:** the callback goes through the same sign-in-or-2FA path as a password sign-in.
+  - **New sign-ups:** the pending sign-up lives in the session only, so no half-made accounts.
+  - **Suspension:** handled by the existing middleware, as for password sign-in.
+  - **Closing an account** clears the Google link at once.
