@@ -171,6 +171,10 @@ Check every item before going live.
     any trailing slash -- and built on the https `APP_URL`. Google refuses any mismatch, and an `http` one means the
     proxy settings are wrong. Each environment that tries Google sign-in (testing, local) needs its own redirect URI on
     the client, or its own client.
+  - SCRUM-455: `GOOGLE_CONNECT_REDIRECT_URI` -- connecting Google from the profile comes back to its own callback,
+    `{APP_URL}/profile/google/callback` -- is registered on the **same** client as a **second** authorised redirect
+    URI, exactly as above. While it's empty the profile offers no "Connect Google" (its routes are a 404); signing in
+    with Google still works.
   - `TRUSTED_PROXIES` is correct (above): behind a proxy without it, the request looks like `http` and the callback URL
     Laravel builds won't match the registered one.
   - `users.password` is nullable from `2026_12_09_100000`: an account made with Google has no password, and every

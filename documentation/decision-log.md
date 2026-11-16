@@ -13155,3 +13155,67 @@ Planned with the product-owner, architect and project-manager; split into SCRUM-
     Keeping a hash of the `sub` would stop that.
   - `PendingGoogleSignUp::emailIsFree` looks up `pending_email` and `last_verified_email`, which have no index. It's
     fine at sign-up volume, but it is a table scan.
+
+## SCRUM-455 — Google sign-in: connect, disconnect, set a password (2026-11-16)
+
+- **Separate controller and callback:** `GoogleConnectionController` (connect, callback, disconnect) for signed-in
+  people; `GoogleSignInController` is untouched. Its callback URL is `services.google.connect_redirect`
+  (`GOOGLE_CONNECT_REDIRECT_URI`), set on Socialite with `redirectUrl()` for both the redirect and the token exchange
+  -- read from config rather than `route()`, so it matches the URI registered on the client exactly, like the sign-in
+  one. **No default derived from `APP_URL`:** while it's empty, `GoogleSignIn::connectable()` is false, the connect
+  routes are a 404 (`google_sign_in:connect`, a parameter on the existing middleware) and the profile hides the card.
+  Disconnecting needs neither (see the review follow-ups).
+- **Password confirmation = `current_password` in the request**, the app's pattern for sensitive actions (two-factor,
+  closing the account), not Laravel's `password.confirm` middleware: its "intended URL" redirect can't replay a POST.
+  No two-factor code is asked: Google sign-ins still go through two-factor. The connect POST answers with
+  `Inertia::location()` (Google is another site).
+- **Connect intent:** the POST puts `{user_id, at}` in the session; the callback pulls it (single use) and refuses
+  without it, for another account, or after 10 minutes -- one neutral message, `state`/`code_verifier` forgotten, Google
+  never asked. Reconnecting the same `sub` is a no-op success. A unique-index race reads as "taken".
+- **Other sessions end through `session_version`** (connect, disconnect, the two-factor reset's Google clear), never
+  `logoutOtherDevices`; the action `refresh()`es the signed-in model so this session's fingerprint follows
+  (EndStaleSessions). `remember_token` rotated on connect and disconnect.
+- **Security notice added** (not in the ticket text): `GoogleSignInChangedNotification` (connected / disconnected),
+  always sent like the two-factor notices -- a new way into the account must not be added unseen.
+- **Set a password:** `POST profile/password/link` sends `Password::sendResetLink` to the account's own verified
+  email (the broker's own 60-second throttle plus `throttle:3,10`). **`password.reset` / `password.store` moved out of
+  the `guest` group**: otherwise a signed-in Google-only person opening the emailed link was silently redirected home.
+  A successful reset now signs the current browser out (its password changed; EndStaleSessions would have anyway, but
+  without the message). `UserResource` gained `passwordSet` (self only) for the pointers.
+- **Pointers, not redesigns:** a small `SetPasswordPointer.vue` replaces the password field/button on: Delete
+  Account, two-factor (all steps), the email-change password box, Your data's download, and `ConfirmedPdfExport`
+  (journal / notes PDFs -- it said "contact us" before). Counsellor-profile deletion and admin forms are left as they
+  are (they already refuse with a validation error).
+- **Account recovery clears the link:** `StopEmailChangeAction` clears it always (the stop page's message says so).
+  `ResetTwoFactorAction` (the admin path after the wait, the "This wasn't me" two-factor reset, and
+  `user:two-factor-reset`) clears it **unless it is the account's only way in** (no password and no verified email --
+  possible for a Google sign-up whose email was taken): locking the owner out entirely was judged worse; that case is
+  logged as a warning. The reset notice (mail and in-app) gets a "Google sign-in was disconnected too" line.
+  A super administrator's email change for someone (`ApplyEmailChangeAction`, by team) does the same (security review
+  MEDIUM-1b, overriding my first call to leave it): it's account recovery too. The previous address's
+  `EmailChangedNotification` gets a "Google sign-in was disconnected too" line (not in the stale-address mail, which
+  names nothing). The person's own email change leaves Google alone.
+- **Your data:** `security.googleConnected` + `security.googleConnectedSince` in `GetYourDataAction`, so the page and
+  the copy's `summary` say the same; never the id (the copy's allow-lists are unchanged).
+- **`GoogleSignInButton.vue`** (Components) holds Google's button styling; Login.vue was left alone to avoid clashing
+  with SCRUM-454, which may adopt it.
+- **Review follow-ups (reviewer + security-engineer):**
+  - **Disconnect isn't behind the switch** (`google_sign_in` dropped from `profile.google.disconnect`): a link can
+    always be removed. The profile card shows while `available()` or whenever the account is connected; "Connect"
+    only when `connectable()` (`googleSignIn.canConnect`).
+  - **"Connected" notice wording:** if it wasn't you, disconnect Google AND change the password -- a new password
+    alone doesn't remove Google sign-in.
+  - **Reset of an existing password with Google connected:** the success message says Google is still connected and to
+    disconnect it if you didn't connect it. Not cleared there: the reset link only proves the mailbox, and the
+    person may well have connected it themselves.
+  - **Reset links while signed in:** refused (page and submit) when the link's email isn't the signed-in account's --
+    "This link is for a different account. Sign out first." -- so one browser can't reset (and sign out over) another
+    account. A reset never signs anyone in.
+  - **Model helpers:** `User::hasPassword()`, `User::canSignInWithoutGoogle()` (password, or a verified email to set
+    one through) and `User::forgetGoogle()` (fills, caller saves) replace the repeated checks; the `deleting` hook keeps
+    its direct row update (it must not save other dirty attributes). Front end: `usePasswordSet()` composable.
+  - **Deferred until SCRUM-454 merges:** the shared `GoogleSignIn::redirect()/account()/forgetState()` helper and the
+    generic button -- this branch is rebased onto them then.
+- **Known follow-up (security LOW-1), not built:** a super administrator's two-factor reset of a Google-only account
+  (no password) should confirm with the admin that Google stays the way in -- today it silently keeps the link
+  (logged). To file as its own ticket.
