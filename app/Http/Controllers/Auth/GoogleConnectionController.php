@@ -4,15 +4,12 @@ namespace App\Http\Controllers\Auth;
 
 use App\Actions\Auth\ConnectGoogleAccountAction;
 use App\Actions\Auth\DisconnectGoogleAccountAction;
-use App\DTOs\GoogleAccount;
 use App\Http\Controllers\Controller;
+use App\Support\GoogleSignIn;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
-use Laravel\Socialite\Facades\Socialite;
-use Laravel\Socialite\Two\InvalidStateException;
 use Symfony\Component\HttpFoundation\Response;
-use Throwable;
 
 // SCRUM-455 (Google sign-in, SCRUM-112): connecting and disconnecting Google from the profile, for the signed-in
 // person -- apart from GoogleSignInController (signing in, for guests), with its own callback URL
@@ -38,13 +35,9 @@ class GoogleConnectionController extends Controller
 
         $request->session()->put(self::INTENT, ['user_id' => $request->user()->id, 'at' => now()->getTimestamp()]);
 
-        // As for signing in: never stateless(), and PKCE. Google's page is another site, so a full-page visit.
-        $google = Socialite::driver('google')
-            ->redirectUrl((string) config('services.google.connect_redirect'))
-            ->enablePKCE()
-            ->scopes(['openid', 'email', 'profile'])
-            ->with(['prompt' => 'select_account'])
-            ->redirect();
+        // The same request as signing in (GoogleSignIn: state, PKCE, scopes), back to this callback. Google's page is
+        // another site, so a full-page visit.
+        $google = GoogleSignIn::redirect(self::callbackUrl());
 
         return Inertia::location($google->getTargetUrl());
     }
@@ -61,7 +54,7 @@ class GoogleConnectionController extends Controller
             return $this->failed($request);
         }
 
-        $google = $this->googleAccount();
+        $google = GoogleSignIn::account(self::callbackUrl());
 
         if (! $google) {
             return $this->failed($request);
@@ -90,21 +83,9 @@ class GoogleConnectionController extends Controller
             : back(303)->with('status', 'google-disconnected');
     }
 
-    private function googleAccount(): ?GoogleAccount
+    private static function callbackUrl(): string
     {
-        try {
-            $user = Socialite::driver('google')->redirectUrl((string) config('services.google.connect_redirect'))->enablePKCE()->user();
-        } catch (InvalidStateException) {
-            return null;
-        } catch (Throwable $e) {
-            report($e);
-
-            return null;
-        }
-
-        $sub = (string) $user->getId();
-
-        return $sub === '' ? null : GoogleAccount::fromClaims($sub, $user->getEmail(), $user->getRaw()['email_verified'] ?? null);
+        return (string) config('services.google.connect_redirect');
     }
 
     private function toProfile(): RedirectResponse
@@ -115,7 +96,7 @@ class GoogleConnectionController extends Controller
     // Nothing of an unfinished attempt is left in the session to be used later.
     private function failed(Request $request): RedirectResponse
     {
-        $request->session()->forget(['state', 'code_verifier']);
+        GoogleSignIn::forgetState($request);
 
         return $this->toProfile()->withErrors(['google' => self::FAILED]);
     }

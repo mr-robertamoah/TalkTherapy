@@ -13214,8 +13214,9 @@ Planned with the product-owner, architect and project-manager; split into SCRUM-
   - **Model helpers:** `User::hasPassword()`, `User::canSignInWithoutGoogle()` (password, or a verified email to set
     one through) and `User::forgetGoogle()` (fills, caller saves) replace the repeated checks; the `deleting` hook keeps
     its direct row update (it must not save other dirty attributes). Front end: `usePasswordSet()` composable.
-  - **Deferred until SCRUM-454 merges:** the shared `GoogleSignIn::redirect()/account()/forgetState()` helper and the
-    generic button -- this branch is rebased onto them then.
-- **Known follow-up (security LOW-1), not built:** a super administrator's two-factor reset of a Google-only account
+  - **After SCRUM-454 merged:** rebased onto it. Connecting uses the shared `GoogleSignIn::redirect()/account()/forgetState()`
+    (with its own callback URL), so the Gmail/Workspace `hd` claim and every request setting come from one place. The
+    one `GoogleSignInButton.vue` keeps this branch's `type`/`disabled` props on top of SCRUM-454's link-or-button shape.
+- **Known follow-up (security LOW-1), not built (tracked in SCRUM-456):** a super administrator's two-factor reset of a Google-only account
   (no password) should confirm with the admin that Google stays the way in -- today it silently keeps the link
   (logged). To file as its own ticket.
