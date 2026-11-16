@@ -13035,3 +13035,27 @@ Planned with the product-owner, architect and project-manager; split into SCRUM-
   - **New sign-ups:** the pending sign-up lives in the session only, so no half-made accounts.
   - **Suspension:** handled by the existing middleware, as for password sign-in.
   - **Closing an account** clears the Google link at once.
+
+## 2026-11-16 — SCRUM-452: Google sign-in schema and switch
+
+- **Switch middleware added now** (`EnsureGoogleSignInIsEnabled`, alias `google_sign_in`), not left to SCRUM-454: it is
+  three lines, mirrors `EnsureTwoFactorIsEnabled`, and is covered by a test, so it isn't untested dead code meanwhile.
+- **`google_linked_at` is hidden too**, not only `google_id`: nothing serializes it yet, and the profile can expose it
+  deliberately through `UserResource` when SCRUM-455 needs it.
+- **Clearing on close lives in `User::booted`'s `deleting` hook** (soft deletes only), so every way an account is
+  closed lets go of its Google account, not just `ProfileController::destroy`. `AnonymiseClosedAccountAction` clears
+  it again via `User::ANONYMISED_ATTRIBUTES`.
+- **No password gate needed a fix**: Laravel's hasher returns false for a null hash before any algorithm check, so the
+  `current_password` rule, `Hash::check` and the guard's credential check all refuse a password-less account with the
+  usual validation error. Only `EndStaleSessions::fingerprint` got an explicit `(string)` cast (it already worked).
+  The tests in `PasswordlessAccountGatesTest` pin this behaviour.
+- **Reviews (reviewer, security-engineer, devops-engineer):**
+  - **Rollback backfill:** the migration's rollback backfill is now one update with a shared random hash. Paging through rows while updating them out of the filter skipped some, and the rollback then failed.
+  - **Rollback order:** the checklist now says to roll back the schema on the current code. The old code doesn't have the migration file.
+  - **`User::getAuthPassword()`** returns `''` for an account without a password, so the session, remember-me and Sanctum checks don't pass null to PHP's hash functions.
+  - **Closing an account** clears the Google link straight on the row, whatever the instance was loaded with.
+  - **Timing:** a timing check for password-less accounts isn't added. Laravel's timebox already pads failed sign-ins, so they look like unknown accounts.
+- **Carried to later parts (security review):**
+  - **SCRUM-455:** "This wasn't me" (`StopEmailChangeAction`) and any admin account-recovery path must also clear the Google link. Linking and unlinking end other sessions and rotate the remember token.
+  - **SCRUM-454/455:** where something other than a password confirms it's you, other sessions end through `session_version`. `logoutOtherDevices`, which needs a valid password, isn't used there.
+
