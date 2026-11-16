@@ -25,6 +25,7 @@ use App\Http\Requests\ProfileUpdateRequest;
 use App\Http\Requests\UpdateUserAvatarRequest;
 use App\Models\PushSubscription;
 use App\Notifications\EmailChangedNotification;
+use App\Support\GoogleSignIn;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -85,6 +86,13 @@ class ProfileController extends Controller
                 'mail' => $request->user()->wantsNotification($category, 'mail'),
                 'database' => $request->user()->wantsNotification($category, 'database'),
             ], array_values(array_filter(NotificationCategoryEnum::cases(), fn (NotificationCategoryEnum $category) => ! $category->forCounsellorsOnly() || $request->user()->counsellor()->exists()))),
+            // SCRUM-455: the Google sign-in card -- while Google sign-in is on, or the account is connected (so it can
+            // always be disconnected); when connected, since when (never the Google account's id or email).
+            'googleSignIn' => filled($request->user()->google_id) || GoogleSignIn::available() ? [
+                'connectedAt' => $request->user()->google_id ? $request->user()->google_linked_at?->toIso8601String() : null,
+                'connected' => filled($request->user()->google_id),
+                'canConnect' => GoogleSignIn::connectable(),
+            ] : null,
         ]);
     }
 

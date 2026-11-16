@@ -89,7 +89,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // (QA): the throttle answers before Inertia's middleware could turn a 302 into one, and a 302 after a PATCH or
         // DELETE repeats it -- a redirect loop.
         $exceptions->render(function (ThrottleRequestsException $exception, Request $request) {
-            $field = ['profile.update' => 'profile', 'profile.destroy' => 'password', 'password.confirm.store' => 'password'][$request->route()?->getName()] ?? null;
+            // SCRUM-455: and connecting or disconnecting Google, and "Set a password".
+            $field = ['profile.update' => 'profile', 'profile.destroy' => 'password', 'password.confirm.store' => 'password',
+                'profile.google.connect' => 'google', 'profile.google.disconnect' => 'google', 'profile.password.link' => 'password_link'][$request->route()?->getName()] ?? null;
 
             return $field && ! $request->expectsJson()
                 ? back(303)->withErrors([$field => 'Too many tries. Please wait a minute and try again.'])

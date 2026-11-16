@@ -87,7 +87,8 @@ async function exportPdf() {
 <template>
     <div class="w-full sm:w-auto">
         <p v-if="!gate.passwordSet" class="text-sm text-gray-600">
-            To export {{ what }}, <Link :href="`${route('privacy')}#contact`" class="underline">contact us</Link> -- your account has no password to confirm it's you.
+            <!-- SCRUM-455: an account made with Google sets one through the reset email first. -->
+            Your account has no password to confirm it's you. <Link :href="`${route('profile.show')}#profile-password-id`" class="underline">Set a password</Link> first, then you can export {{ what }}.
         </p>
         <p v-else-if="gate.emailChangeWaiting" class="text-sm text-amber-900">
             A new email address is waiting on your account. You can export {{ what }} once that change is finished or stopped.

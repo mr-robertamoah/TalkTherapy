@@ -224,6 +224,25 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return (string) $this->password;
     }
 
+    // SCRUM-455: an account made with Google may have none (users.password is nullable).
+    public function hasPassword(): bool
+    {
+        return filled($this->getRawOriginal('password'));
+    }
+
+    // SCRUM-455: whether the account could still be got into without its Google account -- a password, or a verified
+    // email to set one through. Account recovery lets go of Google only when it can.
+    public function canSignInWithoutGoogle(): bool
+    {
+        return $this->hasPassword() || ($this->email && $this->hasVerifiedEmail());
+    }
+
+    // SCRUM-455: lets go of the connected Google account (filled only -- the caller saves, with whatever else changes).
+    public function forgetGoogle(): static
+    {
+        return $this->forceFill(['google_id' => null, 'google_linked_at' => null]);
+    }
+
     protected static function booted(): void
     {
         // SCRUM-427: when a verified address stops being one (removed, replaced, or unticked), remember it: a new address

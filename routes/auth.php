@@ -5,12 +5,14 @@ use App\Http\Controllers\Auth\ConfirmablePasswordController;
 use App\Http\Controllers\Auth\ConfirmPendingEmailController;
 use App\Http\Controllers\Auth\EmailVerificationNotificationController;
 use App\Http\Controllers\Auth\EmailVerificationPromptController;
+use App\Http\Controllers\Auth\GoogleConnectionController;
 use App\Http\Controllers\Auth\GoogleSignInController;
 use App\Http\Controllers\Auth\GoogleSignUpController;
 use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\PasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\Auth\RegisteredUserController;
+use App\Http\Controllers\Auth\SetPasswordLinkController;
 use App\Http\Controllers\Auth\TwoFactorChallengeController;
 use App\Http\Controllers\Auth\TwoFactorController;
 use App\Http\Controllers\Auth\TwoFactorResetCancelController;
@@ -51,15 +53,17 @@ Route::middleware('guest')->group(function () {
 
     Route::post('forgot-password', [PasswordResetLinkController::class, 'store'])
         ->name('password.email');
-
-    Route::get('reset-password/{token}', [NewPasswordController::class, 'create'])
-        ->name('password.reset');
-
-    Route::post('reset-password', [NewPasswordController::class, 'store'])
-        ->name('password.store')
-        // SCRUM-35: validating a new password can ask Have I Been Pwned, before the reset token is checked.
-        ->middleware('throttle:10,1,password.store');
 });
+
+// SCRUM-455: the link the email brings works signed in too -- "Set a password" (profile) sends it to someone signed in
+// with Google. A reset signs this browser out (NewPasswordController), like any password change elsewhere.
+Route::get('reset-password/{token}', [NewPasswordController::class, 'create'])
+    ->name('password.reset');
+
+Route::post('reset-password', [NewPasswordController::class, 'store'])
+    ->name('password.store')
+    // SCRUM-35: validating a new password can ask Have I Been Pwned, before the reset token is checked.
+    ->middleware('throttle:10,1,password.store');
 
 Route::middleware('auth')->group(function () {
     Route::get('verify-email', EmailVerificationPromptController::class)
@@ -94,6 +98,15 @@ Route::middleware('auth')->group(function () {
     // SCRUM-424: the person stops a reset the team scheduled (from their profile; no password -- it only makes the
     // account safer).
     Route::delete('two-factor/reset', [TwoFactorResetCancelController::class, 'destroy'])->name('two_factor.reset.cancel')->middleware('throttle:10,1,two_factor.reset.cancel');
+
+    // SCRUM-455 (Google sign-in, SCRUM-112): connecting Google from the profile (its own callback URL; a 404 while
+    // switched off or GOOGLE_CONNECT_REDIRECT_URI is unset) and disconnecting it -- each after the password.
+    Route::post('profile/google/connect', [GoogleConnectionController::class, 'connect'])->name('profile.google.connect')->middleware(['google_sign_in:connect', 'throttle:10,1,profile.google.connect']);
+    Route::get('profile/google/callback', [GoogleConnectionController::class, 'callback'])->name('profile.google.callback')->middleware(['google_sign_in:connect', 'throttle:10,1,profile.google.callback']);
+    // Not behind the switch (review): a connected Google account can always be let go of.
+    Route::delete('profile/google', [GoogleConnectionController::class, 'disconnect'])->name('profile.google.disconnect')->middleware('throttle:10,1,profile.google.disconnect');
+    // SCRUM-455: "Set a password" for an account without one -- the reset link, to its own verified email.
+    Route::post('profile/password/link', SetPasswordLinkController::class)->name('profile.password.link')->middleware('throttle:3,10,profile.password.link');
 
     // SCRUM-423: an open page asking whether it is still signed in (after a session.check nudge, or on coming back to
     // the tab). An ended session gets the usual 401 from `auth`; this answers the rest with nothing.

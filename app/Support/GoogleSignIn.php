@@ -68,4 +68,10 @@ final class GoogleSignIn
 
         return $redirectUrl === null ? $driver : $driver->redirectUrl($redirectUrl);
     }
+
+    // SCRUM-455: and connecting it from the profile -- its own callback URL (GOOGLE_CONNECT_REDIRECT_URI) set as well.
+    public static function connectable(): bool
+    {
+        return self::available() && filled(config('services.google.connect_redirect'));
+    }
 }

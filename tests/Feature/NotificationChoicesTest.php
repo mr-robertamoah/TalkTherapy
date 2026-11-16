@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\Mail;
 // Every notification that is always sent -- deciding a new notification means adding it here or to a category.
 const NCH_ALWAYS_SENT = [
     // Account security
-    Notifications\TwoFactorChangedNotification::class, Notifications\TwoFactorResetRequestedNotification::class,
+    Notifications\TwoFactorChangedNotification::class, Notifications\TwoFactorResetRequestedNotification::class, Notifications\GoogleSignInChangedNotification::class,
     Notifications\EmailChangedNotification::class, Notifications\ConfirmNewEmailNotification::class,
     Notifications\VerifyEmailNotification::class, Notifications\VerifyCounsellorEmailNotification::class,
     Notifications\AccountEmailChangedByTeamNotification::class, Notifications\DataCopyDownloadedNotification::class,

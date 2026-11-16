@@ -66,6 +66,9 @@ return [
         'client_id' => env('GOOGLE_CLIENT_ID'),
         'client_secret' => env('GOOGLE_CLIENT_SECRET'),
         'redirect' => env('GOOGLE_REDIRECT_URI'),
+        // SCRUM-455: connecting Google from the profile comes back to its own callback (profile.google.callback), a
+        // second redirect URI registered on the same client. Connecting is hidden while it's unset.
+        'connect_redirect' => env('GOOGLE_CONNECT_REDIRECT_URI'),
     ],
 
 ];

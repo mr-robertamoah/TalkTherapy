@@ -683,3 +683,9 @@ account connected" message.
 |---|---|---|---|
 | `google_only_demo` | none (Google is its only way in) | `demo-google-sub-1` | A password-less account: signs straight in with Google. Password sign-in is refused. |
 | `google_2fa_demo` | `password` | `demo-google-sub-2` | Connected to Google with two-factor on (same fixed demo key and recovery codes as `two_factor_demo`): a Google sign-in still asks for the code. |
+
+SCRUM-455 (profile, with `GOOGLE_CONNECT_REDIRECT_URI` set too): `google_only_demo` is the account to try **"Set a
+password"** on (Profile, "Set a password" card; the link lands in Mailpit) and to see the password-gated forms point
+there instead of asking for a password; its "Disconnect" is disabled until it has one. `google_2fa_demo` (with its
+password) can **disconnect** Google and connect it again. Any other seeded account with a password (for example
+`john_davis`) can **connect** a Google account from its profile.

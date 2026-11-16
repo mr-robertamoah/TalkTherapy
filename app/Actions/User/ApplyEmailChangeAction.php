@@ -28,10 +28,19 @@ class ApplyEmailChangeAction extends Action
             'pending_email_requested_by' => null,
             'pending_email_confirmed_at' => null,
             ...($byTeam ? ['session_version' => (int) $locked->session_version + 1, 'remember_token' => Str::random(60)] : []),
-        ])->save();
+        ]);
 
-        EmailChangedNotification::sendTo($previous, $locked->name ?: $locked->username, $new, byTeam: $byTeam, stage: EmailChangedNotification::APPLIED, stale: $stale);
+        // SCRUM-455 (security review): a change the team made is account recovery -- a connected Google account may be
+        // how someone else got in, so it goes too, unless it's the only way left in (as ResetTwoFactorAction).
+        $googleDisconnected = $byTeam && filled($locked->google_id) && $locked->canSignInWithoutGoogle();
+        if ($googleDisconnected) {
+            $locked->forgetGoogle();
+        }
 
-        Log::notice('Account email change applied', ['user_id' => $locked->id, 'requested_by_team' => $byTeam]);
+        $locked->save();
+
+        EmailChangedNotification::sendTo($previous, $locked->name ?: $locked->username, $new, byTeam: $byTeam, stage: EmailChangedNotification::APPLIED, stale: $stale, googleDisconnected: $googleDisconnected);
+
+        Log::notice('Account email change applied', ['user_id' => $locked->id, 'requested_by_team' => $byTeam, 'google_disconnected' => $googleDisconnected]);
     }
 }

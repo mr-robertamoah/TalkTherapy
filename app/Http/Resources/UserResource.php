@@ -40,6 +40,9 @@ class UserResource extends JsonResource
             'isSuperAdmin' => $request->user()?->is($this->resource) && $this->isAdmin() && $this->isSuperAdmin(),
             // SCRUM-35b: why their own password doesn't meet the policy (null when it does) -- only ever about themselves.
             'passwordWeakReason' => $request->user()?->is($this->resource) ? $this->password_weak_reason : null,
+            // SCRUM-455: whether their own account has a password (one made with Google may not) -- the forms that ask
+            // for it point to "Set a password" instead. Only about themselves.
+            'passwordSet' => $request->user()?->is($this->resource) ? $this->resource->hasPassword() : null,
             // SCRUM-34: only the person themselves learns whether their account has two-factor sign-in.
             'twoFactorEnabled' => $request->user()?->is($this->resource) ? $this->hasTwoFactorEnabled() : null,
             // SCRUM-427: a new address waiting for its owner to confirm it, and once confirmed when it takes effect --

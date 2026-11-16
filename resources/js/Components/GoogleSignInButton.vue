@@ -1,25 +1,20 @@
 <script setup>
-// SCRUM-453/454: a Google-branded button. With `href` it's a link (a full page load -- it leaves for Google's sign-in
-// page, so not an Inertia visit); without, a plain button that emits `click`. The label defaults to "Continue with Google".
+// SCRUM-453/454/455 (Google sign-in, SCRUM-112): Google's own button look (white, its "G", its grey border and text), as on the
+// sign-in page. A link when given an href (a full-page visit to Google), otherwise a button for a form.
 defineProps({
-    href: {
-        type: String,
-        default: null,
-    },
-});
-
-defineEmits(['click']);
-
-const classes = 'flex w-full items-center justify-center gap-3 rounded-md border border-[#747775] bg-white px-4 py-2.5 text-sm font-medium text-[#1F1F1F] hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2'
+    href: { type: String, default: null },
+    type: { type: String, default: 'button' },
+    disabled: { type: Boolean, default: false },
+})
 </script>
 
 <template>
     <component
         :is="href ? 'a' : 'button'"
-        :href="href || undefined"
-        :type="href ? undefined : 'button'"
-        :class="classes"
-        @click="href ? undefined : $emit('click', $event)"
+        :href="href ?? undefined"
+        :type="href ? undefined : type"
+        :disabled="href ? undefined : disabled"
+        class="flex w-full items-center justify-center gap-3 rounded-md border border-[#747775] bg-white px-4 py-2.5 text-sm font-medium text-[#1F1F1F] hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
     >
         <svg class="h-5 w-5 shrink-0" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
             <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />

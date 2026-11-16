@@ -9,9 +9,12 @@ import PrimaryButton from '@/Components/PrimaryButton.vue'
 import SecondaryButton from '@/Components/SecondaryButton.vue'
 import DangerButton from '@/Components/DangerButton.vue'
 import TextInput from '@/Components/TextInput.vue'
+import SetPasswordPointer from '@/Components/SetPasswordPointer.vue'
+import usePasswordSet from '@/Composables/usePasswordSet'
 
 const page = usePage()
 const enabled = computed(() => !!page.props.auth?.user?.twoFactorEnabled)
+const passwordSet = usePasswordSet()
 // SCRUM-424: a reset the team scheduled, still waiting to apply.
 const resetDueAt = computed(() => page.props.auth?.user?.twoFactorResetDueAt)
 const cancellingReset = ref(false)
@@ -181,8 +184,11 @@ const passwordTitle = computed(() => ({
             <InputError class="mt-2" :message="resetError" />
         </div>
 
+        <!-- SCRUM-455: every step asks for the password, which an account made with Google may not have. -->
+        <SetPasswordPointer v-if="!passwordSet" class="mt-6" :action="enabled ? 'change two-factor sign-in' : 'turn on two-factor sign-in'" />
+
         <!-- Not started -->
-        <div v-if="step === 'idle'" class="mt-6 flex flex-wrap gap-3">
+        <div v-else-if="step === 'idle'" class="mt-6 flex flex-wrap gap-3">
             <PrimaryButton v-if="!enabled" @click="ask('setup')">Turn on</PrimaryButton>
             <template v-else>
                 <SecondaryButton @click="ask('codes')">New recovery codes</SecondaryButton>

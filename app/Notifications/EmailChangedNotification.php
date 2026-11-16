@@ -29,6 +29,8 @@ class EmailChangedNotification extends Notification implements ShouldQueue
 
     public const STOP_LINK_DAYS = 4;
 
+    public const GOOGLE_DISCONNECTED = 'Google sign-in was disconnected from the account too. It can be connected again from the profile once signed in.';
+
     public function __construct(
         public string $name,
         public ?string $maskedNewEmail,
@@ -40,6 +42,8 @@ class EmailChangedNotification extends Notification implements ShouldQueue
         public ?string $effectiveAt = null,
         public bool $accountHasEmail = true,
         public bool $stale = false,
+        // SCRUM-455: the team's change also disconnected Google sign-in (ApplyEmailChangeAction).
+        public bool $googleDisconnected = false,
     ) {
         $this->afterCommit();
     }
@@ -51,7 +55,7 @@ class EmailChangedNotification extends Notification implements ShouldQueue
     // protectedEmailIsStale()). Its mailbox may have passed to someone else, so they're told only that a change was asked
     // for and to contact support: no name, no new address, no "This wasn't me" (which would let a stranger stop the
     // owner's real change and lock them out).
-    public static function sendTo(?string $currentEmail, string $name, ?string $newEmail, bool $byTeam = false, string $stage = self::REQUESTED, ?int $userId = null, ?string $effectiveAt = null, ?string $pendingHash = null, bool $accountHasEmail = true, bool $stale = false): void
+    public static function sendTo(?string $currentEmail, string $name, ?string $newEmail, bool $byTeam = false, string $stage = self::REQUESTED, ?int $userId = null, ?string $effectiveAt = null, ?string $pendingHash = null, bool $accountHasEmail = true, bool $stale = false, bool $googleDisconnected = false): void
     {
         // SCRUM-434 (code review): a long-remembered address hears that a change was asked for and when it takes effect
         // -- not a second, near-identical email when the new address is confirmed.
@@ -71,6 +75,7 @@ class EmailChangedNotification extends Notification implements ShouldQueue
             $effectiveAt,
             $accountHasEmail,
             $stale,
+            $googleDisconnected,
         ));
     }
 
@@ -105,7 +110,8 @@ class EmailChangedNotification extends Notification implements ShouldQueue
                 default => $this->accountHasEmail
                     ? "{$who} to change the email address on your TalkTherapy account from this one to {$to} on {$this->changedAt}. It only takes effect once the new address is confirmed -- until then this address stays the account's."
                     : "{$who} on {$this->changedAt} to put {$to} on your TalkTherapy account, which this address was removed from. It only takes effect once that address is confirmed, and two days after that.",
-            });
+            })
+            ->lineIf($this->googleDisconnected, self::GOOGLE_DISCONNECTED);
 
         if ($this->stopUrl()) {
             $message->line($this->byTeam ? 'If you asked us to, no further action is needed.' : 'If you made this change, no further action is needed.')

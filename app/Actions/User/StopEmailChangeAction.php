@@ -24,6 +24,8 @@ use Illuminate\Support\Str;
 // SCRUM-424 path), and both addresses are told with a cancel link. Never for a change a super administrator asked for
 // (no intruder session there).
 //
+// SCRUM-455: Google sign-in is disconnected as well (it could be the intruder's way back in).
+//
 // SCRUM-433: an account with no email gets its remembered address back only when it was remembered recently
 // (auth.email_stop_restore_days): a long-remembered mailbox may have passed to someone else, who could then reset the
 // password. Otherwise the account is left with no email and its owner goes through support.
@@ -57,7 +59,9 @@ class StopEmailChangeAction extends Action
                     $user->pending_email_requested_at->copy()->subDays((int) config('auth.email_stop_two_factor_lookback_days')));
             $droppedEmail = $user->pending_email;
 
-            $user->forceFill([
+            // SCRUM-455 (security review): a Google account connected meanwhile may be the intruder's -- let go of it
+            // too. The owner connects theirs again once back in (the stop page says so).
+            $user->forgetGoogle()->forceFill([
                 ...($restore ? ['email' => $user->last_verified_email, 'email_verified_at' => now()] : []),
                 'pending_email' => null,
                 'pending_email_requested_at' => null,
