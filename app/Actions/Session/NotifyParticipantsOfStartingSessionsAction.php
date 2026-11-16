@@ -3,6 +3,7 @@
 namespace App\Actions\Session;
 
 use App\Actions\Action;
+use App\Models\GroupTherapy;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Notifications\SessionDueNotification;
@@ -21,6 +22,7 @@ class NotifyParticipantsOfStartingSessionsAction extends Action
             ->whereAboutToStart()
             ->with(['for' => fn (MorphTo $morphTo) => $morphTo->morphWith([
                 Therapy::class => ['addedby', 'counsellor.user'],
+                GroupTherapy::class => ['addedby', 'users'],
             ])])
             ->get()
             ->each(function (Session $session) {

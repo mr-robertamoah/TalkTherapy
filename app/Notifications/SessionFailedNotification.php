@@ -3,7 +3,6 @@
 namespace App\Notifications;
 
 use App\Models\Session;
-use App\Models\Therapy;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -28,7 +27,9 @@ class SessionFailedNotification extends Notification implements ShouldQueue
      */
     public function via(object $notifiable): array
     {
-        return ['mail'];
+        // SCRUM-449 (security review): now sent to a group's members too -- only to a verified address, as
+        // SessionDueNotification, since a mistyped one may be someone else's.
+        return $notifiable->email_verified_at ? ['mail'] : [];
     }
 
     /**
@@ -40,7 +41,7 @@ class SessionFailedNotification extends Notification implements ShouldQueue
 
         return (new MailMessage)
             ->error()
-            ->subject("Session Failed.")
+            ->subject('Session Failed.')
             ->line("For some reason the session with name: '{$this->session->name}' for {$type} with name: {$this->session->for->name} failed to happen.")
             ->action("Visit {$type} Page", $url)
             ->line("Thank you for choosing to 'TalkTherapy'.");

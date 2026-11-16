@@ -20,6 +20,7 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 trait TherapyTrait
 {
@@ -381,23 +382,33 @@ trait TherapyTrait
         return $this->morphMany(Discussion::class, 'for');
     }
 
+    // SCRUM-448: when the therapy ends or is deleted, each session still open is closed -- with ended_at, as the
+    // lifecycle does -- and sessions already finished keep their status (a failed or abandoned one never becomes held).
+    //  - never started (PENDING, or a start not yet confirmed) => FAILED;
+    //  - started but not ended by both sides (IN_SESSION, HELD_CONFIRMATION) => ABANDONED.
+    // Never HELD, so never billed (security review): nobody acts here, so a one-sided "it was held" can't be confirmed --
+    // ending the therapy mustn't finish it as held and bill an organisation for it.
+    // Each one under its own row lock and re-read, so a confirmation landing at the same moment isn't overwritten.
     public function endSessions()
     {
         $this->sessions()
-            ->wherePending()
-            ->update(['status' => SessionStatusEnum::failed->value]);
+            ->whereStatusNotIn(SessionStatusEnum::finished())
+            ->pluck('id')
+            ->each(fn (int $id) => DB::transaction(function () use ($id) {
+                $session = Session::query()->whereKey($id)->lockForUpdate()->first();
 
-        $this->sessions()
-            ->wherePastEndTime()
-            ->update(['status' => SessionStatusEnum::held->value]);
+                if (! $session || in_array($session->status, SessionStatusEnum::finished(), true)) {
+                    return;
+                }
 
-        $this->sessions()
-            ->whereStatusIn([
-                SessionStatusEnum::held_confirmation->value,
-                SessionStatusEnum::in_session->value,
-                SessionStatusEnum::in_session_confirmation->value,
-            ])
-            ->update(['status' => SessionStatusEnum::abandoned->value]);
+                $session->update([
+                    'status' => in_array($session->status, [
+                        SessionStatusEnum::pending->value,
+                        SessionStatusEnum::in_session_confirmation->value,
+                    ], true) ? SessionStatusEnum::failed->value : SessionStatusEnum::abandoned->value,
+                    'ended_at' => $session->ended_at ?? now(),
+                ]);
+            }));
     }
 
     public function getTopicsCountAttribute()

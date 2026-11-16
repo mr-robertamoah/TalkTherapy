@@ -459,6 +459,30 @@ class GroupTherapy extends Model
         return $users->filter()->unique('id');
     }
 
+    // SCRUM-449: who a session of this group is for, as the scheduler's "starting" and "failed" notices are sent -- its
+    // active counsellors (a counsellor creator among them, unless their profile was deleted), its user creator and its
+    // current members, without a closed account or a client paused for a missing guardian. The pause applies to the
+    // clients only, checked in one query; guardians aren't added, as for a one-to-one session.
+    public function sessionParticipants(): Collection
+    {
+        $clients = collect([$this->addedby instanceof User ? $this->addedby : null])->merge($this->users)->filter();
+
+        $pausedIds = $clients->isEmpty() ? [] : User::query()
+            ->whereKey($clients->pluck('id')->all())
+            ->wherePausedForMissingGuardian()
+            ->get(['id', 'dob'])
+            ->reject(fn (User $user) => $user->isAdult())
+            ->modelKeys();
+
+        return $this->activeCounsellors()->load('user')->map(fn (Counsellor $counsellor) => $counsellor->user)
+            ->toBase()
+            ->merge($clients->reject(fn (User $user) => in_array($user->id, $pausedIds, true)))
+            ->filter()
+            ->reject(fn (User $user) => $user->trashed())
+            ->unique('id')
+            ->values();
+    }
+
     public function getOtherUsers(User $user)
     {
         $users = collect();
