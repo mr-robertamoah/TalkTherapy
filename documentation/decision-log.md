@@ -13035,3 +13035,10 @@ Planned with the product-owner, architect and project-manager; split into SCRUM-
   - **New sign-ups:** the pending sign-up lives in the session only, so no half-made accounts.
   - **Suspension:** handled by the existing middleware, as for password sign-in.
   - **Closing an account** clears the Google link at once.
+
+## SCRUM-451 — shared account-creation and sign-in steps (2026-11-16)
+
+- **`CreateAccountAction::execute(string $ip, Closure $input)`:** the per-address limit is counted before the form is validated (SCRUM-400), so validation has to run inside it. The caller passes a closure that validates and returns the account's details (username, optional email, optional plain password). Any exception from it gives the count back. The action only creates what registration needs today. Google's columns, a verified email, a date of birth and `google_id` are added to the details array by the ticket that adds those columns. The closure does the validation; the action validates nothing itself. `password` must be present: a plain password, or an explicit null for a password-less account (stored once SCRUM-452 makes the column nullable; it skips `password_checked_at`). Leaving the key out throws, so a form can't create a password-less account by forgetting it. The IP may be null, as `Request::ip()` allows (review).
+- **Not in the action:** firing `Registered`, signing in and redirecting stay in `RegisteredUserController`. Google's finish step will want a different redirect.
+- **`TOO_MANY`:** moved to the action. `RegisteredUserController::TOO_MANY` is kept as an alias so existing tests and callers are unchanged.
+- **`BeginSignInAction::execute(Request, User, bool $remember): RedirectResponse`:** holds the "2FA challenge or `CompleteLoginAction` + intended redirect" decision that was in `AuthenticatedSessionController::store`. It's an action of its own rather than a static on `CompleteLoginAction`, because that action means "every step has passed".
