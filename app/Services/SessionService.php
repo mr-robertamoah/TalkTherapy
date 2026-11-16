@@ -50,6 +50,8 @@ use Illuminate\Support\Facades\Notification;
 
 class SessionService extends Service
 {
+    public const CANNOT_FAIL = 'Only a session that never started can be marked as failed.';
+
     public function getSessions(GetSessionsDTO $getSessionsDTO)
     {
         $user = $getSessionsDTO->user;
@@ -235,7 +237,18 @@ class SessionService extends Service
 
         EnsureCanEndSessionAction::new()->execute($createSessionDTO);
 
-        $session = $this->underSessionLock($createSessionDTO, fn () => ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::failed->value));
+        $session = $this->underSessionLock($createSessionDTO, function () use ($createSessionDTO) {
+            // SCRUM-450: only a session that never started can be marked failed -- never one that was held (and
+            // perhaps billed), abandoned or under way. Checked under the lock, against the status as it is now.
+            if (! in_array($createSessionDTO->session->status, [
+                SessionStatusEnum::pending->value,
+                SessionStatusEnum::in_session_confirmation->value,
+            ], true)) {
+                throw new SessionException(self::CANNOT_FAIL, 422);
+            }
+
+            return ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::failed->value);
+        });
 
         Notification::send(
             $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user),

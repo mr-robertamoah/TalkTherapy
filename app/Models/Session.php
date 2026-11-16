@@ -199,8 +199,8 @@ class Session extends Model
         if ($this->for_type == Therapy::class) {
             $users[] = $this->for->addedby;
             $users[] = $this->for->counsellor->user;
-        } else {
-
+        } elseif ($this->for_type == GroupTherapy::class && $this->for) {
+            $users = $this->for->sessionParticipants()->all();
         }
 
         return $users;
