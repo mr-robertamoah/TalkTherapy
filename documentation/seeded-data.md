@@ -292,16 +292,19 @@ there is none). From the browser console, on the Vite dev server only, `window._
 
 Audio only on a weak connection (SCRUM-460):
 - `setQuality('bad')` pauses your camera at once (`setQuality('poor')` after ~10 s); the microphone stays on. You see
-  "Video paused to keep your call going — audio continues" with "Turn video back on", and your own tile says "Video
-  paused — weak connection". `setQuality('good')` brings the camera back after ~30 s -- only if the app paused it,
-  and at most twice per call (after that, only the button). A camera you turned off yourself is never touched.
-- The "audio only" button (any participant, watchers included) turns your camera off and stops showing everyone
-  else's video; "Turn video back on" undoes it (and turns your camera back on if it was on).
+  "Video paused to keep your call going -- audio continues" with "Turn video back on", and your own tile says "Video
+  paused -- weak connection". `setQuality('good')` brings the camera back after ~30 s -- only if the app paused it,
+  only if the Reverb connection stayed up meanwhile, and at most twice per call (after that, only the button). A
+  camera you turned off yourself is never touched.
+- The "audio only" button (any participant, watchers included) turns your camera off and stops receiving everyone
+  else's video ("Saving data -- video is off. Audio continues."; other tiles say "Video hidden to save data");
+  "Turn video back on" undoes it (and turns your camera back on if it was on).
+- An automatic rejoin (`dropRecoverable()`) keeps your own camera-off and mute, the app's pause and audio only.
 - `addParticipant()` returns a tile id, e.g. `'fake-remote-1'`; then `setRemoteVideo(id, false)` shows "Camera off"
-  on that tile and `setRemoteNetworkPause(id, true)` shows "Video paused — weak connection" (cleared by
-  `setRemoteNetworkPause(id, false)`, by `setRemoteVideo(id, true)` after it went off, or by
-  `removeParticipant(id)`). Pass anything other than a boolean -- e.g. `setRemoteNetworkPause(id, { ttNetworkPause:
-  'yes' })` -- to check a malformed message is ignored.
+  on that tile, and `setRemoteNetworkPause(id, true)` turns it into "Video paused -- weak connection" (the label
+  shows only while that person's video is off). It clears with `setRemoteNetworkPause(id, false)`, with
+  `setRemoteVideo(id, true)`, or with `removeParticipant(id)`. Pass anything other than a boolean -- e.g.
+  `setRemoteNetworkPause(id, { ttNetworkPause: 'yes' })` -- to check a malformed message is ignored.
 - `state()` also reports `videoOn` (your camera), `receivingVideo` / `audioOnly`, `sentNetworkPause` (the last flag
   your browser sent to the others, `null` if none) and each remote's `videoOn`.
 

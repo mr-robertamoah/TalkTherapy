@@ -14,6 +14,11 @@ import { dailyRemoteVideoOn, networkPauseMessage, parseNetworkPauseMessage } fro
 // first if still active). There is no separate "end for everyone" SDK call -- ending the room
 // for everyone is our own backend's DeleteRoom API call (DailyClient::deleteRoom), never
 // anything the joining browser does -- so leave() and end() are deliberately identical here.
+// TT-3.3c/SCRUM-460: "audio only" subscriptions -- everyone's audio (screen-share audio too), no video.
+function audioOnlyTracks() {
+    return { audio: true, screenAudio: true, video: false, screenVideo: false }
+}
+
 export default function createDailyVideoClient(callbacks) {
     let callObject = null
     let audioEnabled = true
@@ -29,6 +34,8 @@ export default function createDailyVideoClient(callbacks) {
     const attachedElements = new Map()
     // TT-3.3c/SCRUM-460: the last camera state reported per remote id, so only a change is reported.
     const remoteVideoOn = new Map()
+    // TT-3.3c/SCRUM-460: false in "audio only" -- subscribed to everyone's audio, nobody's video.
+    let receivingVideo = true
 
     function idFor(participant) {
         return participant.local ? 'local' : participant.session_id
@@ -58,7 +65,10 @@ export default function createDailyVideoClient(callbacks) {
 
     // TT-3.3c/SCRUM-460: a remote camera turning off/on, from Daily's own track state (never from
     // anything the participant says about themselves) -- drives the tile's camera-off placeholder.
+    // Not while unsubscribed from video ("audio only"): the track state then says what WE asked for,
+    // not whether their camera is on.
     function reportRemoteVideo(id, participant) {
+        if (!receivingVideo) return
         const isOn = dailyRemoteVideoOn(participant.tracks?.video?.state)
         if (isOn === null || remoteVideoOn.get(id) === isOn) return
         remoteVideoOn.set(id, isOn)
@@ -86,10 +96,21 @@ export default function createDailyVideoClient(callbacks) {
         if (now !== was) callbacks.onReconnecting?.(now)
     }
 
-    async function join(credentials, { startVideoOff = false } = {}) {
+    async function join(credentials, { startVideoOff = false, startAudioOff = false } = {}) {
         callObject = DailyIframe.createCallObject()
 
-        callObject.on('participant-joined', (e) => handleParticipant(e.participant))
+        callObject.on('participant-joined', (e) => {
+            // TT-3.3c/SCRUM-460: with automatic subscription off ("audio only"), a newcomer is
+            // subscribed to nothing until told -- their audio, never their video.
+            if (!receivingVideo && e?.participant && !e.participant.local) {
+                try {
+                    callObject.updateParticipant(e.participant.session_id, { setSubscribedTracks: audioOnlyTracks() })
+                } catch (err) {
+                    // Left again already -- nothing to subscribe to.
+                }
+            }
+            handleParticipant(e.participant)
+        })
         callObject.on('participant-updated', (e) => handleParticipant(e.participant))
         callObject.on('participant-left', (e) => {
             const id = idFor(e.participant)
@@ -137,9 +158,9 @@ export default function createDailyVideoClient(callbacks) {
         // group, for video) joins with those devices off, so the browser never asks for a camera or
         // mic the token can't send from anyway. Daily enforces the token's canSend regardless.
         const capabilities = credentials.participant ?? { canSendAudio: true, canSendVideo: true }
-        audioEnabled = capabilities.canSendAudio
-        // TT-3.3c/SCRUM-460: startVideoOff -- a rejoin while video was paused for the connection
-        // (or in audio-only mode) doesn't switch the camera on just to switch it off again.
+        // TT-3.3c/SCRUM-460: startVideoOff/startAudioOff -- an automatic rejoin keeps the person's own
+        // camera-off and mute, and the app's pause/"audio only", rather than switching them on.
+        audioEnabled = capabilities.canSendAudio && !startAudioOff
         videoEnabled = capabilities.canSendVideo && !startVideoOff
 
         await callObject.join({
@@ -187,17 +208,32 @@ export default function createDailyVideoClient(callbacks) {
         return videoEnabled
     }
 
-    // TT-3.3c/SCRUM-460: the "audio only" mode's receive side. Daily's setSubscribedTracks only works
-    // with subscribeToTracksAutomatically turned off (daily-js validates it), which would make this
-    // client manage every subscription itself -- so instead every remote camera is dropped to its
-    // lowest simulcast layer: 'base' covers people who join later, '*' everyone already here. Restored
-    // by inheriting Daily's defaults again. (SCRUM-317: confirm the bandwidth this saves on a real
-    // room, and that 'inherit' brings back the default layer.)
-    async function setReceiveVideo(on) {
+    // TT-3.3c/SCRUM-460: "audio only"'s receive side -- actually stop receiving video. daily-js only
+    // accepts setSubscribedTracks once automatic subscription is off (it validates this, and
+    // setSubscribeToTracksAutomatically() updates the flag it checks synchronously), so: automatic
+    // off, then everyone subscribed to audio only; newcomers meanwhile get the same in
+    // 'participant-joined'. Leaving: everyone subscribed to everything again, then automatic back on.
+    // (SCRUM-317: confirm on a real room, SFU and peer-to-peer, that video stops arriving and comes
+    // back for everyone, newcomers included.)
+    function setReceiveVideo(on) {
+        receivingVideo = !!on
         if (!callObject) return
-        await callObject.updateReceiveSettings(on
-            ? { base: { video: { layer: 'inherit' } }, '*': 'inherit' }
-            : { base: { video: { layer: 0 } }, '*': { video: { layer: 0 } } })
+        if (receivingVideo) {
+            callObject.updateParticipants({ '*': { setSubscribedTracks: true } })
+            callObject.setSubscribeToTracksAutomatically(true)
+            return
+        }
+        callObject.setSubscribeToTracksAutomatically(false)
+        callObject.updateParticipants({ '*': { setSubscribedTracks: audioOnlyTracks() } })
+    }
+
+    // TT-3.3c/SCRUM-460: whether Daily itself still lets this person send video (their token's
+    // permissions, updated live by our server's update-permissions call), or null if it can't say.
+    function providerAllowsVideo() {
+        const canSend = callObject?.participants()?.local?.permissions?.canSend
+        if (typeof canSend === 'boolean') return canSend
+        if (canSend instanceof Set) return canSend.has('video')
+        return null
     }
 
     // TT-3.3c/SCRUM-460: tell everyone else our video is (no longer) paused for the connection.
@@ -235,5 +271,8 @@ export default function createDailyVideoClient(callbacks) {
         remoteVideoOn.clear()
     }
 
-    return { join, leave, end, toggleMute, toggleCamera, setCamera, setReceiveVideo, sendNetworkPause, disableLocalMedia, attachVideo, destroy }
+    return {
+        join, leave, end, toggleMute, toggleCamera, setCamera, setReceiveVideo, sendNetworkPause, providerAllowsVideo,
+        disableLocalMedia, attachVideo, destroy,
+    }
 }

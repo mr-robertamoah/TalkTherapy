@@ -24,9 +24,9 @@ const sessionRef = computed(() => props.session)
 const {
   status, participants, isMuted, isCameraOn, connectionQuality, lastError, reconnecting,
   reconnectAttempt, announcement, removedByCounsellor, capabilities, holdsSpeakingGrant, handRaised, raisedHandUserIds, speakerUserIds, speakingNotice,
-  idleSecondsRemaining, mediaBusy, mediaError, join, leave, removeParticipant, cancel, toggleMute, toggleCamera, attachVideo,
+  idleSecondsRemaining, micBusy, cameraBusy, mediaError, join, leave, removeParticipant, cancel, toggleMute, toggleCamera, attachVideo,
   raiseHand, lowerHand, grantSpeaking, revokeSpeaking,
-  cameraWanted, videoPausedForNetwork, audioOnly, remoteMedia, enterAudioOnly, leaveAudioOnly,
+  cameraWanted, videoPausedForNetwork, audioOnly, remoteMedia, videoAllowed, enterAudioOnly, leaveAudioOnly,
 } = useVideoSession(sessionRef)
 
 const videoElements = ref({})
@@ -404,32 +404,33 @@ onBeforeUnmount(() => {
       <!-- TT-3.3c/SCRUM-460: the app paused this person's camera for a weak connection. Solid, not
            dismissable: it goes when the video comes back (automatically or by the button). -->
       <div
-        v-if="videoPausedForNetwork"
+        v-if="videoPausedForNetwork && videoAllowed"
         class="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
         data-testid="video-network-paused"
       >
-        <span>Video paused to keep your call going — audio continues</span>
+        <span>Video paused to keep your call going -- audio continues</span>
         <button
           type="button"
           class="px-3 py-1.5 text-sm rounded-md border border-gray-800 bg-gray-800 text-white hover:bg-gray-700 disabled:opacity-50"
-          :disabled="mediaBusy"
+          :disabled="cameraBusy"
           @click="clickedCamera"
         >
           Turn video back on
         </button>
       </div>
 
-      <!-- TT-3.3c/SCRUM-460: the person's own audio-only mode. -->
+      <!-- TT-3.3c/SCRUM-460: the person's own "audio only" mode (worded apart from the anonymous
+           "Audio only" note above, which is about never being on camera). -->
       <div
         v-else-if="audioOnly"
         class="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-800"
         data-testid="video-audio-only"
       >
-        <span>Audio only — video is off to save data. Audio continues.</span>
+        <span>Saving data -- video is off. Audio continues.</span>
         <button
           type="button"
           class="px-3 py-1.5 text-sm rounded-md border border-gray-800 bg-gray-800 text-white hover:bg-gray-700 disabled:opacity-50"
-          :disabled="mediaBusy"
+          :disabled="cameraBusy"
           @click="clickedLeaveAudioOnly"
         >
           Turn video back on
@@ -580,7 +581,7 @@ onBeforeUnmount(() => {
           v-if="capabilities.canSendAudio"
           type="button"
           class="px-4 py-2 text-sm rounded-md border disabled:opacity-50"
-          :disabled="mediaBusy"
+          :disabled="micBusy"
           :class="isMuted ? 'bg-red-50 border-red-200 text-red-700' : 'bg-white border-gray-200 text-gray-700'"
           @click="clickedMute"
         >
@@ -590,7 +591,7 @@ onBeforeUnmount(() => {
           v-if="capabilities.canSendVideo && !audioOnly"
           type="button"
           class="px-4 py-2 text-sm rounded-md border disabled:opacity-50"
-          :disabled="mediaBusy"
+          :disabled="cameraBusy"
           :class="!isCameraOn ? 'bg-red-50 border-red-200 text-red-700' : 'bg-white border-gray-200 text-gray-700'"
           @click="clickedCamera"
         >
@@ -599,8 +600,8 @@ onBeforeUnmount(() => {
         <button
           v-if="!audioOnly"
           type="button"
-          class="px-4 py-2 text-sm rounded-md border border-gray-200 bg-white text-gray-700 disabled:opacity-50"
-          :disabled="mediaBusy"
+          class="px-4 py-2 text-sm rounded-md border disabled:opacity-50 bg-white border-gray-200 text-gray-700"
+          :disabled="cameraBusy"
           data-testid="video-audio-only-toggle"
           @click="enterAudioOnly"
         >

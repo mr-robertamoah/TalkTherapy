@@ -45,7 +45,10 @@ export function isVideoAllowed(capabilities) {
 //  - audioOnly: the person's own "audio only" mode -- the app leaves the camera alone meanwhile.
 //  - restoresUsed: automatic restores so far this call (MAX_AUTO_RESTORES caps them).
 //  - autoPauseSuspended: the person turned video back on themselves -- not paused again until
-//    the connection changes, so their own choice isn't undone the moment they make it.
+//    the connection has been good again (nextAutoPauseSuspended()), so their own choice isn't
+//    undone the moment they make it, nor on a line flapping between weak and very weak.
+//  - restoreBlocked: restoreBlocked() below -- something since the pause means the app can no
+//    longer be sure video is still allowed; only the person's own "Turn video back on" remains.
 export function autoVideoDecision({
     quality,
     qualityForMs = 0,
@@ -56,6 +59,7 @@ export function autoVideoDecision({
     audioOnly = false,
     restoresUsed = 0,
     autoPauseSuspended = false,
+    restoreBlocked: blocked = false,
 } = {}) {
     if (audioOnly || !videoAllowed || !cameraWanted) return NO_ACTION
 
@@ -63,7 +67,7 @@ export function autoVideoDecision({
     const heldFor = Number.isFinite(qualityForMs) && qualityForMs > 0 ? qualityForMs : 0
 
     if (pausedByApp) {
-        if (cameraOn || restoresUsed >= MAX_AUTO_RESTORES || q !== QUALITY_GOOD) return NO_ACTION
+        if (cameraOn || blocked || restoresUsed >= MAX_AUTO_RESTORES || q !== QUALITY_GOOD) return NO_ACTION
         return { action: AUTO_RESTORE, inMs: Math.max(0, AUTO_RESTORE_GOOD_MS - heldFor) }
     }
 
@@ -72,6 +76,63 @@ export function autoVideoDecision({
     if (q === QUALITY_POOR) return { action: AUTO_PAUSE, inMs: Math.max(0, AUTO_PAUSE_POOR_MS - heldFor) }
 
     return NO_ACTION
+}
+
+// The person's "Turn video back on" suspends automatic pausing; only a move to a good connection
+// lifts it (a weak line flapping between poor and bad must not undo their choice).
+export function nextAutoPauseSuspended(suspended, nextQuality) {
+    return normalizeQuality(nextQuality) === QUALITY_GOOD ? false : !!suspended
+}
+
+// An automatic restore is skipped -- leaving the person's own button -- when the app may have
+// missed a revoke while the video was paused: the session channel (which carries revokes and
+// consent downgrades) dropped at any point since the pause, or isn't connected now; or the provider
+// itself says this person may not send video (null: the provider can't say -- not a block).
+export function restoreBlocked({ channelDroppedWhilePaused = false, channelConnected = true, providerAllowsVideo = null } = {}) {
+    return !!channelDroppedWhilePaused || channelConnected === false || providerAllowsVideo === false
+}
+
+// Whether an automatic pause/restore may still be applied once its provider call returns: no
+// capability change (join, grant, revoke, downgrade) landed meanwhile, video is still allowed, and
+// -- for a restore -- the app's pause still stands (the person didn't act in between). Otherwise the
+// result is dropped: no flag, no message to the others, no announcement.
+export function autoActionStillValid({ action, generationBefore, generationAfter, videoAllowed = false, pausedByApp = false } = {}) {
+    if (generationBefore !== generationAfter || !videoAllowed) return false
+    if (action === AUTO_RESTORE) return !!pausedByApp
+    return action === AUTO_PAUSE
+}
+
+// ---------------------------------------------------------------------------------------------
+// Joining and rejoining
+// ---------------------------------------------------------------------------------------------
+
+// The camera/mic state a join starts with. A first join (or the person's own "try again") starts
+// fresh: every device the server allows, on. An AUTOMATIC rejoin is the same call, so it keeps what
+// the person chose -- their own camera-off and mute (never switched back on behind their back) --
+// and the app's pause and "audio only", the pause only while the new response still allows video
+// (a granted member rejoins receive-only, so their pause simply ends). Never turns on anything the
+// server doesn't allow. `previous` is { cameraWanted, mutedByChoice, pausedByApp, audioOnly }.
+export function joinMediaState({ rejoin = false, capabilities = null, previous = {} } = {}) {
+    const canAudio = !!capabilities?.canSendAudio
+    const canVideo = !!capabilities?.canSendVideo
+
+    if (!rejoin) {
+        return { cameraOn: canVideo, cameraWanted: canVideo, muted: !canAudio, mutedByChoice: false, pausedByApp: false, audioOnly: false }
+    }
+
+    const pausedByApp = !!previous.pausedByApp && isVideoAllowed(capabilities)
+    const audioOnly = !!previous.audioOnly
+    const cameraOn = canVideo && !!previous.cameraWanted && !pausedByApp && !audioOnly
+    const mutedByChoice = canAudio && !!previous.mutedByChoice
+
+    return {
+        cameraOn,
+        cameraWanted: pausedByApp || cameraOn,
+        muted: !canAudio || mutedByChoice,
+        mutedByChoice,
+        pausedByApp,
+        audioOnly,
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -148,11 +209,13 @@ export const OVERLAY_NETWORK = 'network'
 export const OVERLAY_CAMERA_OFF = 'camera-off'
 export const OVERLAY_AUDIO_ONLY = 'audio-only'
 
-// What covers a tile instead of its video, or null for the video itself. The network reason wins:
-// it says why, where "camera off" only says that.
+// What covers a tile instead of its video, or null for the video itself. The network reason only
+// while the provider says the video really is off (a message alone never hides a live picture), and
+// it wins: it says why. Then this viewer's own "audio only" (nothing received to show), then a plain
+// camera-off.
 export function tileOverlay({ networkPaused = false, videoOff = false, receivingVideo = true } = {}) {
-    if (networkPaused) return OVERLAY_NETWORK
-    if (videoOff) return OVERLAY_CAMERA_OFF
+    if (networkPaused && videoOff) return OVERLAY_NETWORK
     if (!receivingVideo) return OVERLAY_AUDIO_ONLY
+    if (videoOff) return OVERLAY_CAMERA_OFF
     return null
 }

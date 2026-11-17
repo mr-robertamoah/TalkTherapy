@@ -12,14 +12,18 @@ import {
     OVERLAY_AUDIO_ONLY,
     OVERLAY_CAMERA_OFF,
     OVERLAY_NETWORK,
+    autoActionStillValid,
     autoVideoDecision,
     dailyRemoteVideoOn,
     decodeNetworkPauseText,
     isVideoAllowed,
+    joinMediaState,
     networkPauseMessage,
+    nextAutoPauseSuspended,
     parseNetworkPauseMessage,
     remoteNetworkPauseChanged,
     remoteVideoChanged,
+    restoreBlocked,
     tileOverlay,
 } from '../../resources/js/Video/audioOnlyPolicy.js'
 
@@ -204,13 +208,123 @@ describe('other people\'s tiles', () => {
         assert.deepEqual(entry, { videoOff: true, networkPaused: false })
     })
 
-    it('picks the tile overlay, the network reason first', () => {
+    it('shows the network reason only while the provider says the video is off', () => {
         assert.equal(tileOverlay({ networkPaused: true, videoOff: true }), OVERLAY_NETWORK)
-        assert.equal(tileOverlay({ networkPaused: true, videoOff: false }), OVERLAY_NETWORK)
-        assert.equal(tileOverlay({ videoOff: true }), OVERLAY_CAMERA_OFF)
+        assert.equal(tileOverlay({ networkPaused: true, videoOff: false }), null)
+        assert.equal(tileOverlay({ networkPaused: true, videoOff: true, receivingVideo: false }), OVERLAY_NETWORK)
+    })
+
+    it('puts this viewer\'s audio only before a plain camera-off', () => {
         assert.equal(tileOverlay({ receivingVideo: false }), OVERLAY_AUDIO_ONLY)
-        assert.equal(tileOverlay({ videoOff: true, receivingVideo: false }), OVERLAY_CAMERA_OFF)
+        assert.equal(tileOverlay({ videoOff: true, receivingVideo: false }), OVERLAY_AUDIO_ONLY)
+        assert.equal(tileOverlay({ networkPaused: true, receivingVideo: false }), OVERLAY_AUDIO_ONLY)
+        assert.equal(tileOverlay({ videoOff: true }), OVERLAY_CAMERA_OFF)
         assert.equal(tileOverlay({}), null)
         assert.equal(tileOverlay(), null)
+    })
+})
+
+describe('suspending automatic pause after "Turn video back on"', () => {
+    it('lifts only on a move to good', () => {
+        assert.equal(nextAutoPauseSuspended(true, 'poor'), true)
+        assert.equal(nextAutoPauseSuspended(true, 'bad'), true)
+        assert.equal(nextAutoPauseSuspended(true, 'unknown'), true)
+        assert.equal(nextAutoPauseSuspended(true, 'good'), false)
+        assert.equal(nextAutoPauseSuspended(false, 'bad'), false)
+    })
+})
+
+describe('blocking an automatic restore', () => {
+    it('blocks when the session channel dropped while paused, is down now, or the provider refuses video', () => {
+        assert.equal(restoreBlocked(), false)
+        assert.equal(restoreBlocked({ channelConnected: true, providerAllowsVideo: true }), false)
+        assert.equal(restoreBlocked({ providerAllowsVideo: null }), false)
+        assert.equal(restoreBlocked({ channelDroppedWhilePaused: true }), true)
+        assert.equal(restoreBlocked({ channelConnected: false }), true)
+        assert.equal(restoreBlocked({ providerAllowsVideo: false }), true)
+    })
+
+    it('leaves a blocked restore to the person\'s own button', () => {
+        assert.equal(autoVideoDecision({ ...paused, restoreBlocked: true, quality: 'good', qualityForMs: 60000 }).action, null)
+        // A pause is never blocked -- it only ever turns video off.
+        assert.equal(autoVideoDecision({ ...sending, restoreBlocked: true, quality: 'bad' }).action, AUTO_PAUSE)
+    })
+})
+
+describe('applying an automatic action once the provider returns', () => {
+    const ok = { generationBefore: 3, generationAfter: 3, videoAllowed: true, pausedByApp: true }
+
+    it('applies a pause or restore when nothing changed meanwhile', () => {
+        assert.equal(autoActionStillValid({ ...ok, action: AUTO_PAUSE, pausedByApp: false }), true)
+        assert.equal(autoActionStillValid({ ...ok, action: AUTO_RESTORE }), true)
+    })
+
+    it('drops a pause after a capability change or once video is no longer allowed', () => {
+        assert.equal(autoActionStillValid({ ...ok, action: AUTO_PAUSE, generationAfter: 4 }), false)
+        assert.equal(autoActionStillValid({ ...ok, action: AUTO_PAUSE, videoAllowed: false }), false)
+    })
+
+    it('drops a restore after a capability change, a revoke, or the person acting first', () => {
+        assert.equal(autoActionStillValid({ ...ok, action: AUTO_RESTORE, generationAfter: 4 }), false)
+        assert.equal(autoActionStillValid({ ...ok, action: AUTO_RESTORE, videoAllowed: false }), false)
+        assert.equal(autoActionStillValid({ ...ok, action: AUTO_RESTORE, pausedByApp: false }), false)
+    })
+
+    it('drops anything unrecognised', () => {
+        assert.equal(autoActionStillValid({ ...ok, action: 'other' }), false)
+        assert.equal(autoActionStillValid(), false)
+    })
+})
+
+describe('joining and rejoining', () => {
+    const speaker = { receiveOnly: false, canSendAudio: true, canSendVideo: true }
+    const watcher = { receiveOnly: true, canSendAudio: false, canSendVideo: false }
+    const anonymousCreator = { receiveOnly: false, canSendAudio: true, canSendVideo: false }
+    const choseOff = { cameraWanted: false, mutedByChoice: true, pausedByApp: false, audioOnly: false }
+
+    it('starts a first join or a manual "try again" fresh, whatever came before', () => {
+        assert.deepEqual(joinMediaState({ rejoin: false, capabilities: speaker, previous: choseOff }), {
+            cameraOn: true, cameraWanted: true, muted: false, mutedByChoice: false, pausedByApp: false, audioOnly: false,
+        })
+        assert.deepEqual(joinMediaState({ rejoin: false, capabilities: watcher }), {
+            cameraOn: false, cameraWanted: false, muted: true, mutedByChoice: false, pausedByApp: false, audioOnly: false,
+        })
+    })
+
+    it('keeps the person\'s own camera-off and mute on an automatic rejoin', () => {
+        assert.deepEqual(joinMediaState({ rejoin: true, capabilities: speaker, previous: choseOff }), {
+            cameraOn: false, cameraWanted: false, muted: true, mutedByChoice: true, pausedByApp: false, audioOnly: false,
+        })
+    })
+
+    it('brings back what the person had on', () => {
+        const state = joinMediaState({ rejoin: true, capabilities: speaker, previous: { cameraWanted: true, mutedByChoice: false } })
+        assert.equal(state.cameraOn, true)
+        assert.equal(state.muted, false)
+    })
+
+    it('keeps the app\'s pause (camera off, still wanted) and audio only', () => {
+        const paused = joinMediaState({ rejoin: true, capabilities: speaker, previous: { cameraWanted: true, pausedByApp: true } })
+        assert.equal(paused.cameraOn, false)
+        assert.equal(paused.cameraWanted, true)
+        assert.equal(paused.pausedByApp, true)
+
+        const audioOnly = joinMediaState({ rejoin: true, capabilities: watcher, previous: { audioOnly: true } })
+        assert.equal(audioOnly.audioOnly, true)
+        assert.equal(audioOnly.cameraOn, false)
+    })
+
+    it('never turns on anything the server no longer allows', () => {
+        // A granted member rejoins receive-only: the pause ends, nothing is on, they are muted.
+        const regranted = joinMediaState({ rejoin: true, capabilities: watcher, previous: { cameraWanted: true, pausedByApp: true, mutedByChoice: false } })
+        assert.deepEqual(regranted, { cameraOn: false, cameraWanted: false, muted: true, mutedByChoice: false, pausedByApp: false, audioOnly: false })
+
+        const anonymous = joinMediaState({ rejoin: true, capabilities: anonymousCreator, previous: { cameraWanted: true, pausedByApp: true } })
+        assert.equal(anonymous.cameraOn, false)
+        assert.equal(anonymous.pausedByApp, false)
+        assert.equal(anonymous.muted, false)
+
+        assert.equal(joinMediaState({ rejoin: true }).cameraOn, false)
+        assert.equal(joinMediaState({ rejoin: true }).muted, true)
     })
 })

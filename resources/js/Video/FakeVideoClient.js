@@ -100,7 +100,7 @@ export default function createFakeVideoClient(callbacks) {
     let receivingVideo = true
     let sentNetworkPause = null
 
-    async function join(creds, { startVideoOff = false } = {}) {
+    async function join(creds, { startVideoOff = false, startAudioOff = false } = {}) {
         // SCRUM-459: a simulated media-stage failure -- the join call succeeded, the "provider" then
         // failed. Before any device opens, so there is nothing to release.
         if (pendingJoinFailure.times > 0) {
@@ -116,6 +116,8 @@ export default function createFakeVideoClient(callbacks) {
         // so a failed join never leaves a device on.
         try {
             if (canSend.audio) await startAudio()
+            // SCRUM-460: an automatic rejoin keeps the person's own mute.
+            if (audioTrack && startAudioOff) audioTrack.enabled = false
             // SCRUM-460: a rejoin while video was paused (or in "audio only") keeps the camera off.
             if (canSend.video && !startVideoOff) await startVideo()
         } catch (err) {
@@ -288,6 +290,11 @@ export default function createFakeVideoClient(callbacks) {
         for (const id of remotes.keys()) bindRemote(id)
     }
 
+    // SCRUM-460: the fake's stand-in for the provider's own view of what this person may send.
+    function providerAllowsVideo() {
+        return canSend.video
+    }
+
     function sendNetworkPause(paused) {
         if (connected) sentNetworkPause = networkPauseMessage(paused).ttNetworkPause
     }
@@ -404,5 +411,8 @@ export default function createFakeVideoClient(callbacks) {
         devHook = null
     }
 
-    return { join, leave, end, toggleMute, toggleCamera, setCamera, setReceiveVideo, sendNetworkPause, disableLocalMedia, attachVideo, destroy }
+    return {
+        join, leave, end, toggleMute, toggleCamera, setCamera, setReceiveVideo, sendNetworkPause, providerAllowsVideo,
+        disableLocalMedia, attachVideo, destroy,
+    }
 }

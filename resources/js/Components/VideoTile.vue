@@ -1,4 +1,6 @@
 <script setup>
+import { OVERLAY_AUDIO_ONLY, OVERLAY_CAMERA_OFF, OVERLAY_NETWORK } from '@/Video/audioOnlyPolicy'
+
 // TT-3.2f-j/SCRUM-327: one participant's tile, shared by VideoCallPanel.vue's grid and spotlight
 // layouts so the three places a tile appears (grid, spotlight, side strip) can't drift apart.
 // Purely presentational -- the panel owns every action; this only emits.
@@ -14,16 +16,16 @@ defineProps({
   canFocus: { type: Boolean, default: false },
   canRemove: { type: Boolean, default: false },
   removing: { type: Boolean, default: false },
-  // TT-3.3c/SCRUM-460: what covers the video instead (audioOnlyPolicy.js's tileOverlay()): 'network'
-  // (paused for a weak connection), 'camera-off', 'audio-only' (this viewer isn't receiving video),
-  // or null for the video itself. The tile's own label already names (or masks) the person.
+  // TT-3.3c/SCRUM-460: what covers the video instead -- audioOnlyPolicy.js's tileOverlay(): the
+  // network pause, camera off, this viewer's own "audio only", or null for the video itself. The
+  // tile's own label already names (or masks) the person.
   overlay: { type: String, default: null },
 })
 
 const OVERLAY_TEXT = {
-  network: 'Video paused — weak connection',
-  'camera-off': 'Camera off',
-  'audio-only': 'Audio only — video not shown',
+  [OVERLAY_NETWORK]: 'Video paused -- weak connection',
+  [OVERLAY_CAMERA_OFF]: 'Camera off',
+  [OVERLAY_AUDIO_ONLY]: 'Video hidden to save data',
 }
 
 defineEmits(['toggle-focus', 'remove'])

@@ -62,7 +62,9 @@ export default function createChimeVideoClient(callbacks) {
                     meetingSession.audioVideo.pauseVideoTile(tileState.tileId)
                     return
                 }
-                if (!tileState.paused) reportRemoteVideo(id, !!tileState.active)
+                // On only once the tile is actually active -- an early inactive update is not
+                // "camera off" (that is a tile being removed, or no tile at all; see presence).
+                if (!tileState.paused && tileState.active) reportRemoteVideo(id, true)
             }
 
             callbacks.onVideoAvailable?.(id)
@@ -107,7 +109,7 @@ export default function createChimeVideoClient(callbacks) {
         },
     }
 
-    async function join(credentials, { startVideoOff = false } = {}) {
+    async function join(credentials, { startVideoOff = false, startAudioOff = false } = {}) {
         localAttendeeId = credentials.attendee.AttendeeId
 
         const logger = new ConsoleLogger('ChimeMeetingLogs', LogLevel.WARN)
@@ -144,6 +146,8 @@ export default function createChimeVideoClient(callbacks) {
 
             if (present) {
                 callbacks.onParticipantJoined?.({ id: attendeeId, isLocal: false, userId })
+                // TT-3.3c/SCRUM-460: no tile (yet) means no camera -- unless one already arrived.
+                if (![...tileIdToParticipantId.values()].includes(attendeeId)) reportRemoteVideo(attendeeId, false)
             } else {
                 remoteVideoOn.delete(attendeeId)
                 callbacks.onParticipantLeft?.(attendeeId)
@@ -173,7 +177,8 @@ export default function createChimeVideoClient(callbacks) {
             meetingSession.audioVideo.startLocalVideoTile()
             videoEnabled = true
         }
-        if (!capabilities.canSendAudio) meetingSession.audioVideo.realtimeMuteLocalAudio()
+        // TT-3.3c/SCRUM-460: startAudioOff -- an automatic rejoin keeps the person's own mute.
+        if (!capabilities.canSendAudio || startAudioOff) meetingSession.audioVideo.realtimeMuteLocalAudio()
 
         // TT-3.2c/SCRUM-310: credentials.attendee is this same session's own CreateAttendee
         // response (see ChimeVideoProvider::createParticipantCredentials()), which already
@@ -325,5 +330,7 @@ export default function createChimeVideoClient(callbacks) {
         remoteVideoOn.clear()
     }
 
+    // providerAllowsVideo() is optional in the contract -- Chime exposes no live per-attendee
+    // capability to the browser, so it isn't implemented here (the composable reads it as "can't say").
     return { join, leave, end, toggleMute, toggleCamera, setCamera, setReceiveVideo, sendNetworkPause, disableLocalMedia, attachVideo, destroy }
 }
