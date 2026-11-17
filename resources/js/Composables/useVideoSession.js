@@ -3,6 +3,7 @@ import { usePage } from '@inertiajs/vue3'
 import axios from 'axios'
 import { acquireChannel } from '@/Composables/sharedChannel'
 import {
+    DEVICE_ERROR_NAMES,
     QUALITY_GOOD,
     normalizeQuality,
     normalizeStop,
@@ -657,7 +658,12 @@ export default function useVideoSession(session) {
                 continue
             }
 
-            // A refusal: it keeps whatever state attemptJoin() left, and this browser is no
+            // A provider connect that keeps failing (its one retry used up) isn't a refusal or the
+            // person's devices: like running out of time, it ends in "We couldn't reconnect" with
+            // the text-chat hint, not the camera-permission message attemptJoin() left.
+            if (result.stage === 'media' && !DEVICE_ERROR_NAMES.includes(result.errorName)) break
+
+            // A refusal (or a device the person has to fix): it keeps whatever state attemptJoin() left, and this browser is no
             // longer in the call, so stop listening for it.
             abortReconnect()
             stopListeningForStatusChanges()
