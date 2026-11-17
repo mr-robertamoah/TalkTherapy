@@ -7,6 +7,8 @@ import { acquireChannel } from '@/Composables/sharedChannel'
 // Video/ChimeVideoClient.js) -- which one loads is decided entirely by the `videoProvider` Inertia
 // shared prop (config('video.provider'), see HandleInertiaRequestsV2::share()), a deployment-level
 // choice, never a runtime switch (mirrors TT-3.1a's own backend VideoServiceProvider binding).
+// SCRUM-458: plus Video/FakeVideoClient.js for `videoProvider` 'fake' -- local dev and Playwright QA
+// with no provider at all; same factory shape and callbacks.
 //
 // Deliberately NOT a formal JS interface/abstract class -- this codebase has no such precedent in
 // resources/js, and there are permanently only ever two implementations chosen once. Both client
@@ -231,6 +233,12 @@ export default function useVideoSession(session) {
     }
 
     async function loadClient() {
+        // SCRUM-458: the provider-less fake, local/testing only (the server refuses it elsewhere).
+        if (usePage().props.videoProvider === 'fake') {
+            const { default: createFakeVideoClient } = await import('@/Video/FakeVideoClient')
+            return createFakeVideoClient(buildCallbacks())
+        }
+
         if (usePage().props.videoProvider === 'chime') {
             const { default: createChimeVideoClient } = await import('@/Video/ChimeVideoClient')
             return createChimeVideoClient(buildCallbacks())
