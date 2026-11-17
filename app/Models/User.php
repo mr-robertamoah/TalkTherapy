@@ -135,9 +135,26 @@ class User extends Authenticatable implements MustVerifyEmailContract
 
     public function getAgeAttribute()
     {
-        return (bool) $this->dob
-            ? (int) now()->diffInYears(new Carbon($this->dob), true)
-            : 0;
+        return static::ageForDob($this->dob);
+    }
+
+    // SCRUM-456: whole years from the date of birth to today, signed -- a date of birth in the future (stored or imported
+    // past the form's before:today) is age 0, never the size of the gap, so it can't count as an adult. Calendar dates in
+    // the app's timezone (security review): any time of day on the value is dropped, so the birthday itself counts, and a
+    // 29 February birthday comes round on 1 March in other years.
+    public static function ageForDob(mixed $dob): int
+    {
+        if (! $dob) {
+            return 0;
+        }
+
+        $born = $dob instanceof \DateTimeInterface ? $dob->format('Y-m-d') : Carbon::parse($dob)->toDateString();
+        $today = now(config('app.timezone'))->toDateString();
+
+        // Compared as Y-m-d strings: the year gap, less one if this year's birthday (month-day) hasn't come yet.
+        $years = (int) substr($today, 0, 4) - (int) substr($born, 0, 4) - (substr($today, 5) < substr($born, 5) ? 1 : 0);
+
+        return max(0, $years);
     }
 
     public function routeNotificationForMail()
@@ -235,6 +252,13 @@ class User extends Authenticatable implements MustVerifyEmailContract
     public function canSignInWithoutGoogle(): bool
     {
         return $this->hasPassword() || ($this->email && $this->hasVerifiedEmail());
+    }
+
+    // SCRUM-456: connected to Google, and Google is the only way in -- account recovery leaves that link alone
+    // (ResetTwoFactorAction), so whoever holds the Google account alone gets in afterwards.
+    public function signsInOnlyWithGoogle(): bool
+    {
+        return filled($this->google_id) && ! $this->canSignInWithoutGoogle();
     }
 
     // SCRUM-455: lets go of the connected Google account (filled only -- the caller saves, with whatever else changes).
@@ -411,7 +435,7 @@ class User extends Authenticatable implements MustVerifyEmailContract
 
     public function isAdult()
     {
-        return $this->age && $this->age >= 18;
+        return $this->age >= 18;
     }
 
     // TT-4.10c/SCRUM-292: mirrors getAgeAttribute()/isAdult()'s own math exactly, but for a
@@ -420,11 +444,7 @@ class User extends Authenticatable implements MustVerifyEmailContract
     // a throwaway model or duplicating the age calculation a third time.
     public static function isAdultForDob(?string $dob): bool
     {
-        if (! $dob) {
-            return false;
-        }
-
-        return (int) now()->diffInYears(new Carbon($dob), true) >= 18;
+        return static::ageForDob($dob) >= 18;
     }
 
     public function isGuardianOf(User $user)

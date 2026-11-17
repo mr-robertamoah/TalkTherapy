@@ -2,7 +2,7 @@
 
 namespace App\Rules;
 
-use Carbon\Carbon;
+use App\Models\User;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 
@@ -20,7 +20,8 @@ class MinimumAgeForDobRule implements ValidationRule
             return;
         }
 
-        if (now()->diffInYears(new Carbon($value), true) < 10) {
+        // SCRUM-456: signed age (User::ageForDob), so a future date is age 0 and fails too, not the size of the gap.
+        if (User::ageForDob($value) < 10) {
             $fail('The :attribute must belong to someone at least 10 years old.');
         }
     }

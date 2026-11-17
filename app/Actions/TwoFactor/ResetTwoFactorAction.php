@@ -32,13 +32,11 @@ class ResetTwoFactorAction extends Action
             // someone else gets in, and without two-factor nothing else would stop them. Unless it's the only way left
             // in (no password, and no verified email to set one through): then it stays, and the team is told.
             $googleDisconnected = false;
-            if (filled($locked->google_id)) {
-                if ($locked->canSignInWithoutGoogle()) {
-                    $locked->forgetGoogle()->forceFill(['session_version' => (int) $locked->session_version + 1])->save();
-                    $googleDisconnected = true;
-                } else {
-                    Log::warning('Two-factor reset left Google sign-in connected: it is the account\'s only way in', ['user_id' => $locked->id]);
-                }
+            if ($locked->signsInOnlyWithGoogle()) {
+                Log::warning('Two-factor reset left Google sign-in connected: it is the account\'s only way in', ['user_id' => $locked->id]);
+            } elseif (filled($locked->google_id)) {
+                $locked->forgetGoogle()->forceFill(['session_version' => (int) $locked->session_version + 1])->save();
+                $googleDisconnected = true;
             }
 
             $locked->notify(new TwoFactorChangedNotification(TwoFactorChangedNotification::RESET_BY_ADMIN, googleDisconnected: $googleDisconnected));

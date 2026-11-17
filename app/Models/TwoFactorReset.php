@@ -39,6 +39,10 @@ class TwoFactorReset extends Model
     // Applied at once from the server (--now) while one was waiting -- recorded as applied, not cancelled.
     public const APPLIED_NOW = 'applied_now';
 
+    // SCRUM-456 (security review M2): it would have left Google as the account's only way in, and nobody confirmed that
+    // when it was asked (google_only_confirmed_at) -- e.g. the email's verification was taken away during the wait.
+    public const WOULD_LEAVE_GOOGLE_ONLY = 'google_only';
+
     protected $guarded = [];
 
     protected function casts(): array
@@ -50,6 +54,7 @@ class TwoFactorReset extends Model
             'notified_at' => 'datetime',
             'applied_at' => 'datetime',
             'cancelled_at' => 'datetime',
+            'google_only_confirmed_at' => 'datetime',
         ];
     }
 

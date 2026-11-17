@@ -57,6 +57,9 @@ class ApplyDueTwoFactorResetsAction extends Action
             $closedAs = match (true) {
                 ! $user->hasTwoFactorEnabled() => TwoFactorReset::ALREADY_OFF,
                 ! $user->two_factor_confirmed_at?->equalTo($reset->two_factor_confirmed_at_snapshot) => TwoFactorReset::SUPERSEDED,
+                // SCRUM-456 (security review M2): it would leave Google as the only way in, and nobody agreed to that
+                // when it was asked (every source, the email stop's included).
+                $user->signsInOnlyWithGoogle() && ! $reset->google_only_confirmed_at => TwoFactorReset::WOULD_LEAVE_GOOGLE_ONLY,
                 default => null,
             };
 
@@ -78,9 +81,14 @@ class ApplyDueTwoFactorResetsAction extends Action
             return false;
         }
 
-        Log::notice($closedAs === null ? 'Two-factor sign-in reset applied' : 'Two-factor sign-in reset cancelled', [
-            'reset_id' => $reset->id, 'user_id' => $reset->user_id, 'requested_by' => $reset->requested_by_user_id, 'source' => $reset->source, 'reason' => $closedAs,
-        ]);
+        $context = ['reset_id' => $reset->id, 'user_id' => $reset->user_id, 'requested_by' => $reset->requested_by_user_id, 'source' => $reset->source, 'reason' => $closedAs];
+
+        // A reset stopped because Google would be the only way in needs the team's eyes: a warning.
+        if ($closedAs === TwoFactorReset::WOULD_LEAVE_GOOGLE_ONLY) {
+            Log::warning('Two-factor sign-in reset cancelled: it would leave Google as the account\'s only way in, unconfirmed', $context);
+        } else {
+            Log::notice($closedAs === null ? 'Two-factor sign-in reset applied' : 'Two-factor sign-in reset cancelled', $context);
+        }
 
         return $closedAs === null;
     }

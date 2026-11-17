@@ -16,6 +16,11 @@ use Illuminate\Support\Facades\Log;
 // wait unless cancelled -- RequestTwoFactorResetAction), only for an account with a verified email; this logs who asked.
 class ResetTwoFactorByAdminAction extends Action
 {
+    // SCRUM-456: the one wording -- the admin list's reset modal (AdminUserResource) and user:two-factor-reset show it.
+    public const GOOGLE_ONLY = 'This account signs in only with Google and has no verified email; after the reset, the Google account alone gets in.';
+
+    public const GOOGLE_ONLY_ON_SERVER = 'Reset it on the server, which asks you to confirm that.';
+
     public function execute(User $admin, User $user, #[\SensitiveParameter] ?string $adminCode, ?string $ip = null, ?string $reason = null): TwoFactorReset
     {
         if (! $admin->isSuperAdmin()) {
@@ -34,6 +39,12 @@ class ResetTwoFactorByAdminAction extends Action
         // reset someone talked the team into. The server command, after an identity check, is the way for them.
         if (! $user->hasVerifiedEmail()) {
             throw new TwoFactorException('This account has no verified email, so the person couldn\'t cancel the reset. Reset it on the server after checking who they are.', 422);
+        }
+
+        // SCRUM-456: nor one Google is the only way into (the check above already refuses nearly all of them) -- the reset
+        // would leave Google connected, so the server command says so and asks for that on its own (--google-only-ok).
+        if ($user->signsInOnlyWithGoogle()) {
+            throw new TwoFactorException(self::GOOGLE_ONLY.' '.self::GOOGLE_ONLY_ON_SERVER, 422);
         }
 
         // Before the admin's own code is checked, so a recovery code isn't used up on a request that's refused anyway

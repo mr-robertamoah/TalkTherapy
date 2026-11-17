@@ -182,6 +182,33 @@ Check every item before going live.
     To undo the schema anyway: set `GOOGLE_SIGN_IN_ENABLED=false`, run `php artisan migrate:rollback
     --path=database/migrations/2026_12_09_100000_add_google_sign_in_to_users_table.php` on the **current** code
     (accounts without a password get a random one and reset it by email), then deploy the old code.
+  - SCRUM-456: new usernames must be ASCII (`alpha_dash:ascii`); existing ones are left alone. **Run once around this
+    release** (not a deploy gate): an administrator lists the existing non-ASCII usernames, to look for look-alikes of
+    other accounts (MySQL 8):
+    `SELECT id, username, created_at FROM users WHERE username REGEXP '[^ -~]' OR CHAR_LENGTH(username) <> LENGTH(username);`
+    Don't shorten it to the `REGEXP` alone: under some collations look-alikes such as the Kelvin sign (K) or the long s
+    (ſ) can match the ASCII range, and only the `CHAR_LENGTH` check (multi-byte characters) catches them. Any that
+    impersonate someone are dealt with by hand (there is no username change in the app).
+  - SCRUM-456: **review before deploying** the accounts whose stored date of birth is in the future -- with this release
+    they count as age 0 (a minor), where the old maths counted the gap as an age (often an adult):
+    `SELECT id, username FROM users WHERE dob > NOW();`
+  - SCRUM-456 migrations: `2026_12_10_100000` adds `blocked_google_identities` (an HMAC of the Google id, keyed with
+    `APP_KEY`, for accounts an administrator closed), `2026_12_10_110000` indexes `users.pending_email` and
+    `users.last_verified_email`, `2026_12_10_120000` adds `two_factor_resets.google_only_confirmed_at`. Roll them back on
+    the **current** code first (`php artisan migrate:rollback --step=3`), then deploy the old code -- the old code
+    doesn't have these files. **Dropping `blocked_google_identities` lifts every block for good** (the Google ids aren't
+    kept anywhere else): once any administrator has closed an account connected to Google, treat that table as
+    do-not-drop and roll back only the other two (`--path=` each file).
+  - SCRUM-456: rotating `APP_KEY` keeps blocks only while the old key is in `APP_PREVIOUS_KEYS`; each blocked Google
+    account is re-hashed under the new key the next time it tries, so leave the old key there for a while after a
+    rotation.
+  - SCRUM-456 runbook, lifting one block (support, after a review), with the Google id (`sub`) from the person:
+    `docker compose exec -u www-data -e HOME=/tmp php php artisan tinker --execute="echo App\Models\BlockedGoogleIdentity::lift('<sub>');"`
+    (deletes its hash under the current and every previous key; prints how many rows went).
+  - SCRUM-456 (optional): Laravel pads a failed sign-in to `auth.timebox_duration`, in **microseconds** (`200000` = 200
+    ms, the default; not set in `config/auth.php`). Measure `Hash::check` (bcrypt) on the production hardware; if it
+    is close to or above 200 ms, set `timebox_duration` in `config/auth.php` above it, so a password-less account's
+    quick refusal can't be told apart from a wrong password.
 
 ## The proxy
 
