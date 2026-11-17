@@ -278,8 +278,19 @@ live media connection can't be manually verified end-to-end without populating t
 else) and run `docker compose up -d --force-recreate php`. Open "Video Call Demo Therapy" → its chat page
 (`/therapies/{id}/chat`) → "join video". The call uses your own camera and microphone (or a drawn placeholder if
 there is none). From the browser console, on the Vite dev server only, `window.__ttFakeVideo` simulates the rest:
-`setQuality('good'|'poor'|'bad')`, `addParticipant()`, `dropRecoverable()`, `stopTerminal('ejected'|'removed'|'meeting-ended'|'room-expired')`
-and `state()`. Two browsers on the fake don't see each other. Set `VIDEO_PROVIDER` back afterwards.
+`setQuality('good'|'poor'|'bad'|'unknown')`, `addParticipant()`, `state()`, and (SCRUM-459) the connection controls:
+- `simulateReconnecting(true)` / `simulateReconnecting(false)` -- the provider reconnecting by itself; the call stays
+  up and shows "Reconnecting…".
+- `dropRecoverable()` -- a recoverable drop: the call rejoins automatically ("Reconnecting… (attempt N)"), up to 3
+  attempts within 60s, then "We couldn't reconnect" with "try again".
+- `stopTerminal('ejected'|'removed')` -- taken out ("You were taken out of this video call"), never rejoined;
+  `stopTerminal('meeting-ended'|'room-expired')` -- "Video call ended", never rejoined.
+- `failNextJoin(name = 'NotReadableError', times = 1)` -- the next `times` joins fail after the join call succeeded
+  (the media stage). Call it **before** `dropRecoverable()`: a device error (`'NotAllowedError'`, `'NotReadableError'`,
+  ...) stops the rejoin at once; any other name (`'TimeoutError'`, `'Error'`) is retried once more at most.
+  `failNextJoin(null)` clears it.
+
+Two browsers on the fake don't see each other. Set `VIDEO_PROVIDER` back afterwards.
 
 ## Group video call + participant removal + speaking permission (SCRUM-308/309/310, TT-3.2a/b/c; SCRUM-327)
 

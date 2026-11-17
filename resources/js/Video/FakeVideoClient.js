@@ -1,4 +1,5 @@
 import { acquireChannel } from '@/Composables/sharedChannel'
+import { dailyQuality, normalizeQuality, recoverableStop, terminalStop } from '@/Video/connectionPolicy'
 
 // SCRUM-458 (TT-3.3a): the browser half of App\Services\Fake\FakeVideoProvider -- a call with no
 // provider behind it, for local development and Playwright QA without Daily/Chime keys. Implements
@@ -24,11 +25,19 @@ import { acquireChannel } from '@/Composables/sharedChannel'
 // Dev-only simulation hook (never in a production build: import.meta.env.DEV is false there and the
 // block is dropped):
 //   window.__ttFakeVideo = {
-//     setQuality(q)            -- 'good' | 'poor' | 'bad' | 'warning' | 'unknown', passed straight to
-//                                 onConnectionQualityChanged (Daily also passes its raw
-//                                 networkState through, which can be 'warning'/'bad')
-//     dropRecoverable()        -- the connection dropped out from under us (reconnect-worthy)
-//     stopTerminal(kind)       -- 'ejected' | 'meeting-ended' | 'room-expired' | 'removed'
+//     setQuality(q)            -- 'good' | 'poor' | 'bad' | 'unknown' (the shared scale; Daily's
+//                                 'warning' is accepted as 'poor', anything else reads 'unknown')
+//     simulateReconnecting(on) -- the provider reconnecting by itself (true) / back (false):
+//                                 onReconnecting, the call stays connected
+//     dropRecoverable()        -- the connection dropped out from under us: a recoverable stop, so
+//                                 the call rejoins automatically (a normal join, sent as a rejoin)
+//     stopTerminal(kind)       -- 'ejected' | 'removed' (taken out) or 'meeting-ended' |
+//                                 'room-expired' (ended): a terminal stop, never rejoined
+//     failNextJoin(name?, times?) -- the next `times` (default 1) fake joins fail at the media
+//                                 stage with an error of this name (default 'NotReadableError';
+//                                 e.g. 'NotAllowedError', 'TimeoutError', 'Error'). Remembered
+//                                 across clients, so call it BEFORE dropRecoverable() to make the
+//                                 automatic rejoin's attempts fail. failNextJoin(null) clears it.
 //     nonFatalError(message?)  -- a reportable problem that doesn't end the call (onError)
 //     addParticipant(key?)     -- a placeholder remote participant; returns its tile id. Pass a real
 //                                 participant key to have its name resolved by the server.
@@ -36,24 +45,24 @@ import { acquireChannel } from '@/Composables/sharedChannel'
 //     state()                  -- { connected, canSend, audioOn, videoOn, remotes }
 //   }
 //
-// Stop mapping (SCRUM-459 will distinguish recoverable from terminal stops in the real clients;
-// until then every stop below is reported exactly as DailyVideoClient.js reports a Daily 'error'
-// event -- onDisconnected with Daily's own fatal-error shape -- so useVideoSession.js reacts as it
-// would with Daily today, i.e. it tries to reconnect). `fakeStopKind` names the simulated case so
-// SCRUM-459 can branch on it without parsing Daily types:
-//   dropRecoverable()             -> error.type 'connection-error'
-//   stopTerminal('ejected')       -> error.type 'ejected'   (provider-side eject, e.g. token expiry)
-//   stopTerminal('removed')       -> error.type 'ejected'   (our server's eject call; the app's own
-//                                    participant-removed broadcast is what marks it 'removed')
-//   stopTerminal('meeting-ended') -> error.type 'no-room'   (the room was deleted, sessions.video.end)
-//   stopTerminal('room-expired')  -> error.type 'exp-room'  (Daily's eject_at_room_exp)
-const STOP_TYPES = {
-    'connection-error': 'connection-error',
-    ejected: 'ejected',
-    removed: 'ejected',
-    'meeting-ended': 'no-room',
-    'room-expired': 'exp-room',
+// SCRUM-459: stops are reported in the classified-stop contract (useVideoSession.js), built with
+// connectionPolicy.js's provider-neutral helpers:
+//   dropRecoverable()             -> recoverableStop('fake-connection-lost')
+//   stopTerminal('ejected')       -> terminalStop('removed')  (provider-side eject, e.g. token expiry)
+//   stopTerminal('removed')       -> terminalStop('removed')  (our server's eject call)
+//   stopTerminal('meeting-ended') -> terminalStop('ended')    (the room was deleted, sessions.video.end)
+//   stopTerminal('room-expired')  -> terminalStop('ended')    (the room's expiry)
+const STOPS = {
+    'connection-error': () => recoverableStop('fake-connection-lost'),
+    ejected: () => terminalStop('removed', '', 'fake-ejected'),
+    removed: () => terminalStop('removed', '', 'fake-removed'),
+    'meeting-ended': () => terminalStop('ended', '', 'fake-meeting-ended'),
+    'room-expired': () => terminalStop('ended', '', 'fake-room-expired'),
 }
+
+// SCRUM-459: failNextJoin()'s pending failures. Module-level, not per client: a drop destroys the
+// client (and its dev hook) and the automatic rejoin creates a new one, which must still see them.
+let pendingJoinFailure = { name: null, times: 0 }
 
 // getUserMedia errors meaning "no usable device" (missing, busy elsewhere, or none matching) -- the
 // fake carries on without one. NotAllowedError (a refused permission) is deliberately not here.
@@ -78,6 +87,13 @@ export default function createFakeVideoClient(callbacks) {
     let devHook = null
 
     async function join(creds) {
+        // SCRUM-459: a simulated media-stage failure -- the join call succeeded, the "provider" then
+        // failed. Before any device opens, so there is nothing to release.
+        if (pendingJoinFailure.times > 0) {
+            pendingJoinFailure.times--
+            throw Object.assign(new Error(`Fake video join failed (${pendingJoinFailure.name}).`), { name: pendingJoinFailure.name })
+        }
+
         credentials = creds
         canSend.audio = !!creds.canSend?.audio
         canSend.video = !!creds.canSend?.video
@@ -265,25 +281,28 @@ export default function createFakeVideoClient(callbacks) {
         callbacks.onParticipantLeft?.(id)
     }
 
-    // The call ends out from under us: local media goes, then the same report Daily's 'error' gives.
+    // The call ends out from under us: local media goes, then the classified stop (see STOPS).
     function simulateStop(kind) {
         if (!connected || intentionalTeardown) return
-        const type = STOP_TYPES[kind]
-        if (!type) throw new Error(`Unknown stop kind: ${kind}`)
+        const stop = STOPS[kind]
+        if (!stop) throw new Error(`Unknown stop kind: ${kind}`)
 
         release()
-        callbacks.onDisconnected?.({
-            action: 'error',
-            errorMsg: `Fake video call stopped (${kind}).`,
-            error: { type, msg: `Fake video call stopped (${kind}).` },
-            fakeStopKind: kind,
-        })
+        callbacks.onDisconnected?.(stop())
+    }
+
+    function failNextJoin(name = 'NotReadableError', times = 1) {
+        pendingJoinFailure = name ? { name, times: Math.max(0, Number(times) || 0) } : { name: null, times: 0 }
     }
 
     function exposeDevHook() {
         devHook = {
-            setQuality: (quality) => callbacks.onConnectionQualityChanged?.(quality),
+            setQuality: (quality) => callbacks.onConnectionQualityChanged?.(quality === 'warning' ? dailyQuality(quality) : normalizeQuality(quality)),
+            simulateReconnecting: (on = true) => {
+                if (connected && !intentionalTeardown) callbacks.onReconnecting?.(!!on)
+            },
             dropRecoverable: () => simulateStop('connection-error'),
+            failNextJoin,
             stopTerminal: (kind) => simulateStop(kind),
             nonFatalError: (message = 'Fake non-fatal video error.') => callbacks.onError?.({ action: 'nonfatal-error', type: 'fake', errorMsg: message }),
             addParticipant: (key) => addRemote(key),
