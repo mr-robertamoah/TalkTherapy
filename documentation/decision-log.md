@@ -13295,3 +13295,42 @@ Planned with the product-owner, architect and project-manager; split into SCRUM-
 - **Sign-in timebox:** `auth.timebox_duration` is unchanged (Laravel's 200 ms). The production checklist suggests
   measuring bcrypt on the production hardware and setting it above that, so a password-less account's quick refusal
   can't be timed apart from a wrong password.
+
+## SCRUM-28 — video on weak connections: planning (TT-3.3, 2026-11-17)
+
+- **Re-scoped from 5 to ~15 points and split into four PRs** (SCRUM-458 fake provider, SCRUM-459 fixes and
+  reconnect, SCRUM-460 audio-only, SCRUM-461 closeout). The backlog row was one line; planning found three existing
+  gaps to fix first: Daily's raw `networkState` (`warning`/`bad`) never reaches the UI's scale, so a weak Daily line
+  shows "connecting…"; every unrequested stop -- including being removed or the room expiring -- triggers a rejoin;
+  and the providers' own reconnecting isn't shown.
+- **User decisions (2026-11-17):** switch to audio-only automatically (with a notice and "turn video back on"); keep
+  trying to reconnect for ~60 s, then "Try again"; show the "weak connection" reason to everyone in the call, by the
+  name or mask already on the tile; a granted speaker raises their hand again after an app-level rejoin. Keeping the
+  floor across a rejoin needs speaking grants tied to the person, not the participant row -- filed as SCRUM-462, later.
+- **Front end only, no Reverb event, nothing stored.** Video never drives `Session.status`, attendance, earnings or
+  invoices (`VideoActionsNeverMutateSessionStatusTest`), so a drop can't mark anyone absent; the work keeps it that
+  way. The provider reconnects natively first (that keeps a speaking grant through a short drop); the app rejoins only
+  after a recoverable stop, and every rejoin goes through `sessions.video.join` again (payment, availability, consent).
+
+## SCRUM-458 — fake video provider for browser QA (TT-3.3a, 2026-11-17)
+
+- **Why:** there are no Daily/Chime sandbox keys (SCRUM-317), so no video screen could be tried in a browser. The
+  fake swaps only the provider adapter; every server check on join runs unchanged.
+- **Refused outside local/testing, at first use, not at boot** -- the same as an unknown provider value, so a bad
+  setting breaks video, not the whole site. Every caller resolves through the container inside an existing
+  `catch (Throwable)`, so it fails closed. Security review (Medium): a mistyped production setting would then only show
+  as warnings, one call at a time, so `boot()` also logs a critical message once when `fake` is set outside
+  local/testing. The fake also refuses to act on a call it didn't create (Low), so switching a dev box from Daily to
+  the fake mid-call goes down the existing retry and log paths instead of silently "succeeding".
+- **The client is chosen from the shared `videoProvider` prop**, as Daily/Chime already are -- one switch, not a
+  second way to choose.
+- **Browser hook only in dev builds** (`import.meta.env.DEV`): `window.__ttFakeVideo` (setQuality, addParticipant,
+  dropRecoverable, stopTerminal, state). Confirmed absent from a production build. The small `FakeVideoClient` chunk
+  still ships (a lazy import); it is only loaded when the server says `fake`, which production refuses -- kept so
+  local QA works against either the dev server or a build.
+- **Stops are emitted in Daily's `error` shape** (`connection-error`, `ejected`, `no-room`, `exp-room`), with
+  `fakeStopKind` alongside. Deliberate for now: it lets SCRUM-459's Daily classification be exercised by the fake.
+  SCRUM-459 owns the provider-neutral classification; the fake follows it once both are in.
+- **Limits:** two browsers on the fake don't see each other (remote people come from `addParticipant`), so what the
+  *other* side sees is covered by unit tests and the SCRUM-317 real-provider pass. Grants and revokes reach the fake
+  client through the session's Reverb channel (a real provider is told directly by the server).

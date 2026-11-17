@@ -274,6 +274,13 @@ base "join video" flow, across whichever provider `VIDEO_PROVIDER` is currently 
 known limitation that this dev environment has no real Daily/Chime credentials configured, so a
 live media connection can't be manually verified end-to-end without populating them first.
 
+**Without provider keys (SCRUM-458):** set `VIDEO_PROVIDER=fake` in `.env.docker` (local only -- refused anywhere
+else) and run `docker compose up -d --force-recreate php`. Open "Video Call Demo Therapy" → its chat page
+(`/therapies/{id}/chat`) → "join video". The call uses your own camera and microphone (or a drawn placeholder if
+there is none). From the browser console, on the Vite dev server only, `window.__ttFakeVideo` simulates the rest:
+`setQuality('good'|'poor'|'bad')`, `addParticipant()`, `dropRecoverable()`, `stopTerminal('ejected'|'removed'|'meeting-ended'|'room-expired')`
+and `state()`. Two browsers on the fake don't see each other. Set `VIDEO_PROVIDER` back afterwards.
+
 ## Group video call + participant removal + speaking permission (SCRUM-308/309/310, TT-3.2a/b/c; SCRUM-327)
 
 A FREE, non-strict-gated GroupTherapy with one active counsellor, its own (non-minor) creator, and

@@ -41,6 +41,10 @@ guidance, but it's not an automatic gate for bugfix-tier work.
 - Emails (verification, notifications) land in Mailpit (`http://localhost:8027`), not a real
   inbox — check there if a flow's assertion depends on an email being sent.
 
+**Video screens without provider keys:** use the fake video provider (SCRUM-458) -- see "Video call" in
+`documentation/seeded-data.md`. Its `window.__ttFakeVideo` hook exists only on the Vite dev server (`import.meta.env.DEV`),
+not in an `npm run build` bundle, so drive video QA through the dev server.
+
 ## Best use cases
 
 Reach for Playwright specifically where Pest's HTTP/JSON-assertion layer can't tell you the whole
