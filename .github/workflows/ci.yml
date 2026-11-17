@@ -46,6 +46,7 @@ jobs:
               - '.github/workflows/ci.yml'
             frontend:
               - 'resources/**'
+              - 'tests/js/**'
               - 'package.json'
               - 'package-lock.json'
               - 'vite.config.js'
@@ -214,6 +215,11 @@ jobs:
           cache: 'npm'
 
       - run: npm ci
+
+      # SCRUM-459: plain node:test unit tests for frontend logic with no Vue/DOM dependency
+      # (tests/js/), e.g. the video call's connection policy.
+      - name: JS unit tests
+        run: npm run test:js
 
       - name: Build
         run: npm run build
