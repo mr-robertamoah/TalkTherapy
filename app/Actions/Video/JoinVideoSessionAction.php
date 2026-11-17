@@ -11,6 +11,7 @@ use App\Enums\ConstantsEnum;
 use App\Events\VideoSessionStatusChangedEvent;
 use App\Exceptions\AppException;
 use App\Exceptions\VideoException;
+use App\Exceptions\VideoRejoinRefusedException;
 use App\Models\GroupTherapy;
 use App\Models\Session;
 use App\Models\User;
@@ -31,7 +32,11 @@ class JoinVideoSessionAction extends Action
     // through to the frontend's active provider SDK, never inspected or reshaped here -- plus one
     // `participant` key of our own (TT-3.2f-j/SCRUM-327) describing what this joiner may do. Neither
     // provider's credentials use that key, and both client SDK wrappers read only their own.
-    public function execute(Session $session, User $user): array
+    //
+    // TT-3.3b/SCRUM-459: $rejoinVideoSessionId is set only for a browser's AUTOMATIC rejoin after its
+    // connection dropped -- the VideoSession it was in (the `videoSessionId` of its earlier join
+    // response). See ensureRejoinAllowed(). A person's own join passes null and is unaffected.
+    public function execute(Session $session, User $user, ?int $rejoinVideoSessionId = null): array
     {
         // SCRUM-359, SCRUM-288: first, so a paused minor is told their therapy is paused (and how it
         // starts again) rather than that video needs a guardian's consent. Nothing in it depends on
@@ -62,13 +67,13 @@ class JoinVideoSessionAction extends Action
         // (RetryVideoParticipantRemovalJob) can't eject this person between its "rejoined?" check and
         // its provider call.
         try {
-            return VideoJoinLock::run($session->id, $user->id, fn () => $this->join($session, $user, $provider));
+            return VideoJoinLock::run($session->id, $user->id, fn () => $this->join($session, $user, $provider, $rejoinVideoSessionId));
         } catch (LockTimeoutException) {
             throw new VideoException('Still joining you to the video call. Please try again in a moment.', 409);
         }
     }
 
-    private function join(Session $session, User $user, VideoProviderInterface $provider): array
+    private function join(Session $session, User $user, VideoProviderInterface $provider, ?int $rejoinVideoSessionId): array
     {
         // SCRUM-288: re-read under the join lock. HandleGuardianLossAction removes a minor from the
         // call under the same lock, so a join can't slip in between a guardian's removal and that.
@@ -79,7 +84,7 @@ class JoinVideoSessionAction extends Action
             EnsureVideoIsAvailableForSessionAction::new()->ensureGroupTherapyVideoIsAllowed($session, $user);
         }
 
-        [$videoSession, $participantRow] = $this->currentOrNewVideoSessionAndJoin($session, $user, $provider);
+        [$videoSession, $participantRow] = $this->currentOrNewVideoSessionAndJoin($session, $user, $provider, $rejoinVideoSessionId);
 
         // SCRUM-331/380: no one is ever a provider-side owner -- a Daily owner's browser can change
         // ANY participant's permissions client-side (bypassing the server-enforced minor/anonymity
@@ -121,6 +126,8 @@ class JoinVideoSessionAction extends Action
         return [
             ...$credentials,
             'participant' => $this->participantStateFor($session, $user, $videoSession, $receiveOnly, $withholdsCamera),
+            // TT-3.3b/SCRUM-459: the call epoch just joined -- an automatic rejoin names it.
+            'videoSessionId' => $videoSession->id,
         ];
     }
 
@@ -236,7 +243,7 @@ class JoinVideoSessionAction extends Action
     // race: two near-simultaneous joins against an already-full room could otherwise both read
     // "N active, room for one more" before either's insert committed.
     // Returns the video session and the participant row opened for this join.
-    private function currentOrNewVideoSessionAndJoin(Session $session, User $user, VideoProviderInterface $provider): array
+    private function currentOrNewVideoSessionAndJoin(Session $session, User $user, VideoProviderInterface $provider, ?int $rejoinVideoSessionId): array
     {
         // wasNewlyCreated tracked outside the transaction closure deliberately -- this app's
         // queue connections all have after_commit=false (config/queue.php), so a ShouldBroadcast
@@ -247,7 +254,7 @@ class JoinVideoSessionAction extends Action
 
         $participantRow = null;
 
-        $videoSession = DB::transaction(function () use ($session, $user, $provider, &$wasNewlyCreated, &$participantRow) {
+        $videoSession = DB::transaction(function () use ($session, $user, $provider, $rejoinVideoSessionId, &$wasNewlyCreated, &$participantRow) {
             VideoJoinLock::lockSessionRows($session);
 
             // SCRUM-334: re-read the therapy under the lock. Making a group anonymous takes the same
@@ -262,6 +269,12 @@ class JoinVideoSessionAction extends Action
                 ->where('session_id', $session->id)
                 ->whereNull('ended_at')
                 ->first();
+
+            // TT-3.3b/SCRUM-459: decided under the same lock as the row it would open, and before
+            // anything is created -- a rejoin never starts a new call.
+            if ($rejoinVideoSessionId !== null) {
+                $this->ensureRejoinAllowed($videoSession, $user, $rejoinVideoSessionId);
+            }
 
             if (! $videoSession) {
                 // Created (and persisted) BEFORE calling the provider -- both DailyVideoProvider
@@ -302,6 +315,13 @@ class JoinVideoSessionAction extends Action
 
             $this->ensureChimeGroupTherapyCapacity($session, $videoSession, $user);
 
+            // TT-3.3b/SCRUM-459 (security re-review): a rejoin replaces the join it dropped out of, so
+            // that one's row (left open by the drop, SCRUM-330) is closed here rather than lingering
+            // as "in the call". left_at only -- a removed row is already closed and keeps its mark.
+            if ($rejoinVideoSessionId !== null) {
+                $videoSession->participantRowsFor($user->id)->whereNull('left_at')->update(['left_at' => now()]);
+            }
+
             $participantRow = VideoSessionParticipant::query()->create([
                 'video_session_id' => $videoSession->id,
                 'participant_type' => User::class,
@@ -317,6 +337,33 @@ class JoinVideoSessionAction extends Action
         }
 
         return [$videoSession, $participantRow];
+    }
+
+    // TT-3.3b/SCRUM-459: an automatic rejoin may only put someone back into the very call they
+    // dropped out of, and only if nothing took them out of it meanwhile -- a browser that was
+    // offline missed the "ended"/"removed" broadcasts, and its reconnect must not undo them:
+    //  - the call has ended (no open epoch, or a different one than the rejoin names): refused as
+    //    ended -- never a new VideoSession on a rejoin;
+    //  - the server took them out of it (removed_at, set by EjectVideoParticipantAction) and they
+    //    haven't joined it since: refused as removed. "Since" is any row of theirs, not just the
+    //    latest -- an eject stamps only the rows still open, so a later row an earlier rejoin opened
+    //    and closed again (a failed provider join, then a leave) must not hide the removal
+    //    (re-review finding). A join in the same second as the removal doesn't count as later.
+    // A person's own "join video" doesn't come through here, so someone taken out may still join
+    // again by choice when they're allowed to (e.g. to watch after a consent downgrade) -- and that
+    // join's row is what lets a later automatic rejoin through.
+    private function ensureRejoinAllowed(?VideoSession $openVideoSession, User $user, int $rejoinVideoSessionId): void
+    {
+        if (! $openVideoSession || $openVideoSession->id !== $rejoinVideoSessionId) {
+            throw new VideoRejoinRefusedException(VideoRejoinRefusedException::ENDED);
+        }
+
+        $lastRemovedAt = $openVideoSession->participantRowsFor($user->id)->max('removed_at');
+
+        // A row with no joined_at never counts as a later join (NULL > x is not true in SQL).
+        if ($lastRemovedAt !== null && ! $openVideoSession->participantRowsFor($user->id)->where('joined_at', '>', $lastRemovedAt)->exists()) {
+            throw new VideoRejoinRefusedException(VideoRejoinRefusedException::REMOVED);
+        }
     }
 
     // TT-3.2f-d/SCRUM-321: Daily gets its own room-size ceiling for free via `max_participants`

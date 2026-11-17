@@ -16,6 +16,7 @@ use App\Actions\Video\RemoveParticipantFromVideoSessionAction;
 use App\Actions\Video\RevokeSpeakingPermissionAction;
 use App\Exceptions\VideoConsentRequiredException;
 use App\Exceptions\VideoException;
+use App\Exceptions\VideoRejoinRefusedException;
 use App\Models\Session;
 use App\Support\FailureResponse;
 use App\Support\VideoParticipantKey;
@@ -47,10 +48,21 @@ class VideoSessionController extends Controller
     // $request->user() only, never a client-supplied id -- security-review requirement carried
     // over from TT-3.1a's own review (impersonating another participant here would mint that
     // user's own join credentials for whoever asked).
+    //
+    // TT-3.3b/SCRUM-459: a browser's automatic rejoin after a dropped connection sends `rejoin` and
+    // the `videoSessionId` it was in, so the server can refuse to put it back into a call that ended
+    // or that this person was taken out of (JoinVideoSessionAction::ensureRejoinAllowed()). Validated
+    // before the try: a malformed request is the standard 422, not a generic failure.
     public function join(Request $request)
     {
+        $validated = $request->validate([
+            'rejoin' => ['sometimes', 'boolean'],
+            'videoSessionId' => ['required_if_accepted:rejoin', 'nullable', 'integer', 'min:1'],
+        ]);
+        $rejoinVideoSessionId = $request->boolean('rejoin') ? (int) $validated['videoSessionId'] : null;
+
         try {
-            $credentials = JoinVideoSessionAction::new()->execute($this->session($request, self::NOT_ALLOWED_TO_JOIN), $request->user());
+            $credentials = JoinVideoSessionAction::new()->execute($this->session($request, self::NOT_ALLOWED_TO_JOIN), $request->user(), $rejoinVideoSessionId);
 
             return response()->json($credentials);
         } catch (Throwable $th) {
@@ -234,6 +246,8 @@ class VideoSessionController extends Controller
         return response()->json(FailureResponse::withCode([
             'message' => $message,
             'videoConsentRequired' => $th instanceof VideoConsentRequiredException,
+            // TT-3.3b/SCRUM-459: 'ended' | 'removed' -- the client lands in that state, no retry.
+            ...($th instanceof VideoRejoinRefusedException ? ['rejoinRefused' => $th->outcome] : []),
         ], $th), $status);
     }
 }

@@ -13334,3 +13334,43 @@ Planned with the product-owner, architect and project-manager; split into SCRUM-
 - **Limits:** two browsers on the fake don't see each other (remote people come from `addParticipant`), so what the
   *other* side sees is covered by unit tests and the SCRUM-317 real-provider pass. Grants and revokes reach the fake
   client through the session's Reverb channel (a real provider is told directly by the server).
+
+## SCRUM-459 — video connection fixes and bounded reconnect (TT-3.3b, 2026-11-17)
+
+- **One quality scale, in words:** both clients map to `good | poor | bad | unknown` (Daily `warning` → poor, `bad` →
+  bad; Chime `connectionDidSuggestStopVideo` → bad). The panel says "Connection: weak" rather than relying on a dot.
+  Screen-reader messages go through a new live region in `VideoCallPanel.vue`, not `announcements.js` (that helper is
+  for Reverb "announce, then fetch", not screen readers). Quality changes share a 20 s cooldown, except a drop to
+  "very weak", which is always said; an improvement inside the cooldown isn't spoken (the visible text is current).
+- **Stops are classified by each client, allow-list only.** Recoverable: Daily `connection-error`, `exp-token`; the
+  listed non-terminal Chime codes (`NoAttendeePresent` in; `IncompatibleSDP` and `EncodedTransformManagerFailed` out --
+  browser/local problems a rejoin won't fix). Everything else, unknown included, is terminal and never rejoins.
+  `exp-token` stays recoverable: the server mints a new token only while the session is in progress, so it still
+  decides. A removal reported by the provider (or a refused rejoin) says "You were taken out of this video call";
+  "A counsellor removed you" is kept for the counsellor's own broadcast (security review: consent downgrades and
+  suspensions also eject, and mustn't be blamed on a counsellor).
+- **The provider reconnects first; the app rejoins only after a recoverable stop:** up to 3 attempts (~2/5/10 s), each
+  waiting for the browser to be online, inside a 60 s window (user's choice), each a full `sessions.video.join`. Never
+  retried: payment/consent/validation refusals, a refused rejoin, a device error (permissions, no camera). A provider
+  connect failure is retried once; if it keeps failing it ends in "We couldn't reconnect" with the text-chat hint, like
+  running out of time (found in browser QA: it showed the camera-permission message). New status `reconnect_failed`.
+  A drop is never a leave; a failed attempt's own row is closed with a leave. Chime's own reconnect timeout stays at its
+  120 s default (a one-line change if the provider-side wait should be shorter).
+- **Server-side rejoin guard (security review, High):** removal was only enforced by the provider and the Reverb
+  broadcast, both of which a browser that is offline misses -- so the automatic rejoin could put a removed person back,
+  or restart an ended call. Now automatic rejoins send `rejoin: true` plus the `videoSessionId` from the earlier join,
+  and `JoinVideoSessionAction` refuses (422, `rejoinRefused: 'ended' | 'removed'`) if that call has ended, or if the
+  person was removed (`video_session_participants.removed_at`, new nullable column, set by every eject) and hasn't
+  joined since. A manual "join video" or "try again" stays allowed, as before (people taken out after a consent
+  downgrade may rejoin to watch). The counsellor's removal now runs under the target's join lock, so it can't
+  interleave with a rejoin; removing someone between reconnect attempts (no open row) still marks their latest row and
+  broadcasts. A rejoin closes the person's older open rows. Refusals are the same for any other id, so nothing about
+  other calls is revealed.
+- **Tests:** the pure rules in `resources/js/Video/connectionPolicy.js` are the project's first JS unit tests
+  (`npm run test:js` = `node --test tests/js/*.test.mjs`, the explicit file glob works on Node 20 and 22 and fails if
+  there are no files; a CI step in `build-frontend`). The composable's state machine has no harness; it was exercised in
+  the browser with the fake provider (SCRUM-458), whose hook gained `simulateReconnecting` and `failNextJoin`.
+- **For the real-provider pass (SCRUM-317):** whether Daily reports token/room-expiry ejection as `ejected` or `exp-*`;
+  Daily's `network-connection` event values; whether Chime fires `audioVideoDidStart` again after its own reconnect.
+- **Noted, not changed:** automatic rejoins share the `video-provider` rate limit with moderation actions (3 attempts
+  can't exhaust it on their own).

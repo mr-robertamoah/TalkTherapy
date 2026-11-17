@@ -4,7 +4,9 @@ import {
     DefaultMeetingSession,
     LogLevel,
     MeetingSessionConfiguration,
+    MeetingSessionStatusCode,
 } from 'amazon-chime-sdk-js'
+import { chimeQuality, classifyChimeStop } from '@/Video/connectionPolicy'
 
 // TT-3.1c/SCRUM-276: thin wrapper around amazon-chime-sdk-js's meeting-session API -- see
 // DailyVideoClient.js for the Daily.co counterpart and the factory shape both must implement
@@ -49,17 +51,34 @@ export default function createChimeVideoClient(callbacks) {
         videoTileWasRemoved(tileId) {
             tileIdToParticipantId.delete(tileId)
         },
+        // TT-3.3b/SCRUM-459: mapped onto the shared quality scale -- see connectionPolicy.js.
         connectionDidBecomePoor() {
-            callbacks.onConnectionQualityChanged?.('poor')
+            callbacks.onConnectionQualityChanged?.(chimeQuality('connectionDidBecomePoor'))
+        },
+        connectionDidSuggestStopVideo() {
+            callbacks.onConnectionQualityChanged?.(chimeQuality('connectionDidSuggestStopVideo'))
         },
         connectionDidBecomeGood() {
-            callbacks.onConnectionQualityChanged?.('good')
+            callbacks.onConnectionQualityChanged?.(chimeQuality('connectionDidBecomeGood'))
+        },
+        // TT-3.3b/SCRUM-459: Chime reconnecting by itself -- audioVideoDidStartConnecting(true) when
+        // it starts, audioVideoDidStart once connected again (also called, harmlessly, on the
+        // first connect). It keeps trying for reconnectTimeoutMs before giving up with
+        // audioVideoDidStop.
+        audioVideoDidStartConnecting(reconnecting) {
+            if (reconnecting && !intentionalTeardown) callbacks.onReconnecting?.(true)
+        },
+        audioVideoDidStart() {
+            if (!intentionalTeardown) callbacks.onReconnecting?.(false)
         },
         audioVideoDidStop(sessionStatus) {
             // A non-explicit stop (we didn't call teardown() ourselves) means the connection
-            // dropped out from under us -- a disconnect, not just a reportable error.
+            // ended out from under us. TT-3.3b/SCRUM-459: classified by status code -- this also
+            // fires for the meeting ending, being removed, joining from another tab, etc., none of
+            // which a rejoin may undo. Only connectionPolicy.js's allow-list is ever rejoined.
             if (intentionalTeardown) return
-            callbacks.onDisconnected?.(new Error(`Video connection stopped unexpectedly (status ${sessionStatus?.statusCode?.()}).`))
+            const code = sessionStatus?.statusCode?.()
+            callbacks.onDisconnected?.(classifyChimeStop(MeetingSessionStatusCode[code]))
         },
     }
 

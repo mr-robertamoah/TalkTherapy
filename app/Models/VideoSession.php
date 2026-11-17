@@ -59,6 +59,8 @@ class VideoSession extends Model
         return $this->participantRowsFor($userId)
             ->whereNull('left_at')
             ->latest('joined_at')
+            // TT-3.3b/SCRUM-459: same-second joins resolve to the newest row, as the rejoin guard does.
+            ->orderByDesc('id')
             ->first();
     }
 

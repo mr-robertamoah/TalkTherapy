@@ -1,4 +1,5 @@
 import DailyIframe from '@daily-co/daily-js'
+import { classifyDailyStop, dailyQuality } from '@/Video/connectionPolicy'
 
 // TT-3.1c/SCRUM-276: thin wrapper around @daily-co/daily-js's "call object" (headless, no
 // prebuilt iframe UI) mode -- gives useVideoSession.js a provider-agnostic surface to drive a
@@ -21,6 +22,9 @@ export default function createDailyVideoClient(callbacks) {
     // ended out from under us" -- only the latter is a disconnect useVideoSession.js should try to
     // recover from.
     let intentionalTeardown = false
+    // TT-3.3b/SCRUM-459: which of Daily's own connections ('signaling', 'sfu', 'peer-to-peer') are
+    // currently interrupted -- Daily is reconnecting while any is (see setInterrupted()).
+    const interruptedConnections = new Set()
     const attachedElements = new Map()
 
     function idFor(participant) {
@@ -60,6 +64,15 @@ export default function createDailyVideoClient(callbacks) {
         if (element) element.srcObject = new MediaStream([videoTrack, audioTrack].filter(Boolean))
     }
 
+    // Applies a change to interruptedConnections, reporting only an actual flip of "reconnecting".
+    function setInterrupted(change) {
+        if (intentionalTeardown) return
+        const was = interruptedConnections.size > 0
+        change()
+        const now = interruptedConnections.size > 0
+        if (now !== was) callbacks.onReconnecting?.(now)
+    }
+
     async function join(credentials) {
         callObject = DailyIframe.createCallObject()
 
@@ -70,16 +83,29 @@ export default function createDailyVideoClient(callbacks) {
             callbacks.onParticipantLeft?.(id)
             attachedElements.delete(id)
         })
+        // TT-3.3b/SCRUM-459: Daily's 'warning' is our 'poor' -- see connectionPolicy.js.
         callObject.on('network-quality-change', (e) => {
-            callbacks.onConnectionQualityChanged?.(e.networkState ?? 'unknown')
+            const quality = dailyQuality(e.networkState)
+            // A good reading means media is flowing again -- never leave "Reconnecting…" stuck on a
+            // 'connected' event Daily didn't send (or sent for a different connection type).
+            if (quality === 'good') setInterrupted(() => interruptedConnections.clear())
+            callbacks.onConnectionQualityChanged?.(quality)
+        })
+        // TT-3.3b/SCRUM-459: Daily reconnecting by itself (event 'interrupted', then 'connected').
+        // Any 'connected' clears the lot: the call is back, whichever connection said so.
+        callObject.on('network-connection', (e) => {
+            if (e?.event === 'interrupted' && e.type) setInterrupted(() => interruptedConnections.add(e.type))
+            else if (e?.event === 'connected') setInterrupted(() => interruptedConnections.clear())
         })
         // TT-3.1d/SCRUM-277: Daily's own docs describe 'error' (unlike 'nonfatal-error') as
-        // meaning the call itself has ended -- an unrequested one is exactly a disconnect, not
-        // just a reportable problem, so it routes to onDisconnected (reconnect-worthy) rather
-        // than onError (which useVideoSession.js only ever surfaces as a dead-end message).
+        // meaning the call itself has ended -- an unrequested one is a disconnect, not just a
+        // reportable problem, so it routes to onDisconnected rather than onError.
+        // TT-3.3b/SCRUM-459: classified first -- 'error' also fires for being ejected, the room
+        // expiring or not existing, a full meeting, etc., none of which a rejoin may undo. Only
+        // connectionPolicy.js's allow-list (connection-error, exp-token) is ever rejoined.
         callObject.on('error', (e) => {
             if (intentionalTeardown) return
-            callbacks.onDisconnected?.(e)
+            callbacks.onDisconnected?.(classifyDailyStop(e?.error?.type))
         })
         callObject.on('nonfatal-error', (e) => callbacks.onError?.(e))
 

@@ -5,6 +5,7 @@ import VideoPaymentRequiredBanner from '@/Components/VideoPaymentRequiredBanner.
 import VideoConsentRequiredBanner from '@/Components/VideoConsentRequiredBanner.vue'
 import VideoTile from '@/Components/VideoTile.vue'
 import useVideoSession from '@/Composables/useVideoSession'
+import { qualityLabel } from '@/Video/connectionPolicy'
 
 // TT-3.1c/SCRUM-276: the actual video call surface (tiles, controls, connection-quality
 // indicator) -- deliberately a separate component from TherapyComponent.vue (already 1421 lines,
@@ -21,7 +22,7 @@ const emit = defineEmits(['close'])
 const sessionRef = computed(() => props.session)
 const {
   status, participants, isMuted, isCameraOn, connectionQuality, lastError, reconnecting,
-  capabilities, holdsSpeakingGrant, handRaised, raisedHandUserIds, speakerUserIds, speakingNotice,
+  reconnectAttempt, announcement, removedByCounsellor, capabilities, holdsSpeakingGrant, handRaised, raisedHandUserIds, speakerUserIds, speakingNotice,
   idleSecondsRemaining, mediaBusy, mediaError, join, leave, removeParticipant, cancel, toggleMute, toggleCamera, attachVideo,
   raiseHand, lowerHand, grantSpeaking, revokeSpeaking,
 } = useVideoSession(sessionRef)
@@ -207,6 +208,13 @@ async function retryJoin() {
   await join()
 }
 
+// TT-3.3b/SCRUM-459: display only -- every reconnect decision lives in useVideoSession.js and
+// Video/connectionPolicy.js.
+// The attempt number only while that attempt is actually running, not during the wait after it.
+const reconnectingLabel = computed(() => (
+  status.value === 'connecting' && reconnectAttempt.value > 0 ? `Reconnecting… (attempt ${reconnectAttempt.value})` : 'Reconnecting…'
+))
+
 onMounted(() => {
   join()
 })
@@ -220,19 +228,23 @@ onMounted(() => {
 // and open a live provider connection nobody is left to close. cancel() invalidates that in-flight
 // join so it tears itself down once its next await resolves, instead of ever reaching 'connected'.
 //
-// TT-3.1d/SCRUM-277: also covers 'idle' -- handleDisconnected()'s own reconnect flow briefly sets
-// status back to 'idle' before calling join() again, and cancel() is a safe no-op if called before
-// any join was ever attempted at all.
+// TT-3.3b/SCRUM-459: every other status cancels -- cancel() is safe in any state, and it is what
+// clears a pending automatic rejoin (the 'idle' waits between attempts) and releases the session
+// channel a refused or failed rejoin may still hold.
 onBeforeUnmount(() => {
   if (status.value === 'connected') leave()
-  else if (status.value === 'connecting' || status.value === 'idle') cancel()
+  else cancel()
 })
 </script>
 
 <template>
   <div class="mt-4 bg-white border border-gray-200 rounded-lg shadow-sm p-4">
+    <!-- TT-3.3b/SCRUM-459: connection changes for screen readers, outside every status branch so it
+         survives the switches between them. Only meaningful changes land here. -->
+    <div class="sr-only" role="status" aria-live="polite" data-testid="video-connection-announcement">{{ announcement }}</div>
+
     <div v-if="status === 'connecting' || (status === 'idle' && reconnecting)" class="text-center text-sm text-gray-600 py-8">
-      {{ reconnecting ? 'Reconnecting…' : 'Connecting to video…' }}
+      {{ reconnecting ? reconnectingLabel : 'Connecting to video…' }}
     </div>
 
     <VideoPaymentRequiredBanner
@@ -251,6 +263,16 @@ onBeforeUnmount(() => {
       <PrimaryButton @click="retryJoin">try again</PrimaryButton>
     </div>
 
+    <!-- TT-3.3b/SCRUM-459: every automatic rejoin failed. "try again" never expires; the session's
+         text chat keeps working meanwhile. -->
+    <div v-else-if="status === 'reconnect_failed'" class="text-center py-6" data-testid="video-reconnect-failed">
+      <div class="text-sm font-medium text-gray-800 mb-1">We couldn't reconnect</div>
+      <div class="text-sm text-gray-600 mb-3">
+        Check your internet connection and try again. You can keep talking in this session's text chat meanwhile.
+      </div>
+      <PrimaryButton @click="retryJoin">try again</PrimaryButton>
+    </div>
+
     <div v-else-if="status === 'ended'" class="text-center py-6">
       <div class="text-sm text-gray-600 mb-3">Video call ended.</div>
       <button
@@ -266,8 +288,12 @@ onBeforeUnmount(() => {
          a counsellor removed you specifically; this must never read like the call simply ended or
          like a connection dropped (architect's own explicit requirement). -->
     <div v-else-if="status === 'removed'" class="text-center py-6">
-      <div class="text-sm font-medium text-red-700 mb-1">You were removed from this call</div>
-      <div class="text-sm text-gray-600 mb-3">A counsellor removed you from this video call.</div>
+      <template v-if="removedByCounsellor">
+        <div class="text-sm font-medium text-red-700 mb-1">You were removed from this call</div>
+        <div class="text-sm text-gray-600 mb-3">A counsellor removed you from this video call.</div>
+      </template>
+      <!-- TT-3.3b/SCRUM-459: the provider's own stop or a refused rejoin can't say who did it. -->
+      <div v-else class="text-sm font-medium text-gray-800 mb-3">You were taken out of this video call.</div>
       <button
         type="button"
         class="text-sm text-gray-600 hover:underline"
@@ -280,15 +306,21 @@ onBeforeUnmount(() => {
     <div v-else-if="status === 'connected'">
       <div class="flex items-center justify-between mb-3">
         <div class="flex items-center gap-2 text-sm text-gray-600">
+          <!-- TT-3.3b/SCRUM-459: the dot is decoration only -- the words carry the meaning, and an
+               unknown reading never reads as "connecting…" once connected. -->
           <span
             class="inline-block w-2 h-2 rounded-full"
-            :class="{
+            aria-hidden="true"
+            :class="reconnecting ? 'bg-amber-500' : {
               'bg-green-500': connectionQuality === 'good',
               'bg-amber-500': connectionQuality === 'poor',
+              'bg-red-500': connectionQuality === 'bad',
               'bg-gray-300': connectionQuality === 'unknown',
             }"
           />
-          {{ connectionQuality === 'good' ? 'connection good' : connectionQuality === 'poor' ? 'connection poor' : 'connecting…' }}
+          <span data-testid="video-connection-quality">
+            {{ reconnecting ? 'Reconnecting…' : `Connection: ${qualityLabel(connectionQuality)}` }}
+          </span>
         </div>
         <button
           type="button"
