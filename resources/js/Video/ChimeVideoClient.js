@@ -7,6 +7,7 @@ import {
     MeetingSessionStatusCode,
 } from 'amazon-chime-sdk-js'
 import { chimeQuality, classifyChimeStop } from '@/Video/connectionPolicy'
+import { NETWORK_PAUSE_TOPIC, decodeNetworkPauseText, networkPauseMessage } from '@/Video/audioOnlyPolicy'
 
 // TT-3.1c/SCRUM-276: thin wrapper around amazon-chime-sdk-js's meeting-session API -- see
 // DailyVideoClient.js for the Daily.co counterpart and the factory shape both must implement
@@ -36,6 +37,16 @@ export default function createChimeVideoClient(callbacks) {
     let intentionalTeardown = false
     const attachedElements = new Map()
     const tileIdToParticipantId = new Map()
+    // TT-3.3c/SCRUM-460: the last camera state reported per remote attendee (only changes are
+    // reported), and whether this browser receives other people's video ("audio only" mode).
+    const remoteVideoOn = new Map()
+    let receivingVideo = true
+
+    function reportRemoteVideo(id, isOn) {
+        if (remoteVideoOn.get(id) === isOn) return
+        remoteVideoOn.set(id, isOn)
+        callbacks.onRemoteVideoChanged?.(id, isOn)
+    }
 
     const observer = {
         videoTileDidUpdate(tileState) {
@@ -43,13 +54,29 @@ export default function createChimeVideoClient(callbacks) {
 
             const id = tileState.localTile ? 'local' : tileState.boundAttendeeId
             tileIdToParticipantId.set(tileState.tileId, id)
+
+            if (!tileState.localTile) {
+                // TT-3.3c/SCRUM-460: "audio only" pauses every remote tile, including ones that
+                // arrive after it was switched on. A tile WE paused says nothing about their camera.
+                if (!receivingVideo && !tileState.paused) {
+                    meetingSession.audioVideo.pauseVideoTile(tileState.tileId)
+                    return
+                }
+                // On only once the tile is actually active -- an early inactive update is not
+                // "camera off" (that is a tile being removed, or no tile at all; see presence).
+                if (!tileState.paused && tileState.active) reportRemoteVideo(id, true)
+            }
+
             callbacks.onVideoAvailable?.(id)
 
             const element = attachedElements.get(id)
             if (element) meetingSession.audioVideo.bindVideoElement(tileState.tileId, element)
         },
         videoTileWasRemoved(tileId) {
+            // TT-3.3c/SCRUM-460: a remote tile goes when that person's camera stops sending.
+            const id = tileIdToParticipantId.get(tileId)
             tileIdToParticipantId.delete(tileId)
+            if (id && id !== 'local') reportRemoteVideo(id, false)
         },
         // TT-3.3b/SCRUM-459: mapped onto the shared quality scale -- see connectionPolicy.js.
         connectionDidBecomePoor() {
@@ -82,7 +109,7 @@ export default function createChimeVideoClient(callbacks) {
         },
     }
 
-    async function join(credentials) {
+    async function join(credentials, { startVideoOff = false, startAudioOff = false } = {}) {
         localAttendeeId = credentials.attendee.AttendeeId
 
         const logger = new ConsoleLogger('ChimeMeetingLogs', LogLevel.WARN)
@@ -95,9 +122,12 @@ export default function createChimeVideoClient(callbacks) {
         // toggleMute()/toggleCamera(), once a speaking grant arrives. The attendee's own Chime
         // capabilities enforce this regardless.
         const capabilities = credentials.participant ?? { canSendAudio: true, canSendVideo: true }
+        // TT-3.3c/SCRUM-460: a rejoin while video was paused (or in "audio only") keeps it off --
+        // started lazily later, exactly like a receive-only join's camera.
+        const startVideo = capabilities.canSendVideo && !startVideoOff
 
         if (capabilities.canSendAudio) await startAudioInput()
-        if (capabilities.canSendVideo) await startVideoInput()
+        if (startVideo) await startVideoInput()
 
         meetingSession.audioVideo.addObserver(observer)
 
@@ -114,17 +144,41 @@ export default function createChimeVideoClient(callbacks) {
             // logic never mistakes it for a real key.
             const userId = externalUserId ?? null
 
-            if (present) callbacks.onParticipantJoined?.({ id: attendeeId, isLocal: false, userId })
-            else callbacks.onParticipantLeft?.(attendeeId)
+            if (present) {
+                callbacks.onParticipantJoined?.({ id: attendeeId, isLocal: false, userId })
+                // TT-3.3c/SCRUM-460: no tile (yet) means no camera -- unless one already arrived.
+                if (![...tileIdToParticipantId.values()].includes(attendeeId)) reportRemoteVideo(attendeeId, false)
+            } else {
+                remoteVideoOn.delete(attendeeId)
+                callbacks.onParticipantLeft?.(attendeeId)
+            }
         }
         meetingSession.audioVideo.realtimeSubscribeToAttendeeIdPresence(presenceCallback)
 
+        // TT-3.3c/SCRUM-460: another person's "my video is paused for my connection" flag, on our
+        // own topic. Attributed by Chime's own senderAttendeeId (the same id as their tile), never
+        // by anything in the payload, which must be exactly { ttNetworkPause: boolean }. A throttled
+        // message is Chime telling the sender theirs wasn't delivered -- not a message to act on.
+        meetingSession.audioVideo.realtimeSubscribeToReceiveDataMessage(NETWORK_PAUSE_TOPIC, (message) => {
+            if (!message || message.throttled || message.senderAttendeeId === localAttendeeId) return
+            if (typeof message.senderAttendeeId !== 'string') return
+            let text = null
+            try {
+                text = message.text()
+            } catch (err) {
+                return
+            }
+            const paused = decodeNetworkPauseText(text)
+            if (paused !== null) callbacks.onRemoteNetworkPause?.(message.senderAttendeeId, paused)
+        })
+
         meetingSession.audioVideo.start()
-        if (capabilities.canSendVideo) {
+        if (startVideo) {
             meetingSession.audioVideo.startLocalVideoTile()
             videoEnabled = true
         }
-        if (!capabilities.canSendAudio) meetingSession.audioVideo.realtimeMuteLocalAudio()
+        // TT-3.3c/SCRUM-460: startAudioOff -- an automatic rejoin keeps the person's own mute.
+        if (!capabilities.canSendAudio || startAudioOff) meetingSession.audioVideo.realtimeMuteLocalAudio()
 
         // TT-3.2c/SCRUM-310: credentials.attendee is this same session's own CreateAttendee
         // response (see ChimeVideoProvider::createParticipantCredentials()), which already
@@ -202,6 +256,35 @@ export default function createChimeVideoClient(callbacks) {
         return true
     }
 
+    // TT-3.3c/SCRUM-460: the app pausing/restoring the camera for the connection -- never the mic.
+    // Returns the new isCameraOn; the same device-start and revoke-race handling as toggleCamera().
+    async function setCamera(on) {
+        if (!!on === videoEnabled) return videoEnabled
+        return toggleCamera()
+    }
+
+    // TT-3.3c/SCRUM-460: "audio only"'s receive side -- every remote tile paused (new ones too, see
+    // videoTileDidUpdate), or all of them resumed.
+    function setReceiveVideo(on) {
+        receivingVideo = !!on
+        if (!meetingSession) return
+        for (const tile of meetingSession.audioVideo.getAllRemoteVideoTiles()) {
+            const tileId = tile.state().tileId
+            if (receivingVideo) meetingSession.audioVideo.unpauseVideoTile(tileId)
+            else meetingSession.audioVideo.pauseVideoTile(tileId)
+        }
+    }
+
+    // TT-3.3c/SCRUM-460: tell everyone else our video is (no longer) paused for the connection.
+    // Best effort, not kept for people who join later (useVideoSession.js re-sends it to them).
+    function sendNetworkPause(paused) {
+        try {
+            meetingSession?.audioVideo.realtimeSendDataMessage(NETWORK_PAUSE_TOPIC, networkPauseMessage(paused))
+        } catch (err) {
+            // Not started (yet/any more) -- nothing to tell.
+        }
+    }
+
     // TT-3.2f-j/SCRUM-327: see DailyVideoClient.js's own disableLocalMedia(). Also releases the
     // devices themselves, so the browser's camera/mic indicator goes off after a revoke -- a later
     // grant starts them again lazily, exactly like a receive-only join.
@@ -228,6 +311,7 @@ export default function createChimeVideoClient(callbacks) {
         await meetingSession.audioVideo.stopVideoInput()
         await meetingSession.audioVideo.stopAudioInput()
         if (presenceCallback) meetingSession.audioVideo.realtimeUnsubscribeToAttendeeIdPresence(presenceCallback)
+        meetingSession.audioVideo.realtimeUnsubscribeFromReceiveDataMessage(NETWORK_PAUSE_TOPIC)
         meetingSession.audioVideo.removeObserver(observer)
         await meetingSession.audioVideo.stop()
     }
@@ -243,7 +327,10 @@ export default function createChimeVideoClient(callbacks) {
         meetingSession = null
         attachedElements.clear()
         tileIdToParticipantId.clear()
+        remoteVideoOn.clear()
     }
 
-    return { join, leave, end, toggleMute, toggleCamera, disableLocalMedia, attachVideo, destroy }
+    // providerAllowsVideo() is optional in the contract -- Chime exposes no live per-attendee
+    // capability to the browser, so it isn't implemented here (the composable reads it as "can't say").
+    return { join, leave, end, toggleMute, toggleCamera, setCamera, setReceiveVideo, sendNetworkPause, disableLocalMedia, attachVideo, destroy }
 }

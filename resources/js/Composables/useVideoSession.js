@@ -12,6 +12,18 @@ import {
     RECONNECT_WINDOW_MS,
     shouldRetryJoin,
 } from '@/Video/connectionPolicy'
+import {
+    AUTO_PAUSE,
+    AUTO_RESTORE,
+    autoActionStillValid,
+    autoVideoDecision,
+    isVideoAllowed,
+    joinMediaState,
+    nextAutoPauseSuspended,
+    remoteNetworkPauseChanged,
+    remoteVideoChanged,
+    restoreBlocked,
+} from '@/Video/audioOnlyPolicy'
 
 // TT-3.1c/SCRUM-276: one composable, two interchangeable provider clients (Video/DailyVideoClient.js,
 // Video/ChimeVideoClient.js) -- which one loads is decided entirely by the `videoProvider` Inertia
@@ -28,8 +40,15 @@ import {
 // real interface for container-bound DI doesn't imply an equivalent formalism is warranted here):
 //
 //   export default function createXVideoClient(callbacks) => {
-//     join(credentials): Promise<void>       -- credentials is this provider's own raw shape,
-//                                                exactly POST sessions.video.join's JSON response
+//     join(credentials, { startVideoOff, startAudioOff }): Promise<void>
+//                                            -- credentials is this provider's own raw shape,
+//                                                exactly POST sessions.video.join's JSON response.
+//                                                TT-3.3c/SCRUM-460: startVideoOff/startAudioOff
+//                                                (default false) join with the camera off / muted
+//                                                even if it may send -- an automatic rejoin keeps
+//                                                the person's own camera-off and mute, and the
+//                                                app's pause / "audio only" (audioOnlyPolicy.js's
+//                                                joinMediaState()); toggles start them later.
 //     leave(): Promise<void>                 -- local teardown only. Ending the room for everyone
 //     end(): Promise<void>                      is the backend's own server-side provider API
 //                                                call (see sessions.video.end) -- both are
@@ -40,6 +59,29 @@ import {
 //     toggleMute(): boolean|Promise<boolean> -- returns the new isMuted state (async on Chime,
 //                                                which starts a receive-only join's mic lazily)
 //     toggleCamera(): boolean|Promise<boolean> -- returns the new isCameraOn state (same)
+//     setCamera(on): boolean|Promise<boolean> -- TT-3.3c/SCRUM-460: the app turning the camera off
+//                                                (a weak connection) or back on, never the mic --
+//                                                Daily setLocalVideo(), Chime stop/
+//                                                startLocalVideoTile(). Returns the new isCameraOn;
+//                                                same permission/revoke-race handling as
+//                                                toggleCamera().
+//     setReceiveVideo(on): void|Promise      -- TT-3.3c/SCRUM-460: "audio only" -- stop (false) or
+//                                                resume receiving everyone else's video, people who
+//                                                join later included (Daily: audio-only track
+//                                                subscriptions, see DailyVideoClient.js; Chime:
+//                                                pauseVideoTile on every remote tile).
+//     providerAllowsVideo?(): boolean|null   -- TT-3.3c/SCRUM-460, optional: whether the provider
+//                                                itself still lets this person send video (Daily:
+//                                                the local participant's permissions.canSend), null
+//                                                or absent when it can't say. An automatic camera
+//                                                restore is skipped on false.
+//     sendNetworkPause(paused): void         -- TT-3.3c/SCRUM-460: tell everyone else our video is
+//                                                (no longer) paused for the connection -- a provider
+//                                                data message carrying exactly
+//                                                { ttNetworkPause: boolean } (audioOnlyPolicy.js;
+//                                                Daily sendAppMessage, Chime realtimeSendDataMessage
+//                                                on topic 'tt-net-pause'). Best effort. No Reverb,
+//                                                nothing stored or logged server-side.
 //     disableLocalMedia(): void|Promise      -- TT-3.2f-j/SCRUM-327: stop sending audio+video
 //                                                (a revoked speaking permission). join() reads
 //                                                credentials.participant's canSendAudio/
@@ -88,6 +130,17 @@ import {
 //                                                     'connected' meanwhile; the panel just says
 //                                                     "Reconnecting…". If the SDK gives up it calls
 //                                                     onDisconnected instead.
+//     onRemoteVideoChanged(id, isOn)               -- TT-3.3c/SCRUM-460: a remote participant's
+//                                                     camera stopped/started sending, from the
+//                                                     provider's own track state (Daily
+//                                                     tracks.video.state; Chime tile added/removed)
+//                                                     -- the tile's camera-off placeholder. Only
+//                                                     changes are reported.
+//     onRemoteNetworkPause(id, paused)             -- TT-3.3c/SCRUM-460: a remote participant's
+//                                                     sendNetworkPause(), attributed by the
+//                                                     provider's OWN sender id (same id as their
+//                                                     tile), never by anything in the payload; a
+//                                                     malformed message is dropped by the client.
 //     onError(error)                               -- a reportable problem that does NOT mean
 //                                                     the call itself ended (e.g. Daily's own
 //                                                     'nonfatal-error') -- surfaced, not recovered
@@ -167,11 +220,28 @@ export default function useVideoSession(session) {
     // Seconds until an unused speaking grant is expired by the backend's idle sweep (null when the
     // viewer holds no grant). See startIdleTracking().
     const idleSecondsRemaining = ref(null)
-    // True while a mute/camera toggle is still waiting on the provider (Chime may be starting a
-    // device behind a permission prompt) -- the controls are disabled meanwhile, so a second click
-    // can't race the first into publishing while the UI says off. mediaError explains a failure.
-    const mediaBusy = ref(false)
+    // True while a mute (micBusy) or camera (cameraBusy) change is still waiting on the provider
+    // (Chime may be starting a device behind a permission prompt) -- that control is disabled
+    // meanwhile, so a second click can't race the first into publishing while the UI says off.
+    // TT-3.3c/SCRUM-460: one lock per device (see withMediaLock()), so an automatic camera pause or
+    // restore never stops anyone muting. mediaError explains a failure.
+    const micBusy = ref(false)
+    const cameraBusy = ref(false)
     const mediaError = ref('')
+
+    // TT-3.3c/SCRUM-460: audio only on a weak connection. isCameraOn is what the camera actually is;
+    // cameraWanted is what the PERSON last chose -- the app may pause a wanted camera for the
+    // connection (videoPausedForNetwork) and bring back only that, never one the person turned off.
+    // audioOnly is the person's own mode: own camera off and nobody else's video received. Every
+    // rule (timings, eligibility, the bounce cap) is in Video/audioOnlyPolicy.js.
+    const cameraWanted = ref(true)
+    const videoPausedForNetwork = ref(false)
+    const audioOnly = ref(false)
+    // Remote tile id -> { videoOff, networkPaused }: their camera per the provider, and their own
+    // "paused for my connection" message. Keyed by the provider's ids, cleared as they leave.
+    const remoteMedia = ref({})
+    // Whether the server lets this person send video right now -- the pause notice shows only then.
+    const videoAllowed = computed(() => isVideoAllowed(capabilities.value))
 
     let client = null
     let sessionChannel = null
@@ -261,6 +331,7 @@ export default function useVideoSession(session) {
     function dropParticipantTile(id) {
         const leaving = participants.value.find((p) => p.id === id)
         participants.value = participants.value.filter((p) => p.id !== id)
+        forgetRemoteMedia(id)
 
         // TT-3.2f-j/SCRUM-327: someone who left can't be granted or revoked -- drop them from the
         // counsellor's queue too, unless another tile (a reconnect) still carries the same user.
@@ -281,13 +352,29 @@ export default function useVideoSession(session) {
         const live = (callback) => (...args) => (generation === clientGeneration ? callback(...args) : undefined)
 
         return {
-            onParticipantJoined: live(upsertParticipant),
+            onParticipantJoined: live((participant) => {
+                // TT-3.3c/SCRUM-460: the provider doesn't keep data messages for people who join
+                // later -- tell a newcomer our video is paused for the connection.
+                const isNew = !participants.value.some((p) => p.id === participant.id)
+                upsertParticipant(participant)
+                if (isNew && !participant.isLocal && videoPausedForNetwork.value) sendNetworkPause(true)
+            }),
             onParticipantLeft: live(dropParticipantTile),
             // Purely a signal -- VideoCallPanel.vue owns the actual <video> element refs and
             // decides when to (re-)call attachVideo(); there's no state to track here.
             onVideoAvailable: () => {},
             onConnectionQualityChanged: live((quality) => {
-                connectionQuality.value = normalizeQuality(quality)
+                setConnectionQuality(normalizeQuality(quality))
+                scheduleAutoVideo()
+            }),
+            onRemoteVideoChanged: live((id, isOn) => {
+                if (id === 'local') return
+                remoteMedia.value = { ...remoteMedia.value, [id]: remoteVideoChanged(remoteMedia.value[id], !!isOn) }
+            }),
+            // Only for someone actually in the call -- the label goes on their existing tile.
+            onRemoteNetworkPause: live((id, paused) => {
+                if (typeof paused !== 'boolean' || !participants.value.some((p) => p.id === id && !p.isLocal)) return
+                remoteMedia.value = { ...remoteMedia.value, [id]: remoteNetworkPauseChanged(remoteMedia.value[id], paused) }
             }),
             // TT-3.3b/SCRUM-459: only while connected -- once this composable has taken over (a
             // drop it is rejoining from, or a call that's over), a late SDK event must not flip it.
@@ -469,7 +556,11 @@ export default function useVideoSession(session) {
 
             // TT-3.3b/SCRUM-459: a rejoin's provider connect gets only what is left of its time --
             // running out is a media-stage failure like any other (the catch destroys the client).
-            await withinTime(client.join(credentials), deadline ? Math.max(1000, deadline - Date.now()) : 0)
+            // TT-3.3c/SCRUM-460: devices start as applyJoinState() decided (joinMediaState()) -- an
+            // automatic rejoin never switches on a camera or mic the person had off, and keeps the
+            // app's pause / "audio only" rather than flashing the camera on.
+            const joinOptions = { startVideoOff: !isCameraOn.value, startAudioOff: isMuted.value }
+            await withinTime(client.join(credentials, joinOptions), deadline ? Math.max(1000, deadline - Date.now()) : 0)
 
             if (token !== joinToken) {
                 await destroyQuietly(discardClient())
@@ -478,11 +569,13 @@ export default function useVideoSession(session) {
 
             resetQualityAnnouncements()
             status.value = 'connected'
+            await reapplyVideoMode()
             return { outcome: 'connected' }
         } catch (err) {
             if (token !== joinToken) return { outcome: 'cancelled' }
 
             stopIdleTracking()
+            stopAutoVideo()
             // TT-3.3b/SCRUM-459: not while an automatic rejoin is running -- an "ended"/"removed"
             // broadcast arriving before its next attempt must still be seen (reconnect() lets go of
             // them itself when it gives up on a refusal).
@@ -523,6 +616,8 @@ export default function useVideoSession(session) {
         // Not inside teardownClient()'s `if (client)` only -- join() now subscribes before a client
         // exists, so a cancel during loadClient() must unsubscribe too.
         stopIdleTracking()
+        stopAutoVideo()
+        clearChannelWatch()
         stopListeningForStatusChanges()
         if (client) await teardownClient()
     }
@@ -565,11 +660,15 @@ export default function useVideoSession(session) {
 
         const staleClient = discardClient()
         participants.value = []
-        connectionQuality.value = 'unknown'
+        remoteMedia.value = {}
+        setConnectionQuality('unknown')
         // TT-3.2f-j/SCRUM-327 review finding: no activity pings for a call this browser isn't in --
         // and if the rejoin fails, nothing else would ever stop the timer. The rejoin's
         // applyJoinState() resets mute/camera/grant state from its own response.
         stopIdleTracking()
+        // TT-3.3c/SCRUM-460: no pause/restore against a client that's gone. Whether video stays
+        // paused / audio only is kept for the rejoin (see applyJoinState()).
+        stopAutoVideo()
 
         if (!stop.recoverable) {
             // Nothing left to listen for -- this call is over from this browser's point of view.
@@ -774,6 +873,7 @@ export default function useVideoSession(session) {
         // the user just left.
         joinToken++
         abortReconnect()
+        stopAutoVideo()
 
         try {
             await axios.post(route('sessions.video.leave', session.value.id))
@@ -800,6 +900,7 @@ export default function useVideoSession(session) {
         // Same reasoning as leave()'s own joinToken bump above.
         joinToken++
         abortReconnect()
+        stopAutoVideo()
 
         try {
             await axios.post(route('sessions.video.end', session.value.id))
@@ -840,8 +941,8 @@ export default function useVideoSession(session) {
     // keeps a list entry (their tile never comes back to be dropped) until it's acted on.
     function applyJoinState(state) {
         capabilities.value = { ...defaultCapabilities(), ...(state ?? {}) }
-        isMuted.value = !capabilities.value.canSendAudio
-        isCameraOn.value = capabilities.value.canSendVideo
+        permissionGeneration++
+        applyJoinMediaState()
         handRaised.value = false
         speakingNotice.value = ''
         mediaError.value = ''
@@ -855,6 +956,48 @@ export default function useVideoSession(session) {
         speakerUserIds.value = merge ? [...new Set([...speakerUserIds.value, ...snapshotSpeakers])] : snapshotSpeakers
 
         stopIdleTracking()
+    }
+
+    // TT-3.3c/SCRUM-460: the camera/mic state a join starts with -- audioOnlyPolicy.js's
+    // joinMediaState(). A first join (or the person's own "try again") starts fresh. An automatic
+    // rejoin (reconnecting) is the same call: it keeps the person's own camera-off and mute, the app's
+    // pause (while video is still allowed), "audio only" and the bounce count.
+    function applyJoinMediaState() {
+        const rejoin = reconnecting.value
+        const next = joinMediaState({
+            rejoin,
+            capabilities: capabilities.value,
+            previous: {
+                cameraWanted: cameraWanted.value,
+                mutedByChoice,
+                muted: isMuted.value,
+                pausedByApp: videoPausedForNetwork.value,
+                audioOnly: audioOnly.value,
+            },
+        })
+
+        isCameraOn.value = next.cameraOn
+        cameraWanted.value = next.cameraWanted
+        isMuted.value = next.muted
+        mutedByChoice = next.mutedByChoice
+        videoPausedForNetwork.value = next.pausedByApp
+        audioOnly.value = next.audioOnly
+        if (!rejoin) autoRestoresUsed = 0
+        if (!rejoin || !isVideoAllowed(capabilities.value)) resumeCameraAfterAudioOnly = false
+        autoPauseSuspended = false
+        clearChannelWatch()
+        if (next.pausedByApp) startChannelWatch()
+    }
+
+    // TT-3.3c/SCRUM-460: once a rejoin is connected, put back what applyJoinMediaState() kept: the new
+    // client receives everyone's video by default, and the others saw our old tile go.
+    async function reapplyVideoMode() {
+        const active = client
+        if (!active) return
+        if (audioOnly.value) await Promise.resolve(active.setReceiveVideo?.(false)).catch(() => {})
+        if (active !== client) return
+        if (videoPausedForNetwork.value) sendNetworkPause(true)
+        scheduleAutoVideo()
     }
 
     // Asks to speak / withdraws the ask. The local flag is set from the response, not only the
@@ -915,7 +1058,9 @@ export default function useVideoSession(session) {
 
     function idleTick() {
         const now = Date.now()
-        const isSending = !isMuted.value || isCameraOn.value
+        // TT-3.3c/SCRUM-460: the person's intent, not the camera's actual state -- a granted speaker
+        // doesn't lose the floor because the app paused their camera for the connection.
+        const isSending = !isMuted.value || cameraWanted.value
 
         if (isSending && now - lastPingAt >= ACTIVITY_PING_INTERVAL_MS) {
             lastPingAt = now
@@ -931,6 +1076,10 @@ export default function useVideoSession(session) {
     }
 
     function applyOwnSpeakingPermission({ canSendAudio, canSendVideo, reason }) {
+        // TT-3.3c/SCRUM-460: an automatic camera restore in flight checks this before leaving the
+        // camera on (see autoRestoreVideo()).
+        permissionGeneration++
+
         // SCRUM-329: a creator (who joined able to speak, never by a grant) is only ever muted when their guardian's
         // consent now lets them watch only -- the call is told it as a plain revoke (it mustn't learn they're under 18),
         // so the panel becomes the watching one here.
@@ -938,7 +1087,7 @@ export default function useVideoSession(session) {
             Promise.resolve(client?.disableLocalMedia()).catch(() => {})
             capabilities.value = { ...capabilities.value, receiveOnly: true, canSendAudio: false, canSendVideo: false, canRaiseHand: false }
             isMuted.value = true
-            isCameraOn.value = false
+            cameraForcedOff()
             speakingNotice.value = 'You can now watch and listen only.'
             return
         }
@@ -952,7 +1101,7 @@ export default function useVideoSession(session) {
         if (canSendAudio) {
             // Granted: nothing is sent until the member chooses to unmute.
             isMuted.value = true
-            isCameraOn.value = false
+            cameraForcedOff()
             speakingNotice.value = ''
             startIdleTracking()
             return
@@ -964,7 +1113,7 @@ export default function useVideoSession(session) {
 
         Promise.resolve(client?.disableLocalMedia()).catch(() => {})
         isMuted.value = true
-        isCameraOn.value = false
+        cameraForcedOff()
         stopIdleTracking()
         speakingNotice.value = reason === 'IDLE_AUTO_EXPIRY'
             ? 'Your permission to speak ended because you stayed muted for a while. Raise your hand to ask again.'
@@ -973,46 +1122,363 @@ export default function useVideoSession(session) {
 
     async function teardownClient() {
         stopIdleTracking()
+        stopAutoVideo()
+        clearChannelWatch()
         stopListeningForStatusChanges()
         await destroyQuietly(discardClient())
         participants.value = []
+        remoteMedia.value = {}
     }
 
+    // TT-3.3c/SCRUM-460: the person's own mute -- an automatic rejoin keeps it (joinMediaState()).
+    let mutedByChoice = false
+
     async function toggleMute() {
-        await toggleMedia(async () => {
-            isMuted.value = await client.toggleMute()
+        await toggleMedia('mic', async (active) => {
+            isMuted.value = await active.toggleMute()
+            mutedByChoice = isMuted.value
         }, 'Could not use your microphone. Check your browser\'s microphone permission and try again.')
     }
 
+    // TT-3.3c/SCRUM-460: the person's own choice -- it sets cameraWanted. Turning the camera on while
+    // it's paused for the connection is "Turn video back on": the pause ends, everyone else's label
+    // clears, and the app won't pause it again until the connection has been good.
     async function toggleCamera() {
-        await toggleMedia(async () => {
-            isCameraOn.value = await client.toggleCamera()
+        await toggleMedia('camera', async (active) => {
+            const wasPaused = videoPausedForNetwork.value
+            const on = await active.toggleCamera()
+            isCameraOn.value = on
+            cameraWanted.value = on
+            // Only "Turn video back on" from a pause holds off the next pause -- a camera turned on
+            // any other time is paused as usual if the connection turns bad (found in browser QA).
+            if (on && wasPaused) autoPauseSuspended = true
+            if (active !== client) return
+            if (wasPaused) endNetworkPause()
+            if (on && (wasPaused || announceCameraBack)) announce('Video is back on.')
         }, 'Could not use your camera. Check your browser\'s camera permission and try again.')
+        announceCameraBack = false
+        scheduleAutoVideo()
     }
 
-    async function toggleMedia(toggle, failureMessage) {
-        if (!client || mediaBusy.value) return
+    // TT-3.3c/SCRUM-460: one lock per device ('mic' | 'camera'), shared by the person's toggles and
+    // every automatic/"audio only" camera change -- so two camera changes never interleave, while
+    // muting always stays possible. Runs fn(client) with the client it started on; does nothing if
+    // there is no client or that device is busy.
+    async function withMediaLock(kind, fn) {
+        const lock = kind === 'mic' ? micBusy : cameraBusy
+        const active = client
+        if (!active || lock.value) return undefined
 
-        mediaBusy.value = true
-        mediaError.value = ''
-
+        lock.value = true
         try {
-            await toggle()
-            if (holdsSpeakingGrant.value) idleTick()
-
-            // A revoke landed while this toggle was in flight (its broadcast already ran
-            // applyOwnSpeakingPermission()) -- never leave a device on that the hidden controls
-            // can no longer turn off.
-            if (capabilities.value.receiveOnly && !holdsSpeakingGrant.value) {
-                await Promise.resolve(client?.disableLocalMedia()).catch(() => {})
-                isMuted.value = true
-                isCameraOn.value = false
-            }
-        } catch (err) {
-            mediaError.value = failureMessage
+            return await fn(active)
         } finally {
-            mediaBusy.value = false
+            lock.value = false
         }
+    }
+
+    async function toggleMedia(kind, toggle, failureMessage) {
+        await withMediaLock(kind, async (active) => {
+            mediaError.value = ''
+
+            try {
+                await toggle(active)
+                if (holdsSpeakingGrant.value) idleTick()
+
+                // A revoke landed while this toggle was in flight (its broadcast already ran
+                // applyOwnSpeakingPermission()) -- never leave a device on that the hidden controls
+                // can no longer turn off.
+                if (capabilities.value.receiveOnly && !holdsSpeakingGrant.value) {
+                    await Promise.resolve(client?.disableLocalMedia()).catch(() => {})
+                    isMuted.value = true
+                    cameraForcedOff()
+                }
+            } catch (err) {
+                mediaError.value = failureMessage
+            }
+        })
+    }
+
+    // TT-3.3c/SCRUM-460: automatic audio only. The rules are audioOnlyPolicy.js's autoVideoDecision();
+    // this only keeps its inputs, runs one timer for whatever it says is next, and does it. Re-asked
+    // on every quality change, after each action, and after the person's own camera/mode changes.
+    let qualityChangedAt = Date.now()
+    let autoVideoTimer = null
+    let autoRestoresUsed = 0
+    // The person turned video back on themselves -- no automatic pause until the connection has been
+    // good again (nextAutoPauseSuspended()).
+    let autoPauseSuspended = false
+    // Bumped by every capability change (join, grant, revoke, downgrade) -- see autoActionStillValid().
+    let permissionGeneration = 0
+    // Whether leaving "audio only" should offer the camera back (it was wanted on going in), and
+    // whether the camera coming back from there should be announced.
+    let resumeCameraAfterAudioOnly = false
+    let announceCameraBack = false
+    const AUTO_VIDEO_BUSY_RETRY_MS = 1000
+
+    function setConnectionQuality(quality) {
+        if (quality === connectionQuality.value) return
+        connectionQuality.value = quality
+        qualityChangedAt = Date.now()
+        autoPauseSuspended = nextAutoPauseSuspended(autoPauseSuspended, quality)
+    }
+
+    // TT-3.3c/SCRUM-460: revokes and consent downgrades reach this browser over the session's Reverb
+    // channel. If that connection dropped at any point while the app had video paused, a revoke may
+    // have been missed, so the automatic restore is skipped (restoreBlocked()) -- the person's own
+    // "Turn video back on" stays. Read from the pusher-js connection Echo wraps (the same object
+    // useConnectionStatus.js watches): its state_change event, and its current state. With no Echo
+    // connection at all there is nothing to watch, and nothing could have been missed meanwhile that
+    // the call wasn't already missing -- treated as connected.
+    let channelDroppedWhilePaused = false
+    let channelWatch = null
+
+    function echoConnection() {
+        return window.Echo?.connector?.pusher?.connection ?? null
+    }
+
+    function channelConnected() {
+        const connection = echoConnection()
+        return connection ? connection.state === 'connected' : true
+    }
+
+    function startChannelWatch() {
+        clearChannelWatch()
+        channelDroppedWhilePaused = !channelConnected()
+        const connection = echoConnection()
+        if (!connection) return
+        const handler = (states) => {
+            if (states?.current !== 'connected') channelDroppedWhilePaused = true
+        }
+        connection.bind('state_change', handler)
+        channelWatch = { connection, handler }
+    }
+
+    function clearChannelWatch() {
+        channelWatch?.connection.unbind('state_change', channelWatch.handler)
+        channelWatch = null
+        channelDroppedWhilePaused = false
+    }
+
+    function autoVideoInputs() {
+        return {
+            quality: connectionQuality.value,
+            qualityForMs: Date.now() - qualityChangedAt,
+            cameraOn: isCameraOn.value,
+            cameraWanted: cameraWanted.value,
+            pausedByApp: videoPausedForNetwork.value,
+            videoAllowed: isVideoAllowed(capabilities.value),
+            audioOnly: audioOnly.value,
+            restoresUsed: autoRestoresUsed,
+            autoPauseSuspended,
+            restoreBlocked: restoreBlocked({
+                channelDroppedWhilePaused,
+                channelConnected: channelConnected(),
+                providerAllowsVideo: client?.providerAllowsVideo?.() ?? null,
+            }),
+        }
+    }
+
+    function stopAutoVideo() {
+        clearTimeout(autoVideoTimer)
+        autoVideoTimer = null
+    }
+
+    function scheduleAutoVideo(delayMs = null) {
+        stopAutoVideo()
+        if (status.value !== 'connected' || !client) return
+
+        const decision = autoVideoDecision(autoVideoInputs())
+        if (!decision.action) return
+        autoVideoTimer = setTimeout(runAutoVideo, delayMs ?? decision.inMs)
+    }
+
+    async function runAutoVideo() {
+        autoVideoTimer = null
+        if (status.value !== 'connected' || !client) return
+        // A camera change (the person's, or an earlier automatic one) is still running -- ask again
+        // shortly. The mic is never waited on: muting is always possible.
+        if (cameraBusy.value) return scheduleAutoVideo(AUTO_VIDEO_BUSY_RETRY_MS)
+
+        const decision = autoVideoDecision(autoVideoInputs())
+        if (!decision.action) return
+        if (decision.inMs > 0) return scheduleAutoVideo()
+
+        const done = decision.action === AUTO_PAUSE ? await autoPauseVideo() : await autoRestoreVideo()
+        // A failed or dropped attempt waits for the next quality change rather than retrying in a loop.
+        if (done) scheduleAutoVideo()
+    }
+
+    // The camera only -- the microphone is never touched. A capability change (or video no longer
+    // being allowed) while the camera was turning off drops the result: no pause flag, no message to
+    // the others, no announcement -- whatever caused the change has already set the camera state.
+    // Returns whether the pause took.
+    async function autoPauseVideo() {
+        const generation = permissionGeneration
+        if (!isVideoAllowed(capabilities.value)) return false
+
+        const result = await withMediaLock('camera', async (active) => {
+            try {
+                const on = await active.setCamera(false)
+                if (active !== client) return false
+                isCameraOn.value = on
+                const valid = autoActionStillValid({
+                    action: AUTO_PAUSE,
+                    generationBefore: generation,
+                    generationAfter: permissionGeneration,
+                    videoAllowed: isVideoAllowed(capabilities.value),
+                })
+                if (on || !valid) return false
+                videoPausedForNetwork.value = true
+                startChannelWatch()
+                sendNetworkPause(true)
+                announce('Video paused because of your connection. Audio continues.')
+                return true
+            } catch (err) {
+                return false
+            }
+        })
+
+        return result === true
+    }
+
+    // Only ever a camera the app paused, and only while video is still allowed and nothing blocks it
+    // (restoreBlocked()) -- checked again after the device start, exactly like toggleMedia()'s revoke
+    // race: a revoke or consent downgrade that landed meanwhile (applyOwnSpeakingPermission() bumps
+    // permissionGeneration; Chime and the fake also cancel the start themselves via
+    // disableLocalMedia()'s mediaGeneration) turns it straight back off. Never through the panel's
+    // reveal warning: only a camera that was already on (so already past that warning) is ever
+    // paused, and so restored. Returns whether it came back.
+    async function autoRestoreVideo() {
+        const generation = permissionGeneration
+        if (!isVideoAllowed(capabilities.value)) return false
+
+        const result = await withMediaLock('camera', async (active) => {
+            try {
+                const on = await active.setCamera(true)
+                if (active !== client) return false
+
+                const valid = autoActionStillValid({
+                    action: AUTO_RESTORE,
+                    generationBefore: generation,
+                    generationAfter: permissionGeneration,
+                    videoAllowed: isVideoAllowed(capabilities.value),
+                    pausedByApp: videoPausedForNetwork.value,
+                })
+                if (!valid) {
+                    if (on) await Promise.resolve(active.setCamera(false)).catch(() => {})
+                    isCameraOn.value = false
+                    return false
+                }
+
+                isCameraOn.value = on
+                if (!on) return false
+                autoRestoresUsed++
+                endNetworkPause()
+                announce('Video is back on.')
+                return true
+            } catch (err) {
+                return false
+            }
+        })
+
+        return result === true
+    }
+
+    function sendNetworkPause(paused) {
+        try {
+            client?.sendNetworkPause?.(paused)
+        } catch (err) {
+            // Best effort -- the others just see a plain "camera off" tile.
+        }
+    }
+
+    // The app's pause is over (video back, the person's own choice, or forced off): the others' label
+    // clears and the channel is no longer watched for it.
+    function endNetworkPause() {
+        if (!videoPausedForNetwork.value) return
+        videoPausedForNetwork.value = false
+        clearChannelWatch()
+        sendNetworkPause(false)
+    }
+
+    // Any forced camera-off (a revoke, a consent downgrade, a grant that starts with it off): the
+    // person's intent goes too, and so does any pause the app was holding -- it may not come back.
+    function cameraForcedOff() {
+        isCameraOn.value = false
+        cameraWanted.value = false
+        resumeCameraAfterAudioOnly = false
+        endNetworkPause()
+        stopAutoVideo()
+    }
+
+    function forgetRemoteMedia(id) {
+        if (!(id in remoteMedia.value)) return
+        const { [id]: _gone, ...rest } = remoteMedia.value
+        remoteMedia.value = rest
+    }
+
+    // TT-3.3c/SCRUM-460: the person's own "audio only": their camera off and nobody else's video
+    // received, to save data. Their camera choice is remembered and offered back on leaving; it is
+    // only given up once the camera is confirmed off (a failure leaves everything as it was).
+    async function enterAudioOnly() {
+        if (audioOnly.value) return
+
+        await withMediaLock('camera', async (active) => {
+            const wanted = cameraWanted.value
+            stopAutoVideo()
+            // Set first, so no automatic pause/restore acts while this runs.
+            audioOnly.value = true
+
+            try {
+                if (isCameraOn.value) isCameraOn.value = await active.setCamera(false)
+            } catch (err) {
+                isCameraOn.value = true
+            }
+            if (active !== client) return
+            if (isCameraOn.value) {
+                audioOnly.value = false
+                mediaError.value = 'Could not turn your camera off. Please try again.'
+                return
+            }
+
+            resumeCameraAfterAudioOnly = wanted && isVideoAllowed(capabilities.value)
+            cameraWanted.value = false
+            endNetworkPause()
+
+            try {
+                await active.setReceiveVideo(false)
+            } catch (err) {
+                // The provider refused -- the tiles still cover everyone's video.
+            }
+            announce('Audio only. Video is off.')
+        })
+        scheduleAutoVideo()
+    }
+
+    // Leaving "audio only": everyone's video comes back. Returns whether the person's camera was on
+    // going in (and may still send) -- the panel then turns it on through its normal camera-on path,
+    // which announces it; otherwise "Showing video again." is said here.
+    async function leaveAudioOnly() {
+        if (!audioOnly.value) return false
+
+        const resume = await withMediaLock('camera', async (active) => {
+            audioOnly.value = false
+            const resumeCamera = resumeCameraAfterAudioOnly && isVideoAllowed(capabilities.value)
+            resumeCameraAfterAudioOnly = false
+
+            try {
+                await active.setReceiveVideo(true)
+            } catch (err) {
+                // Best effort, as above.
+            }
+            return resumeCamera
+        })
+
+        if (resume) announceCameraBack = true
+        else if (!audioOnly.value) announce('Showing video again.')
+        scheduleAutoVideo()
+        return !!resume
     }
 
     function attachVideo(participantId, element) {
@@ -1099,8 +1565,9 @@ export default function useVideoSession(session) {
     return {
         status, participants, isMuted, isCameraOn, connectionQuality, lastError, reconnecting,
         reconnectAttempt, announcement, removedByCounsellor, capabilities, holdsSpeakingGrant, handRaised, raisedHandUserIds, speakerUserIds, speakingNotice,
-        idleSecondsRemaining, mediaBusy, mediaError,
+        idleSecondsRemaining, micBusy, cameraBusy, mediaError,
+        cameraWanted, videoPausedForNetwork, audioOnly, remoteMedia, videoAllowed,
         join, leave, end, removeParticipant, cancel, toggleMute, toggleCamera, attachVideo,
-        raiseHand, lowerHand, grantSpeaking, revokeSpeaking,
+        raiseHand, lowerHand, grantSpeaking, revokeSpeaking, enterAudioOnly, leaveAudioOnly,
     }
 }

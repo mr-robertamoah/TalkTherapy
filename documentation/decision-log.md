@@ -13374,3 +13374,42 @@ Planned with the product-owner, architect and project-manager; split into SCRUM-
   Daily's `network-connection` event values; whether Chime fires `audioVideoDidStart` again after its own reconnect.
 - **Noted, not changed:** automatic rejoins share the `video-provider` rate limit with moderation actions (3 attempts
   can't exhaust it on their own).
+
+## SCRUM-460 — audio only on a weak connection (TT-3.3c, 2026-11-17)
+
+- **Automatic, as the user chose:** the camera pauses after ~10 s of a weak line, or at once on a very weak one; the
+  microphone is never touched. Video comes back after ~30 s of a good line only if the app paused it, only while the
+  server still allows this person video (receive-only member, anonymous creator, a minor at "watch and listen", any
+  revoke or downgrade -- all of which arrive as capability changes), and at most twice per call (then only the
+  person's own "Turn video back on"). The person's intent (`cameraWanted`) is kept apart from the camera's actual
+  state. Rules are pure functions in `resources/js/Video/audioOnlyPolicy.js` (node tests).
+- **Never through the reveal warning:** only a camera that was already on -- so already past the warning -- can be
+  paused and so restored; a grant starts with the camera off; a granted member rejoins receive-only. Leaving
+  "audio only" goes through the normal camera button, warning included.
+- **Revoke races:** a pause or restore captures a permission generation before the provider call and drops its result
+  if a join, grant, revoke or downgrade landed meanwhile. A restore is also skipped (leaving the button) if the
+  live-update connection dropped at any point while paused, or isn't connected -- a revoke broadcast may have been
+  missed, and Echo doesn't replay (security review). With no Echo at all it doesn't block: nothing could be received
+  then anyway, and provider-side enforcement still applies.
+- **What the others see:** a provider data message carrying only `{ttNetworkPause: bool}` (Daily app message, Chime
+  topic `tt-net-pause`), attributed by the provider's own sender id, validated strictly, and shown only when the
+  provider says that person's video is actually off -- so nobody can label someone else, or cover their own live
+  video. Re-sent to newcomers while paused. Nothing stored, logged or sent to our server. A watch-only minor never
+  sends one, which looks the same as anyone else without a camera.
+- **"Audio only" (manual)** turns the person's camera off and stops receiving everyone's video: on Daily by turning
+  off automatic subscription and unsubscribing video (layer 0 alone still costs bandwidth -- review); on Chime by
+  pausing remote tiles. Its banner says "Saving data -- video is off" so it isn't confused with the anonymous
+  creator's existing "Audio only" note.
+- **Automatic rejoin (SCRUM-459) keeps the person's choices** (security review): their own camera-off and any mute in
+  place (their own, or one the app forced), plus the app's pause (while video is still allowed), "audio only" and the
+  bounce count. A manual "try again" starts fresh. Before this, a rejoin turned a camera or mic back on that the person
+  had switched off.
+- **Smaller calls:** mute is never blocked by an automatic camera change (one lock per device); the person's own
+  "Turn video back on" holds off the next automatic pause until the line has been good -- only that, not any
+  camera-on (found in browser QA); the idle sweep counts the camera the person wants, so a granted speaker keeps the
+  floor while paused.
+- **For SCRUM-317:** Daily -- that unsubscribing/resubscribing video works for everyone incl. newcomers, that
+  `permissions.canSend` updates live after a revoke, that remote `tracks.video.state` reaches `off` promptly and
+  `app-message.fromId` matches the tile; Chime -- that a stopped local tile reaches others as removed, that paused
+  remote tiles (incl. later arrivals) behave, that data messages arrive with the right sender id and are allowed for
+  receive-only attendees, and whether presence-before-tile causes a brief "Camera off".

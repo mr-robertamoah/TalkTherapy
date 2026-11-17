@@ -1,5 +1,6 @@
 import { acquireChannel } from '@/Composables/sharedChannel'
 import { dailyQuality, normalizeQuality, recoverableStop, terminalStop } from '@/Video/connectionPolicy'
+import { networkPauseMessage, parseNetworkPauseMessage } from '@/Video/audioOnlyPolicy'
 
 // SCRUM-458 (TT-3.3a): the browser half of App\Services\Fake\FakeVideoProvider -- a call with no
 // provider behind it, for local development and Playwright QA without Daily/Chime keys. Implements
@@ -42,7 +43,16 @@ import { dailyQuality, normalizeQuality, recoverableStop, terminalStop } from '@
 //     addParticipant(key?)     -- a placeholder remote participant; returns its tile id. Pass a real
 //                                 participant key to have its name resolved by the server.
 //     removeParticipant(id)    -- that placeholder leaves
-//     state()                  -- { connected, canSend, audioOn, videoOn, remotes }
+//     setRemoteVideo(id, on)   -- SCRUM-460: that placeholder's camera goes off (false) / comes back
+//                                 (true), as the provider's own track state would report it
+//     setRemoteNetworkPause(id, paused) -- SCRUM-460: that placeholder's "my video is paused for my
+//                                 connection" data message. A boolean is sent as the real message
+//                                 ({ ttNetworkPause: paused }); anything else is delivered as the raw
+//                                 payload, to check a malformed message is ignored.
+//     state()                  -- { connected, canSend, audioOn, videoOn, receivingVideo, audioOnly,
+//                                   sentNetworkPause, remotes: [{ id, key, videoOn }] }
+//                                 (SCRUM-460: audioOnly is "not receiving others' video";
+//                                 sentNetworkPause is the last flag this browser sent, null if none)
 //   }
 //
 // SCRUM-459: stops are reported in the classified-stop contract (useVideoSession.js), built with
@@ -82,11 +92,15 @@ export default function createFakeVideoClient(callbacks) {
     // not switch the device back on afterwards (same guard as ChimeVideoClient.js).
     let mediaGeneration = 0
     let remoteCount = 0
-    const remotes = new Map() // tile id -> { key, stream, stop }
+    const remotes = new Map() // tile id -> { key, stream, stop, videoOn }
     const attachedElements = new Map()
     let devHook = null
+    // SCRUM-460: the "audio only" receive side, and the last network-pause flag we sent (what a
+    // real provider would carry to everyone else).
+    let receivingVideo = true
+    let sentNetworkPause = null
 
-    async function join(creds) {
+    async function join(creds, { startVideoOff = false, startAudioOff = false } = {}) {
         // SCRUM-459: a simulated media-stage failure -- the join call succeeded, the "provider" then
         // failed. Before any device opens, so there is nothing to release.
         if (pendingJoinFailure.times > 0) {
@@ -102,7 +116,10 @@ export default function createFakeVideoClient(callbacks) {
         // so a failed join never leaves a device on.
         try {
             if (canSend.audio) await startAudio()
-            if (canSend.video) await startVideo()
+            // SCRUM-460: an automatic rejoin keeps the person's own mute.
+            if (audioTrack && startAudioOff) audioTrack.enabled = false
+            // SCRUM-460: a rejoin while video was paused (or in "audio only") keeps the camera off.
+            if (canSend.video && !startVideoOff) await startVideo()
         } catch (err) {
             release()
             throw err
@@ -209,8 +226,14 @@ export default function createFakeVideoClient(callbacks) {
         attachedElements.set(id, element)
         if (id === 'local') return bindLocal()
 
+        bindRemote(id)
+    }
+
+    // SCRUM-460: a remote tile shows nothing while their camera is off or we're not receiving video.
+    function bindRemote(id) {
         const remote = remotes.get(id)
-        if (remote) element.srcObject = remote.stream
+        const element = attachedElements.get(id)
+        if (remote && element) element.srcObject = remote.videoOn && receivingVideo ? remote.stream : null
     }
 
     function refused(kind) {
@@ -255,6 +278,27 @@ export default function createFakeVideoClient(callbacks) {
         return !!videoTrack
     }
 
+    // SCRUM-460: the app pausing/restoring the camera for the connection -- never the mic. Returns
+    // the new isCameraOn; the same permission and revoke-race handling as toggleCamera().
+    async function setCamera(on) {
+        if (!!on === !!videoTrack) return !!videoTrack
+        return toggleCamera()
+    }
+
+    function setReceiveVideo(on) {
+        receivingVideo = !!on
+        for (const id of remotes.keys()) bindRemote(id)
+    }
+
+    // SCRUM-460: the fake's stand-in for the provider's own view of what this person may send.
+    function providerAllowsVideo() {
+        return canSend.video
+    }
+
+    function sendNetworkPause(paused) {
+        if (connected) sentNetworkPause = networkPauseMessage(paused).ttNetworkPause
+    }
+
     function disableLocalMedia() {
         mediaGeneration++
         stopAudio()
@@ -264,12 +308,28 @@ export default function createFakeVideoClient(callbacks) {
     function addRemote(key = null) {
         const id = `fake-remote-${++remoteCount}`
         const media = placeholderStream(`Participant ${remoteCount}`)
-        remotes.set(id, { key, ...media })
+        remotes.set(id, { key, ...media, videoOn: true })
         callbacks.onParticipantJoined?.({ id, isLocal: false, userId: key })
         callbacks.onVideoAvailable?.(id)
-        const element = attachedElements.get(id)
-        if (element) element.srcObject = media.stream
+        bindRemote(id)
         return id
+    }
+
+    // SCRUM-460: stands in for the provider's own remote track state.
+    function setRemoteVideo(id, on) {
+        const remote = remotes.get(id)
+        if (!remote || remote.videoOn === !!on) return
+        remote.videoOn = !!on
+        bindRemote(id)
+        callbacks.onRemoteVideoChanged?.(id, remote.videoOn)
+    }
+
+    // SCRUM-460: stands in for a data message from that remote -- attributed by the tile id (the
+    // provider's sender id), validated exactly as the real clients validate theirs.
+    function receiveNetworkPause(id, payload) {
+        if (!remotes.has(id)) return
+        const paused = parseNetworkPauseMessage(typeof payload === 'boolean' ? networkPauseMessage(payload) : payload)
+        if (paused !== null) callbacks.onRemoteNetworkPause?.(id, paused)
     }
 
     function removeRemote(id) {
@@ -307,12 +367,17 @@ export default function createFakeVideoClient(callbacks) {
             nonFatalError: (message = 'Fake non-fatal video error.') => callbacks.onError?.({ action: 'nonfatal-error', type: 'fake', errorMsg: message }),
             addParticipant: (key) => addRemote(key),
             removeParticipant: (id) => removeRemote(id),
+            setRemoteVideo: (id, on = true) => setRemoteVideo(id, on),
+            setRemoteNetworkPause: (id, paused = true) => receiveNetworkPause(id, paused),
             state: () => ({
                 connected,
                 canSend: { ...canSend },
                 audioOn: !!audioTrack?.enabled,
                 videoOn: !!videoTrack,
-                remotes: [...remotes.entries()].map(([id, remote]) => ({ id, key: remote.key })),
+                receivingVideo,
+                audioOnly: !receivingVideo,
+                sentNetworkPause,
+                remotes: [...remotes.entries()].map(([id, remote]) => ({ id, key: remote.key, videoOn: remote.videoOn })),
             }),
         }
         window.__ttFakeVideo = devHook
@@ -346,5 +411,8 @@ export default function createFakeVideoClient(callbacks) {
         devHook = null
     }
 
-    return { join, leave, end, toggleMute, toggleCamera, disableLocalMedia, attachVideo, destroy }
+    return {
+        join, leave, end, toggleMute, toggleCamera, setCamera, setReceiveVideo, sendNetworkPause, providerAllowsVideo,
+        disableLocalMedia, attachVideo, destroy,
+    }
 }
