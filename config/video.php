@@ -6,6 +6,8 @@ return [
     // a deployment-level choice, not a live per-session runtime switch (user's own explicit
     // decision, 2026-09-11: see documentation/decision-log.md). Only one of 'daily'/'chime' is
     // ever bound in the container at a time (see App\Providers\VideoServiceProvider).
+    // SCRUM-458: 'fake' (App\Services\Fake\FakeVideoProvider) is for local/testing only -- it
+    // throws when resolved in any other environment.
     'provider' => env('VIDEO_PROVIDER', 'daily'),
 
     // TT-3.2f-h/SCRUM-325: seconds a granted speaking permission may go without an activity ping

@@ -209,6 +209,8 @@ Check every item before going live.
     ms, the default; not set in `config/auth.php`). Measure `Hash::check` (bcrypt) on the production hardware; if it
     is close to or above 200 ms, set `timebox_duration` in `config/auth.php` above it, so a password-less account's
     quick refusal can't be told apart from a wrong password.
+- [ ] **`VIDEO_PROVIDER`** is `daily` or `chime`, never `fake` (SCRUM-458). The fake connects nobody and enforces
+  nothing; outside `local`/`testing` it throws on every video join, so a call would never start.
 
 ## The proxy
 
