@@ -14,7 +14,17 @@ defineProps({
   canFocus: { type: Boolean, default: false },
   canRemove: { type: Boolean, default: false },
   removing: { type: Boolean, default: false },
+  // TT-3.3c/SCRUM-460: what covers the video instead (audioOnlyPolicy.js's tileOverlay()): 'network'
+  // (paused for a weak connection), 'camera-off', 'audio-only' (this viewer isn't receiving video),
+  // or null for the video itself. The tile's own label already names (or masks) the person.
+  overlay: { type: String, default: null },
 })
+
+const OVERLAY_TEXT = {
+  network: 'Video paused — weak connection',
+  'camera-off': 'Camera off',
+  'audio-only': 'Audio only — video not shown',
+}
 
 defineEmits(['toggle-focus', 'remove'])
 </script>
@@ -28,6 +38,13 @@ defineEmits(['toggle-focus', 'remove'])
       :muted="participant.isLocal"
       class="w-full h-full object-cover"
     />
+    <div
+      v-if="overlay && OVERLAY_TEXT[overlay]"
+      class="absolute inset-0 flex items-center justify-center bg-gray-800 px-3 text-center text-sm text-gray-100"
+      data-testid="video-tile-overlay"
+    >
+      {{ OVERLAY_TEXT[overlay] }}
+    </div>
     <span
       class="absolute bottom-1.5 left-1.5 max-w-[90%] truncate text-xs text-white bg-gray-900 px-2 py-0.5 rounded"
     >

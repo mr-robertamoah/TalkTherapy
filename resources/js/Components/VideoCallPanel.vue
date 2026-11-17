@@ -6,6 +6,7 @@ import VideoConsentRequiredBanner from '@/Components/VideoConsentRequiredBanner.
 import VideoTile from '@/Components/VideoTile.vue'
 import useVideoSession from '@/Composables/useVideoSession'
 import { qualityLabel } from '@/Video/connectionPolicy'
+import { tileOverlay } from '@/Video/audioOnlyPolicy'
 
 // TT-3.1c/SCRUM-276: the actual video call surface (tiles, controls, connection-quality
 // indicator) -- deliberately a separate component from TherapyComponent.vue (already 1421 lines,
@@ -25,6 +26,7 @@ const {
   reconnectAttempt, announcement, removedByCounsellor, capabilities, holdsSpeakingGrant, handRaised, raisedHandUserIds, speakerUserIds, speakingNotice,
   idleSecondsRemaining, mediaBusy, mediaError, join, leave, removeParticipant, cancel, toggleMute, toggleCamera, attachVideo,
   raiseHand, lowerHand, grantSpeaking, revokeSpeaking,
+  cameraWanted, videoPausedForNetwork, audioOnly, remoteMedia, enterAudioOnly, leaveAudioOnly,
 } = useVideoSession(sessionRef)
 
 const videoElements = ref({})
@@ -50,6 +52,21 @@ function setVideoElement(participantId, element) {
 function participantLabel(participant) {
   if (participant.isLocal) return 'You'
   return participant.name || 'Participant'
+}
+
+// TT-3.3c/SCRUM-460: display only -- what covers a tile instead of its video. Every pause/restore
+// decision lives in useVideoSession.js and Video/audioOnlyPolicy.js.
+function overlayFor(participant) {
+  if (participant.isLocal) {
+    return tileOverlay({ networkPaused: videoPausedForNetwork.value, videoOff: !isCameraOn.value })
+  }
+  return tileOverlay({ ...(remoteMedia.value[participant.id] ?? {}), receivingVideo: !audioOnly.value })
+}
+
+// "Turn video back on" from audio only: everyone's video returns, and the person's own camera too if
+// it was on going in -- through the normal camera-on path below, warnings and all.
+async function clickedLeaveAudioOnly() {
+  if (await leaveAudioOnly()) clickedCamera()
 }
 
 async function clickedLeave() {
@@ -109,7 +126,8 @@ const ANONYMOUS_AUDIO_ONLY_NOTE = 'Audio only: your camera stays off because you
 // member isn't sending -- sending keeps the grant alive on its own.
 const showIdleWarning = computed(() => {
   if (!holdsSpeakingGrant.value || idleSecondsRemaining.value == null) return false
-  if (!isMuted.value || isCameraOn.value) return false
+  // TT-3.3c/SCRUM-460: a camera the app paused for the connection still counts (as in idleTick()).
+  if (!isMuted.value || cameraWanted.value) return false
   return idleSecondsRemaining.value <= Math.min(60, capabilities.value.speakingGrantIdleTimeout / 2)
 })
 
@@ -383,6 +401,41 @@ onBeforeUnmount(() => {
         {{ ANONYMOUS_AUDIO_ONLY_NOTE }}
       </div>
 
+      <!-- TT-3.3c/SCRUM-460: the app paused this person's camera for a weak connection. Solid, not
+           dismissable: it goes when the video comes back (automatically or by the button). -->
+      <div
+        v-if="videoPausedForNetwork"
+        class="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
+        data-testid="video-network-paused"
+      >
+        <span>Video paused to keep your call going — audio continues</span>
+        <button
+          type="button"
+          class="px-3 py-1.5 text-sm rounded-md border border-gray-800 bg-gray-800 text-white hover:bg-gray-700 disabled:opacity-50"
+          :disabled="mediaBusy"
+          @click="clickedCamera"
+        >
+          Turn video back on
+        </button>
+      </div>
+
+      <!-- TT-3.3c/SCRUM-460: the person's own audio-only mode. -->
+      <div
+        v-else-if="audioOnly"
+        class="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-800"
+        data-testid="video-audio-only"
+      >
+        <span>Audio only — video is off to save data. Audio continues.</span>
+        <button
+          type="button"
+          class="px-3 py-1.5 text-sm rounded-md border border-gray-800 bg-gray-800 text-white hover:bg-gray-700 disabled:opacity-50"
+          :disabled="mediaBusy"
+          @click="clickedLeaveAudioOnly"
+        >
+          Turn video back on
+        </button>
+      </div>
+
       <div
         v-if="showIdleWarning"
         class="mb-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"
@@ -475,6 +528,7 @@ onBeforeUnmount(() => {
         <VideoTile
           :participant="focusedParticipant"
           :label="participantLabel(focusedParticipant)"
+          :overlay="overlayFor(focusedParticipant)"
           :video-ref="setVideoElement"
           is-focused
           can-focus
@@ -490,6 +544,7 @@ onBeforeUnmount(() => {
               :key="participant.id"
               :participant="participant"
               :label="participantLabel(participant)"
+              :overlay="overlayFor(participant)"
               :video-ref="setVideoElement"
               compact
               can-focus
@@ -505,6 +560,7 @@ onBeforeUnmount(() => {
           :key="participant.id"
           :participant="participant"
           :label="participantLabel(participant)"
+          :overlay="overlayFor(participant)"
           :video-ref="setVideoElement"
           :can-focus="canFocus"
           :can-remove="canRemove(participant)"
@@ -516,9 +572,10 @@ onBeforeUnmount(() => {
 
       <div v-if="mediaError" class="text-sm text-red-600 mt-3 text-center" role="alert">{{ mediaError }}</div>
 
-      <!-- Only the controls this viewer can actually use -- a receive-only member sees none until
-           a counsellor lets them speak, and an anonymous speaker never gets a camera button. -->
-      <div v-if="capabilities.canSendAudio || capabilities.canSendVideo" class="flex items-center justify-center gap-3 mt-4">
+      <!-- Only the controls this viewer can actually use -- a receive-only member sees no mic/camera
+           until a counsellor lets them speak, and an anonymous speaker never gets a camera button.
+           TT-3.3c/SCRUM-460: "audio only" is for everyone (watching costs data too). -->
+      <div class="flex flex-wrap items-center justify-center gap-3 mt-4">
         <button
           v-if="capabilities.canSendAudio"
           type="button"
@@ -530,7 +587,7 @@ onBeforeUnmount(() => {
           {{ isMuted ? 'unmute' : 'mute' }}
         </button>
         <button
-          v-if="capabilities.canSendVideo"
+          v-if="capabilities.canSendVideo && !audioOnly"
           type="button"
           class="px-4 py-2 text-sm rounded-md border disabled:opacity-50"
           :disabled="mediaBusy"
@@ -538,6 +595,16 @@ onBeforeUnmount(() => {
           @click="clickedCamera"
         >
           {{ isCameraOn ? 'turn camera off' : 'turn camera on' }}
+        </button>
+        <button
+          v-if="!audioOnly"
+          type="button"
+          class="px-4 py-2 text-sm rounded-md border border-gray-200 bg-white text-gray-700 disabled:opacity-50"
+          :disabled="mediaBusy"
+          data-testid="video-audio-only-toggle"
+          @click="enterAudioOnly"
+        >
+          audio only
         </button>
       </div>
     </div>

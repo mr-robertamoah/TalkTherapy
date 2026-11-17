@@ -1,5 +1,6 @@
 import DailyIframe from '@daily-co/daily-js'
 import { classifyDailyStop, dailyQuality } from '@/Video/connectionPolicy'
+import { dailyRemoteVideoOn, networkPauseMessage, parseNetworkPauseMessage } from '@/Video/audioOnlyPolicy'
 
 // TT-3.1c/SCRUM-276: thin wrapper around @daily-co/daily-js's "call object" (headless, no
 // prebuilt iframe UI) mode -- gives useVideoSession.js a provider-agnostic surface to drive a
@@ -26,6 +27,8 @@ export default function createDailyVideoClient(callbacks) {
     // currently interrupted -- Daily is reconnecting while any is (see setInterrupted()).
     const interruptedConnections = new Set()
     const attachedElements = new Map()
+    // TT-3.3c/SCRUM-460: the last camera state reported per remote id, so only a change is reported.
+    const remoteVideoOn = new Map()
 
     function idFor(participant) {
         return participant.local ? 'local' : participant.session_id
@@ -49,7 +52,17 @@ export default function createDailyVideoClient(callbacks) {
             userId: participant.user_id ?? null,
         })
 
+        if (!participant.local) reportRemoteVideo(id, participant)
         attachIfReady(id, participant)
+    }
+
+    // TT-3.3c/SCRUM-460: a remote camera turning off/on, from Daily's own track state (never from
+    // anything the participant says about themselves) -- drives the tile's camera-off placeholder.
+    function reportRemoteVideo(id, participant) {
+        const isOn = dailyRemoteVideoOn(participant.tracks?.video?.state)
+        if (isOn === null || remoteVideoOn.get(id) === isOn) return
+        remoteVideoOn.set(id, isOn)
+        callbacks.onRemoteVideoChanged?.(id, isOn)
     }
 
     function attachIfReady(id, participant) {
@@ -73,7 +86,7 @@ export default function createDailyVideoClient(callbacks) {
         if (now !== was) callbacks.onReconnecting?.(now)
     }
 
-    async function join(credentials) {
+    async function join(credentials, { startVideoOff = false } = {}) {
         callObject = DailyIframe.createCallObject()
 
         callObject.on('participant-joined', (e) => handleParticipant(e.participant))
@@ -82,6 +95,17 @@ export default function createDailyVideoClient(callbacks) {
             const id = idFor(e.participant)
             callbacks.onParticipantLeft?.(id)
             attachedElements.delete(id)
+            remoteVideoOn.delete(id)
+        })
+        // TT-3.3c/SCRUM-460: another person's "my video is paused for my connection" flag. Attributed
+        // by Daily's own fromId (their session_id, the same id as their tile), never by anything in
+        // the payload, which must be exactly { ttNetworkPause: boolean } -- anything else is ignored.
+        callObject.on('app-message', (e) => {
+            const paused = parseNetworkPauseMessage(e?.data)
+            if (paused === null || typeof e?.fromId !== 'string') return
+            const local = callObject?.participants()?.local
+            if (local && e.fromId === local.session_id) return
+            callbacks.onRemoteNetworkPause?.(e.fromId, paused)
         })
         // TT-3.3b/SCRUM-459: Daily's 'warning' is our 'poor' -- see connectionPolicy.js.
         callObject.on('network-quality-change', (e) => {
@@ -114,7 +138,9 @@ export default function createDailyVideoClient(callbacks) {
         // mic the token can't send from anyway. Daily enforces the token's canSend regardless.
         const capabilities = credentials.participant ?? { canSendAudio: true, canSendVideo: true }
         audioEnabled = capabilities.canSendAudio
-        videoEnabled = capabilities.canSendVideo
+        // TT-3.3c/SCRUM-460: startVideoOff -- a rejoin while video was paused for the connection
+        // (or in audio-only mode) doesn't switch the camera on just to switch it off again.
+        videoEnabled = capabilities.canSendVideo && !startVideoOff
 
         await callObject.join({
             url: credentials.url,
@@ -153,6 +179,37 @@ export default function createDailyVideoClient(callbacks) {
         return videoEnabled
     }
 
+    // TT-3.3c/SCRUM-460: the app pausing/restoring the camera for the connection -- never the mic.
+    // Returns the new isCameraOn. Daily enforces the token's canSend regardless.
+    function setCamera(on) {
+        videoEnabled = !!on
+        callObject?.setLocalVideo(videoEnabled)
+        return videoEnabled
+    }
+
+    // TT-3.3c/SCRUM-460: the "audio only" mode's receive side. Daily's setSubscribedTracks only works
+    // with subscribeToTracksAutomatically turned off (daily-js validates it), which would make this
+    // client manage every subscription itself -- so instead every remote camera is dropped to its
+    // lowest simulcast layer: 'base' covers people who join later, '*' everyone already here. Restored
+    // by inheriting Daily's defaults again. (SCRUM-317: confirm the bandwidth this saves on a real
+    // room, and that 'inherit' brings back the default layer.)
+    async function setReceiveVideo(on) {
+        if (!callObject) return
+        await callObject.updateReceiveSettings(on
+            ? { base: { video: { layer: 'inherit' } }, '*': 'inherit' }
+            : { base: { video: { layer: 0 } }, '*': { video: { layer: 0 } } })
+    }
+
+    // TT-3.3c/SCRUM-460: tell everyone else our video is (no longer) paused for the connection.
+    // Best effort: a lost message only means a plain "camera off" tile instead of the reason.
+    function sendNetworkPause(paused) {
+        try {
+            callObject?.sendAppMessage(networkPauseMessage(paused), '*')
+        } catch (err) {
+            // Not joined (yet/any more) -- nothing to tell.
+        }
+    }
+
     // TT-3.2f-j/SCRUM-327: a revoked speaking permission -- stop sending locally too, rather than
     // leave the UI showing a live mic the provider is already dropping.
     function disableLocalMedia() {
@@ -175,7 +232,8 @@ export default function createDailyVideoClient(callbacks) {
         teardown()
         callObject = null
         attachedElements.clear()
+        remoteVideoOn.clear()
     }
 
-    return { join, leave, end, toggleMute, toggleCamera, disableLocalMedia, attachVideo, destroy }
+    return { join, leave, end, toggleMute, toggleCamera, setCamera, setReceiveVideo, sendNetworkPause, disableLocalMedia, attachVideo, destroy }
 }

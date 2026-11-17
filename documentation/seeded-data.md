@@ -290,6 +290,21 @@ there is none). From the browser console, on the Vite dev server only, `window._
   ...) stops the rejoin at once; any other name (`'TimeoutError'`, `'Error'`) is retried once more at most.
   `failNextJoin(null)` clears it.
 
+Audio only on a weak connection (SCRUM-460):
+- `setQuality('bad')` pauses your camera at once (`setQuality('poor')` after ~10 s); the microphone stays on. You see
+  "Video paused to keep your call going — audio continues" with "Turn video back on", and your own tile says "Video
+  paused — weak connection". `setQuality('good')` brings the camera back after ~30 s -- only if the app paused it,
+  and at most twice per call (after that, only the button). A camera you turned off yourself is never touched.
+- The "audio only" button (any participant, watchers included) turns your camera off and stops showing everyone
+  else's video; "Turn video back on" undoes it (and turns your camera back on if it was on).
+- `addParticipant()` returns a tile id, e.g. `'fake-remote-1'`; then `setRemoteVideo(id, false)` shows "Camera off"
+  on that tile and `setRemoteNetworkPause(id, true)` shows "Video paused — weak connection" (cleared by
+  `setRemoteNetworkPause(id, false)`, by `setRemoteVideo(id, true)` after it went off, or by
+  `removeParticipant(id)`). Pass anything other than a boolean -- e.g. `setRemoteNetworkPause(id, { ttNetworkPause:
+  'yes' })` -- to check a malformed message is ignored.
+- `state()` also reports `videoOn` (your camera), `receivingVideo` / `audioOnly`, `sentNetworkPause` (the last flag
+  your browser sent to the others, `null` if none) and each remote's `videoOn`.
+
 Two browsers on the fake don't see each other. Set `VIDEO_PROVIDER` back afterwards.
 
 ## Group video call + participant removal + speaking permission (SCRUM-308/309/310, TT-3.2a/b/c; SCRUM-327)
