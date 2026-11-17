@@ -11,8 +11,8 @@ import { acquireChannel } from '@/Composables/sharedChannel'
 // with no provider at all; same factory shape and callbacks.
 //
 // Deliberately NOT a formal JS interface/abstract class -- this codebase has no such precedent in
-// resources/js, and there are permanently only ever two implementations chosen once. Both client
-// files must implement this exact factory shape instead, documented here rather than enforced by
+// resources/js, and there are only ever a handful of implementations, one chosen per deployment
+// (Daily, Chime, and the local-only fake). Every client file must implement this exact factory shape instead, documented here rather than enforced by
 // the language (mirrors useConnectionStatus.js's own established idiom of injecting callbacks at
 // construction time, not the backend's PHP `interface VideoProviderInterface` -- PHP needing a
 // real interface for container-bound DI doesn't imply an equivalent formalism is warranted here):
@@ -33,7 +33,9 @@ import { acquireChannel } from '@/Composables/sharedChannel'
 //     disableLocalMedia(): void|Promise      -- TT-3.2f-j/SCRUM-327: stop sending audio+video
 //                                                (a revoked speaking permission). join() reads
 //                                                credentials.participant's canSendAudio/
-//                                                canSendVideo to decide which devices to open.
+//                                                canSendVideo to decide which devices to open
+//                                                (Daily/Chime; the fake reads its own
+//                                                provider-style credentials.canSend instead).
 //     attachVideo(participantId, videoEl)    -- attach participantId's video stream to this
 //                                                <video> element ('local' is always the calling
 //                                                user's own id). Its own method (not a raw

@@ -55,6 +55,10 @@ const STOP_TYPES = {
     'room-expired': 'exp-room',
 }
 
+// getUserMedia errors meaning "no usable device" (missing, busy elsewhere, or none matching) -- the
+// fake carries on without one. NotAllowedError (a refused permission) is deliberately not here.
+const NO_DEVICE_ERRORS = ['NotFoundError', 'NotReadableError', 'OverconstrainedError']
+
 export default function createFakeVideoClient(callbacks) {
     let credentials = null
     let connected = false
@@ -78,8 +82,15 @@ export default function createFakeVideoClient(callbacks) {
         canSend.audio = !!creds.canSend?.audio
         canSend.video = !!creds.canSend?.video
 
-        if (canSend.audio) await startAudio()
-        if (canSend.video) await startVideo()
+        // A failure part-way (the mic opened, then the camera refused) releases whatever did open,
+        // so a failed join never leaves a device on.
+        try {
+            if (canSend.audio) await startAudio()
+            if (canSend.video) await startVideo()
+        } catch (err) {
+            release()
+            throw err
+        }
 
         listenForPermissionChanges()
         connected = true
@@ -99,6 +110,9 @@ export default function createFakeVideoClient(callbacks) {
             if (data.participantKey !== credentials.participantKey) return
             canSend.audio = !!data.canSendAudio
             canSend.video = !!data.canSendVideo
+            // Standing in for provider enforcement: also cancels a device start still awaiting
+            // getUserMedia, so it can't come back on after the revoke (see toggleMute/toggleCamera).
+            if (!canSend.audio || !canSend.video) mediaGeneration++
             if (!canSend.audio) stopAudio()
             if (!canSend.video) stopVideo()
         })
@@ -110,8 +124,8 @@ export default function createFakeVideoClient(callbacks) {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
             audioTrack = stream.getAudioTracks()[0] ?? null
         } catch (err) {
-            // No microphone at all: carry on silent. A refused permission fails like a real client.
-            if (err?.name !== 'NotFoundError') throw err
+            // No usable microphone: carry on silent. A refused permission fails like a real client.
+            if (!NO_DEVICE_ERRORS.includes(err?.name)) throw err
         }
     }
 
@@ -121,7 +135,8 @@ export default function createFakeVideoClient(callbacks) {
             const stream = await navigator.mediaDevices.getUserMedia({ video: true })
             videoTrack = stream.getVideoTracks()[0] ?? null
         } catch (err) {
-            if (err?.name !== 'NotFoundError') throw err
+            // No usable camera: a drawn placeholder instead. A refused permission still fails.
+            if (!NO_DEVICE_ERRORS.includes(err?.name)) throw err
             placeholderVideo = placeholderStream('You')
             videoTrack = placeholderVideo.stream.getVideoTracks()[0] ?? null
         }
@@ -187,6 +202,8 @@ export default function createFakeVideoClient(callbacks) {
     }
 
     // Like Daily: returns the new isMuted. Starts the mic lazily, as a receive-only join opens none.
+    // With no usable microphone (startAudio() carried on silent) there is no track to enable, so
+    // unmuting reports still muted rather than pretending -- Playwright's fake devices avoid this.
     async function toggleMute() {
         if (audioTrack?.enabled) {
             audioTrack.enabled = false
