@@ -3,6 +3,7 @@
 namespace App\Actions\Video;
 
 use App\Actions\Action;
+use App\Events\VideoParticipantRemovedEvent;
 use App\Exceptions\VideoException;
 use App\Models\GroupTherapy;
 use App\Models\Session;
@@ -60,6 +61,8 @@ class RemoveParticipantFromVideoSessionAction extends Action
                 $participant = $videoSession->activeParticipantFor($targetUserId);
 
                 if (! $participant) {
+                    $this->markRemovedWhileDisconnected($videoSession, $targetUserId);
+
                     return true;
                 }
 
@@ -68,5 +71,28 @@ class RemoveParticipantFromVideoSessionAction extends Action
         } catch (LockTimeoutException) {
             throw new VideoException('This person is joining the video call right now. Please try again in a moment.', 409);
         }
+    }
+
+    // TT-3.3b/SCRUM-459 (security re-review LOW-1): someone whose connection dropped and whose
+    // automatic rejoin is between attempts has no open row (a failed attempt closes its own), yet
+    // their browser is about to rejoin. A removal then has nobody to eject, but must still count:
+    // their latest row in this call is marked removed (left_at untouched), which refuses the next
+    // automatic rejoin (JoinVideoSessionAction::ensureRejoinAllowed()), and the same
+    // participant-removed broadcast as an eject tells a browser still listening to stop. Someone
+    // with no row in this call at all gets exactly the old no-op -- nothing to tell apart.
+    private function markRemovedWhileDisconnected(VideoSession $videoSession, int $targetUserId): void
+    {
+        $latestRow = $videoSession->participantRowsFor($targetUserId)
+            ->orderByDesc('joined_at')
+            ->orderByDesc('id')
+            ->first();
+
+        if (! $latestRow) {
+            return;
+        }
+
+        $latestRow->update(['removed_at' => now()]);
+
+        VideoParticipantRemovedEvent::dispatch($videoSession, $targetUserId);
     }
 }

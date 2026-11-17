@@ -4,6 +4,7 @@ use App\Actions\Video\EjectVideoParticipantAction;
 use App\Actions\Video\EndVideoSessionAction;
 use App\Actions\Video\RemoveParticipantFromVideoSessionAction;
 use App\Contracts\VideoProviderInterface;
+use App\Events\VideoParticipantRemovedEvent;
 use App\Exceptions\VideoException;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
@@ -13,6 +14,7 @@ use App\Models\User;
 use App\Models\VideoSession;
 use App\Models\VideoSessionParticipant;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Event;
 
 // TT-3.3b/SCRUM-459 (security review HIGH-1): a browser's AUTOMATIC rejoin after its connection
 // dropped names the call it was in; the server refuses it when that call has ended or this person
@@ -251,4 +253,61 @@ test('refused and allowed rejoins never touch Session.status', function () {
     EndVideoSessionAction::new()->execute($data['session'], $data['counsellorUser']);
     vrgJoin($this, $data['client'], $data['session'], ['rejoin' => true, 'videoSessionId' => $videoSessionId])->assertStatus(422);
     expect($data['session']->fresh()->status)->toBe($original);
+});
+
+function vrgGroupSession(): array
+{
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class, 'addedby_id' => User::factory()->adult()->create()->id,
+        'public' => true, 'anonymous' => false,
+    ]);
+    $counsellorUser = User::factory()->create();
+    $groupTherapy->counsellors()->attach(Counsellor::factory()->create(['user_id' => $counsellorUser->id])->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
+    $member = User::factory()->adult()->create();
+    $groupTherapy->users()->attach($member->id, ['anonymous' => false, 'was_minor_at_join' => false]);
+    $session = Session::factory()->create([
+        'for_id' => $groupTherapy->id, 'for_type' => GroupTherapy::class,
+        'type' => 'ONLINE', 'status' => 'IN_SESSION', 'start_time' => now(),
+    ]);
+
+    return compact('counsellorUser', 'member', 'session');
+}
+
+test('a removal between automatic rejoin attempts (no open row) still refuses the next rejoin', function () {
+    Event::fake([VideoParticipantRemovedEvent::class]);
+    $data = vrgGroupSession();
+    $videoSessionId = vrgJoin($this, $data['member'], $data['session'])->json('videoSessionId'); // R1, left open by a drop
+
+    // A rejoin attempt closes R1 and opens R2; its provider join fails, and the awaited leave closes R2.
+    $this->travel(1)->seconds();
+    vrgJoin($this, $data['member'], $data['session'], ['rejoin' => true, 'videoSessionId' => $videoSessionId])->assertOk();
+    $this->actingAs($data['member'])->postJson(route('sessions.video.leave', ['sessionId' => $data['session']->id]))->assertOk();
+    $videoSession = VideoSession::find($videoSessionId);
+    expect($videoSession->activeParticipantFor($data['member']->id))->toBeNull();
+
+    // The counsellor removes them in the backoff gap.
+    $this->travel(1)->seconds();
+    RemoveParticipantFromVideoSessionAction::new()->execute($data['session'], $data['counsellorUser'], $data['member']->id);
+
+    $latest = $videoSession->participantRowsFor($data['member']->id)->orderByDesc('id')->first();
+    expect($latest->removed_at)->not->toBeNull();
+    Event::assertDispatched(VideoParticipantRemovedEvent::class);
+
+    vrgJoin($this, $data['member'], $data['session'], ['rejoin' => true, 'videoSessionId' => $videoSessionId])
+        ->assertStatus(422)
+        ->assertJsonPath('rejoinRefused', 'removed');
+
+    // Their own join is still allowed.
+    $this->travel(1)->seconds();
+    vrgJoin($this, $data['member'], $data['session'])->assertOk();
+});
+
+test('removing someone with no row in the call stays a no-op', function () {
+    Event::fake([VideoParticipantRemovedEvent::class]);
+    $data = vrgGroupSession();
+    $other = User::factory()->adult()->create();
+    VideoSession::factory()->create(['session_id' => $data['session']->id, 'provider_room_id' => 'room-vrg-2']);
+
+    expect(RemoveParticipantFromVideoSessionAction::new()->execute($data['session'], $data['counsellorUser'], $other->id))->toBeTrue();
+    Event::assertNotDispatched(VideoParticipantRemovedEvent::class);
 });
