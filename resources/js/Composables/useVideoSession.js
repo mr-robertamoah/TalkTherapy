@@ -1,4 +1,4 @@
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { usePage } from '@inertiajs/vue3'
 import axios from 'axios'
 import { acquireChannel } from '@/Composables/sharedChannel'
@@ -309,6 +309,24 @@ export default function useVideoSession(session) {
         return stale
     }
 
+    // Rejects with a 'TimeoutError' if `promise` hasn't settled within `ms` (0: no limit). The
+    // original promise is left to settle on its own -- its late rejection is swallowed.
+    function withinTime(promise, ms) {
+        if (!(ms > 0)) return promise
+
+        promise.catch(() => {})
+        let timer
+        const timeout = new Promise((resolve, reject) => {
+            timer = setTimeout(() => {
+                const error = new Error('The video service took too long to connect.')
+                error.name = 'TimeoutError'
+                reject(error)
+            }, ms)
+        })
+
+        return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+    }
+
     async function destroyQuietly(staleClient) {
         if (!staleClient) return
         try {
@@ -362,11 +380,13 @@ export default function useVideoSession(session) {
     //     stage: 'http' | 'media', httpStatus, consentRequired, errorName }
     // stage 'http' is the sessions.video.join call failing (httpStatus null: no response at all --
     // the network, or `timeoutMs` running out); 'media' is the provider SDK failing after it
-    // succeeded (errorName says why, e.g. a refused camera).
+    // succeeded (errorName says why, e.g. a refused camera, or 'TimeoutError'). `timeoutMs` bounds
+    // the whole attempt -- the join call and the provider connect after it.
     async function attemptJoin({ rejoin = false, timeoutMs = 0 } = {}) {
         if (!session.value?.id) return { outcome: 'skipped' }
         if (status.value === 'connecting' || status.value === 'connected') return { outcome: 'skipped' }
 
+        const deadline = timeoutMs > 0 ? Date.now() + timeoutMs : 0
         const token = ++joinToken
         status.value = 'connecting'
         lastError.value = ''
@@ -446,7 +466,9 @@ export default function useVideoSession(session) {
                 return { outcome: 'cancelled' }
             }
 
-            await client.join(credentials)
+            // TT-3.3b/SCRUM-459: a rejoin's provider connect gets only what is left of its time --
+            // running out is a media-stage failure like any other (the catch destroys the client).
+            await withinTime(client.join(credentials), deadline ? Math.max(1000, deadline - Date.now()) : 0)
 
             if (token !== joinToken) {
                 await destroyQuietly(discardClient())
@@ -470,8 +492,9 @@ export default function useVideoSession(session) {
             await destroyQuietly(discardClient())
 
             // The join call opened a participant row for this attempt; nobody is in the call on
-            // it, so close it (best effort) rather than leave it counted as "in the call".
-            axios.post(route('sessions.video.leave', session.value.id)).catch(() => {})
+            // it, so close it (best effort) rather than leave it counted as "in the call" -- awaited,
+            // so the next attempt's join can't overtake it and have its own row closed instead.
+            await axios.post(route('sessions.video.leave', session.value.id)).catch(() => {})
 
             if (token !== joinToken) return { outcome: 'cancelled' }
 
@@ -492,7 +515,10 @@ export default function useVideoSession(session) {
     async function cancel() {
         joinToken++
         // TT-3.3b/SCRUM-459: leaving the page mid-reconnect clears every pending timer/listener.
+        // Deliberately no sessions.video.leave for a call waiting to rejoin: a drop is never a leave
+        // (the row the drop left open stays open, as it always has -- SCRUM-330).
         abortReconnect()
+        clearTimeout(announceTimer)
         // Not inside teardownClient()'s `if (client)` only -- join() now subscribes before a client
         // exists, so a cancel during loadClient() must unsubscribe too.
         stopIdleTracking()
@@ -687,10 +713,19 @@ export default function useVideoSession(session) {
         qualityAnnouncedAt = -Infinity
     }
 
-    // Cleared first so a live region re-reads a message identical to the last one.
+    // Cleared first, and set a moment later, so a live region re-reads a message identical to the
+    // last one (screen readers can miss a clear-and-set within one render). A newer message
+    // replaces one still pending.
+    const ANNOUNCE_DELAY_MS = 100
+    let announceTimer = null
+
     function announce(message) {
+        clearTimeout(announceTimer)
         announcement.value = ''
-        nextTick(() => { announcement.value = message })
+        announceTimer = setTimeout(() => {
+            announceTimer = null
+            announcement.value = message
+        }, ANNOUNCE_DELAY_MS)
     }
 
     const STATUS_ANNOUNCEMENTS = {

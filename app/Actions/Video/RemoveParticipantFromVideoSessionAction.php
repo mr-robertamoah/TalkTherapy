@@ -8,6 +8,8 @@ use App\Models\GroupTherapy;
 use App\Models\Session;
 use App\Models\User;
 use App\Models\VideoSession;
+use App\Support\VideoJoinLock;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 
 // TT-3.2b/SCRUM-309: ejects one specific participant without ending the room for anyone else --
 // distinct from EndVideoSessionAction's whole-room teardown. GroupTherapy-only: a 1:1 Therapy's
@@ -43,18 +45,28 @@ class RemoveParticipantFromVideoSessionAction extends Action
             throw new VideoException('Use leave, not remove, to exit the video call yourself.', 422);
         }
 
-        $videoSession = $session->videoSessions()->whereNull('ended_at')->first();
+        // TT-3.3b/SCRUM-459 (security re-review): under the target's join lock, as
+        // RemovePersonFromLiveCallsAction does -- so a removal and that person's concurrent
+        // (automatic) rejoin can't interleave: the rejoin either lands first and is the row ejected
+        // here, or comes after and sees the removal. A busy lock is the join's own "try again" 409.
+        try {
+            return VideoJoinLock::run($session->id, $targetUserId, function () use ($session, $actingUser, $targetUserId) {
+                $videoSession = $session->videoSessions()->whereNull('ended_at')->first();
 
-        if (! $videoSession) {
-            return true;
+                if (! $videoSession) {
+                    return true;
+                }
+
+                $participant = $videoSession->activeParticipantFor($targetUserId);
+
+                if (! $participant) {
+                    return true;
+                }
+
+                return EjectVideoParticipantAction::new()->execute($videoSession, $participant, $actingUser);
+            });
+        } catch (LockTimeoutException) {
+            throw new VideoException('This person is joining the video call right now. Please try again in a moment.', 409);
         }
-
-        $participant = $videoSession->activeParticipantFor($targetUserId);
-
-        if (! $participant) {
-            return true;
-        }
-
-        return EjectVideoParticipantAction::new()->execute($videoSession, $participant, $actingUser);
     }
 }

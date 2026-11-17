@@ -315,6 +315,13 @@ class JoinVideoSessionAction extends Action
 
             $this->ensureChimeGroupTherapyCapacity($session, $videoSession, $user);
 
+            // TT-3.3b/SCRUM-459 (security re-review): a rejoin replaces the join it dropped out of, so
+            // that one's row (left open by the drop, SCRUM-330) is closed here rather than lingering
+            // as "in the call". left_at only -- a removed row is already closed and keeps its mark.
+            if ($rejoinVideoSessionId !== null) {
+                $videoSession->participantRowsFor($user->id)->whereNull('left_at')->update(['left_at' => now()]);
+            }
+
             $participantRow = VideoSessionParticipant::query()->create([
                 'video_session_id' => $videoSession->id,
                 'participant_type' => User::class,
@@ -337,22 +344,24 @@ class JoinVideoSessionAction extends Action
     // offline missed the "ended"/"removed" broadcasts, and its reconnect must not undo them:
     //  - the call has ended (no open epoch, or a different one than the rejoin names): refused as
     //    ended -- never a new VideoSession on a rejoin;
-    //  - their latest row in it was closed by the server taking them out (removed_at, set by
-    //    EjectVideoParticipantAction): refused as removed.
+    //  - the server took them out of it (removed_at, set by EjectVideoParticipantAction) and they
+    //    haven't joined it since: refused as removed. "Since" is any row of theirs, not just the
+    //    latest -- an eject stamps only the rows still open, so a later row an earlier rejoin opened
+    //    and closed again (a failed provider join, then a leave) must not hide the removal
+    //    (re-review finding). A join in the same second as the removal doesn't count as later.
     // A person's own "join video" doesn't come through here, so someone taken out may still join
-    // again by choice when they're allowed to (e.g. to watch after a consent downgrade).
+    // again by choice when they're allowed to (e.g. to watch after a consent downgrade) -- and that
+    // join's row is what lets a later automatic rejoin through.
     private function ensureRejoinAllowed(?VideoSession $openVideoSession, User $user, int $rejoinVideoSessionId): void
     {
         if (! $openVideoSession || $openVideoSession->id !== $rejoinVideoSessionId) {
             throw new VideoRejoinRefusedException(VideoRejoinRefusedException::ENDED);
         }
 
-        $latestRow = $openVideoSession->participantRowsFor($user->id)
-            ->orderByDesc('joined_at')
-            ->orderByDesc('id')
-            ->first();
+        $lastRemovedAt = $openVideoSession->participantRowsFor($user->id)->max('removed_at');
 
-        if ($latestRow?->removed_at !== null) {
+        // A row with no joined_at never counts as a later join (NULL > x is not true in SQL).
+        if ($lastRemovedAt !== null && ! $openVideoSession->participantRowsFor($user->id)->where('joined_at', '>', $lastRemovedAt)->exists()) {
             throw new VideoRejoinRefusedException(VideoRejoinRefusedException::REMOVED);
         }
     }

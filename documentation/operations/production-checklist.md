@@ -211,6 +211,13 @@ Check every item before going live.
     quick refusal can't be told apart from a wrong password.
 - [ ] **`VIDEO_PROVIDER`** is `daily` or `chime`, never `fake` (SCRUM-458). The fake connects nobody and enforces
   nothing; outside `local`/`testing` it throws on every video join, so a call would never start.
+- [ ] **Video reconnect (SCRUM-459):**
+  - Rolling back SCRUM-459: roll back the code, not the migration -- older code ignores
+    `video_session_participants.removed_at` (nullable, no backfill). To drop it anyway: on the **current** code,
+    `php artisan down`, then
+    `php artisan migrate:rollback --path=database/migrations/2026_12_11_100000_add_removed_at_to_video_session_participants_table.php --force`,
+    then deploy the old code. The ADD and DROP are `ALGORITHM=INSTANT` on MySQL >= 8.0.29 (INPLACE, non-blocking,
+    below that).
 
 ## The proxy
 

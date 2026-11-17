@@ -2,13 +2,17 @@
 
 use App\Actions\Video\EjectVideoParticipantAction;
 use App\Actions\Video\EndVideoSessionAction;
+use App\Actions\Video\RemoveParticipantFromVideoSessionAction;
 use App\Contracts\VideoProviderInterface;
+use App\Exceptions\VideoException;
 use App\Models\Counsellor;
+use App\Models\GroupTherapy;
 use App\Models\Session;
 use App\Models\Therapy;
 use App\Models\User;
 use App\Models\VideoSession;
 use App\Models\VideoSessionParticipant;
+use Illuminate\Support\Facades\Cache;
 
 // TT-3.3b/SCRUM-459 (security review HIGH-1): a browser's AUTOMATIC rejoin after its connection
 // dropped names the call it was in; the server refuses it when that call has ended or this person
@@ -83,7 +87,12 @@ test('an automatic rejoin into a live call, by someone not taken out of it, succ
         ->assertOk()
         ->assertJsonPath('videoSessionId', $videoSessionId);
 
-    expect(VideoSessionParticipant::query()->where('video_session_id', $videoSessionId)->where('participant_id', $data['client']->id)->count())->toBe(2);
+    $rows = VideoSessionParticipant::query()->where('video_session_id', $videoSessionId)->where('participant_id', $data['client']->id)->orderBy('id')->get();
+    // The row the drop left open is closed by the rejoin (left, not removed); the new one is live.
+    expect($rows)->toHaveCount(2)
+        ->and($rows[0]->left_at)->not->toBeNull()
+        ->and($rows[0]->removed_at)->toBeNull()
+        ->and($rows[1]->left_at)->toBeNull();
 });
 
 test('an automatic rejoin into a call that has ended is refused and creates nothing', function () {
@@ -130,9 +139,79 @@ test('a person\'s own join after being taken out is still allowed, and a later d
     $videoSession = VideoSession::find($videoSessionId);
     EjectVideoParticipantAction::new()->execute($videoSession, $videoSession->activeParticipantFor($data['client']->id));
 
+    $this->travel(1)->seconds();
     vrgJoin($this, $data['client'], $data['session'])->assertOk()->assertJsonPath('videoSessionId', $videoSessionId);
 
     vrgJoin($this, $data['client'], $data['session'], ['rejoin' => true, 'videoSessionId' => $videoSessionId])->assertOk();
+});
+
+test('a removal is not hidden by a later row that an earlier rejoin opened and closed again', function () {
+    $data = vrgSession();
+    $videoSessionId = vrgJoin($this, $data['client'], $data['session'])->json('videoSessionId'); // row 1, left open by a drop
+    $videoSession = VideoSession::find($videoSessionId);
+    $row1 = $videoSession->activeParticipantFor($data['client']->id);
+
+    // An earlier rejoin's row: opened, its provider join failed, then left -- later than row 1.
+    $this->travel(1)->seconds();
+    VideoSessionParticipant::factory()->create([
+        'video_session_id' => $videoSessionId, 'participant_id' => $data['client']->id,
+        'joined_at' => now(), 'left_at' => now(),
+    ]);
+
+    // The counsellor's eject stamps only the row still open: row 1.
+    $this->travel(1)->seconds();
+    EjectVideoParticipantAction::new()->execute($videoSession, $row1);
+    expect($row1->fresh()->removed_at)->not->toBeNull();
+
+    vrgJoin($this, $data['client'], $data['session'], ['rejoin' => true, 'videoSessionId' => $videoSessionId])
+        ->assertStatus(422)
+        ->assertJsonPath('rejoinRefused', 'removed');
+
+    // Their own join is still allowed, and a drop after it may rejoin again.
+    $this->travel(1)->seconds();
+    vrgJoin($this, $data['client'], $data['session'])->assertOk();
+    vrgJoin($this, $data['client'], $data['session'], ['rejoin' => true, 'videoSessionId' => $videoSessionId])->assertOk();
+});
+
+test('a join in the same second as the removal does not count as joining since', function () {
+    $data = vrgSession();
+    $this->freezeSecond();
+    $videoSessionId = vrgJoin($this, $data['client'], $data['session'])->json('videoSessionId');
+    $videoSession = VideoSession::find($videoSessionId);
+    EjectVideoParticipantAction::new()->execute($videoSession, $videoSession->activeParticipantFor($data['client']->id));
+    VideoSessionParticipant::factory()->create([
+        'video_session_id' => $videoSessionId, 'participant_id' => $data['client']->id,
+        'joined_at' => now(), 'left_at' => now(),
+    ]);
+
+    vrgJoin($this, $data['client'], $data['session'], ['rejoin' => true, 'videoSessionId' => $videoSessionId])
+        ->assertStatus(422)
+        ->assertJsonPath('rejoinRefused', 'removed');
+});
+
+test('a counsellor\'s removal waits for the person\'s join lock, and says so when it is busy', function () {
+    config(['video.join_lock_wait_seconds' => 0]);
+    $groupTherapy = GroupTherapy::factory()->create([
+        'addedby_type' => User::class, 'addedby_id' => User::factory()->adult()->create()->id, 'public' => true,
+    ]);
+    $counsellorUser = User::factory()->create();
+    $groupTherapy->counsellors()->attach(Counsellor::factory()->create(['user_id' => $counsellorUser->id])->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
+    $member = User::factory()->create();
+    $groupTherapy->users()->attach($member->id, ['anonymous' => false]);
+    $session = Session::factory()->create(['for_id' => $groupTherapy->id, 'for_type' => GroupTherapy::class]);
+    $videoSession = VideoSession::factory()->create(['session_id' => $session->id, 'provider_room_id' => 'room-vrg']);
+    $row = VideoSessionParticipant::factory()->create(['video_session_id' => $videoSession->id, 'participant_id' => $member->id, 'left_at' => null]);
+
+    $joining = Cache::store(config('cache.scheduler_store'))->lock("video-join:{$session->id}:{$member->id}", 30);
+    $joining->get();
+
+    expect(fn () => RemoveParticipantFromVideoSessionAction::new()->execute($session, $counsellorUser, $member->id))
+        ->toThrow(VideoException::class);
+    expect($row->fresh()->left_at)->toBeNull();
+
+    $joining->release();
+    RemoveParticipantFromVideoSessionAction::new()->execute($session, $counsellorUser, $member->id);
+    expect($row->fresh()->removed_at)->not->toBeNull();
 });
 
 test('a leave is not a removal -- an automatic rejoin after one is allowed', function () {

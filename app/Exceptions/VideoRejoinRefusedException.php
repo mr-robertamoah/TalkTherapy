@@ -13,8 +13,13 @@ class VideoRejoinRefusedException extends VideoException
 
     public const REMOVED = 'removed';
 
-    public function __construct(public readonly string $outcome)
+    public readonly string $outcome;
+
+    // Anything but REMOVED is ENDED -- the outcome is only ever one of the two constants.
+    public function __construct(string $outcome)
     {
+        $this->outcome = $outcome === self::REMOVED ? self::REMOVED : self::ENDED;
+
         parent::__construct(
             $outcome === self::REMOVED ? 'You were taken out of this video call.' : 'This video call has ended.',
             422,
