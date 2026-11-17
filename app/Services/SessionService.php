@@ -125,7 +125,7 @@ class SessionService extends Service
         $session = UpdateSessionAction::new()->execute($createSessionDTO);
 
         Notification::send(
-            $session->for->getOtherUsers($createSessionDTO->user),
+            $session->otherParticipants($createSessionDTO->user),
             new SessionUpdatedNotification($session)
         );
 
@@ -177,7 +177,7 @@ class SessionService extends Service
         broadcast(new SessionUpdatedEvent($session))->toOthers();
 
         Notification::send(
-            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user),
+            $createSessionDTO->session->otherParticipants($createSessionDTO->user),
             new SessionStatusChangedNotification($session)
         );
 
@@ -206,7 +206,7 @@ class SessionService extends Service
         broadcast(new SessionUpdatedEvent($session))->toOthers();
 
         Notification::send(
-            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user),
+            $createSessionDTO->session->otherParticipants($createSessionDTO->user),
             new SessionStatusChangedNotification($session)
         );
 
@@ -224,7 +224,7 @@ class SessionService extends Service
         broadcast(new SessionUpdatedEvent($session))->toOthers();
 
         Notification::send(
-            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user),
+            $createSessionDTO->session->otherParticipants($createSessionDTO->user),
             new SessionStatusChangedNotification($session)
         );
 
@@ -251,7 +251,7 @@ class SessionService extends Service
         });
 
         Notification::send(
-            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user),
+            $createSessionDTO->session->otherParticipants($createSessionDTO->user),
             new SessionStatusChangedNotification($session)
         );
 
@@ -267,7 +267,7 @@ class SessionService extends Service
         $session = DeleteSessionAction::new()->execute($createSessionDTO);
 
         Notification::send(
-            $createSessionDTO->session->for->getOtherUsers($createSessionDTO->user),
+            $createSessionDTO->session->otherParticipants($createSessionDTO->user),
             new SessionDeletedNotification($session)
         );
 

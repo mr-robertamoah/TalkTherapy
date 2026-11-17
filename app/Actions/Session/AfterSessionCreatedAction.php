@@ -28,7 +28,7 @@ class AfterSessionCreatedAction extends Action
         );
 
         Notification::send(
-            $session->for->getOtherUsers($actor),
+            $session->otherParticipants($actor),
             new SessionCreatedNotification($session)
         );
     }

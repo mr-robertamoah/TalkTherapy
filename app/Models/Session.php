@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Collection;
 
 class Session extends Model
 {
@@ -204,6 +205,30 @@ class Session extends Model
         }
 
         return $users;
+    }
+
+    // SCRUM-457: who hears about a change to this session (created, updated, started, ended, failed, abandoned,
+    // deleted), other than $actor. A group's session goes to the people the scheduler's own notices reach
+    // (GroupTherapy::sessionParticipants() -- no inactive counsellor, former member, closed account or paused minor),
+    // plus a minor creator's guardians, as a one-to-one therapy's getOtherUsers() adds a minor client's. A one-to-one
+    // therapy's recipients are unchanged.
+    public function otherParticipants(User $actor): Collection
+    {
+        $for = $this->for;
+
+        if (! $for instanceof GroupTherapy) {
+            return collect($for?->getOtherUsers($actor) ?? []);
+        }
+
+        $guardians = $for->clientIsMinor() && $for->addedby instanceof User
+            ? User::query()->whereWard($for->addedby)->get()
+            : collect();
+
+        return $for->sessionParticipants()
+            ->merge($guardians)
+            ->reject(fn (User $user) => $user->is($actor))
+            ->unique('id')
+            ->values();
     }
 
     public function scopeWhereInSession($query)
