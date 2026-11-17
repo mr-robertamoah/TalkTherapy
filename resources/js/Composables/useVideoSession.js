@@ -1148,7 +1148,9 @@ export default function useVideoSession(session) {
             const on = await active.toggleCamera()
             isCameraOn.value = on
             cameraWanted.value = on
-            if (on) autoPauseSuspended = true
+            // Only "Turn video back on" from a pause holds off the next pause -- a camera turned on
+            // any other time is paused as usual if the connection turns bad (found in browser QA).
+            if (on && wasPaused) autoPauseSuspended = true
             if (active !== client) return
             if (wasPaused) endNetworkPause()
             if (on && (wasPaused || announceCameraBack)) announce('Video is back on.')
