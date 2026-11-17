@@ -128,7 +128,10 @@ export function joinMediaState({ rejoin = false, capabilities = null, previous =
     return {
         cameraOn,
         cameraWanted: pausedByApp || cameraOn,
-        muted: !canAudio || mutedByChoice,
+        // Any mute in place before the drop stays -- the person's own, or one the app forced (a
+        // revoke or consent downgrade, then a grant that leaves the mic off until they unmute):
+        // a rejoin never makes a mic live that wasn't (security re-review).
+        muted: !canAudio || mutedByChoice || !!previous.muted,
         mutedByChoice,
         pausedByApp,
         audioOnly,

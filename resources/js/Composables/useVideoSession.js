@@ -970,6 +970,7 @@ export default function useVideoSession(session) {
             previous: {
                 cameraWanted: cameraWanted.value,
                 mutedByChoice,
+                muted: isMuted.value,
                 pausedByApp: videoPausedForNetwork.value,
                 audioOnly: audioOnly.value,
             },

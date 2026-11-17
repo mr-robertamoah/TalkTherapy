@@ -303,6 +303,13 @@ describe('joining and rejoining', () => {
         assert.equal(state.muted, false)
     })
 
+    it('keeps a mute the app forced (not chosen) on an automatic rejoin', () => {
+        // Consent downgraded (forced mute), then restored via a grant that leaves the mic off, then a drop.
+        const state = joinMediaState({ rejoin: true, capabilities: speaker, previous: { cameraWanted: false, mutedByChoice: false, muted: true } })
+        assert.equal(state.muted, true)
+        assert.equal(state.mutedByChoice, false)
+    })
+
     it('keeps the app\'s pause (camera off, still wanted) and audio only', () => {
         const paused = joinMediaState({ rejoin: true, capabilities: speaker, previous: { cameraWanted: true, pausedByApp: true } })
         assert.equal(paused.cameraOn, false)
