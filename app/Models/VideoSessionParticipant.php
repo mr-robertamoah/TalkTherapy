@@ -13,11 +13,13 @@ class VideoSessionParticipant extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['video_session_id', 'participant_type', 'participant_id', 'joined_at', 'left_at'];
+    protected $fillable = ['video_session_id', 'participant_type', 'participant_id', 'joined_at', 'left_at', 'removed_at'];
 
     protected $casts = [
         'joined_at' => 'datetime',
         'left_at' => 'datetime',
+        // TT-3.3b/SCRUM-459: set when the server took this person out (EjectVideoParticipantAction).
+        'removed_at' => 'datetime',
     ];
 
     public function videoSession()

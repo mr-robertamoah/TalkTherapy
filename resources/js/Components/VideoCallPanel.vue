@@ -22,7 +22,7 @@ const emit = defineEmits(['close'])
 const sessionRef = computed(() => props.session)
 const {
   status, participants, isMuted, isCameraOn, connectionQuality, lastError, reconnecting,
-  reconnectAttempt, announcement, capabilities, holdsSpeakingGrant, handRaised, raisedHandUserIds, speakerUserIds, speakingNotice,
+  reconnectAttempt, announcement, removedByCounsellor, capabilities, holdsSpeakingGrant, handRaised, raisedHandUserIds, speakerUserIds, speakingNotice,
   idleSecondsRemaining, mediaBusy, mediaError, join, leave, removeParticipant, cancel, toggleMute, toggleCamera, attachVideo,
   raiseHand, lowerHand, grantSpeaking, revokeSpeaking,
 } = useVideoSession(sessionRef)
@@ -210,8 +210,9 @@ async function retryJoin() {
 
 // TT-3.3b/SCRUM-459: display only -- every reconnect decision lives in useVideoSession.js and
 // Video/connectionPolicy.js.
+// The attempt number only while that attempt is actually running, not during the wait after it.
 const reconnectingLabel = computed(() => (
-  reconnectAttempt.value > 0 ? `Reconnecting… (attempt ${reconnectAttempt.value})` : 'Reconnecting…'
+  status.value === 'connecting' && reconnectAttempt.value > 0 ? `Reconnecting… (attempt ${reconnectAttempt.value})` : 'Reconnecting…'
 ))
 
 onMounted(() => {
@@ -227,15 +228,12 @@ onMounted(() => {
 // and open a live provider connection nobody is left to close. cancel() invalidates that in-flight
 // join so it tears itself down once its next await resolves, instead of ever reaching 'connected'.
 //
-// TT-3.1d/SCRUM-277: also covers 'idle' -- handleDisconnected()'s own reconnect flow briefly sets
-// status back to 'idle' before calling join() again, and cancel() is a safe no-op if called before
-// any join was ever attempted at all.
-//
-// TT-3.3b/SCRUM-459: 'reconnect_failed' too -- the call is still listening for the session's
-// broadcasts there, and cancel() also clears any pending reconnect timer.
+// TT-3.3b/SCRUM-459: every other status cancels -- cancel() is safe in any state, and it is what
+// clears a pending automatic rejoin (the 'idle' waits between attempts) and releases the session
+// channel a refused or failed rejoin may still hold.
 onBeforeUnmount(() => {
   if (status.value === 'connected') leave()
-  else if (status.value === 'connecting' || status.value === 'idle' || status.value === 'reconnect_failed') cancel()
+  else cancel()
 })
 </script>
 
@@ -290,8 +288,12 @@ onBeforeUnmount(() => {
          a counsellor removed you specifically; this must never read like the call simply ended or
          like a connection dropped (architect's own explicit requirement). -->
     <div v-else-if="status === 'removed'" class="text-center py-6">
-      <div class="text-sm font-medium text-red-700 mb-1">You were removed from this call</div>
-      <div class="text-sm text-gray-600 mb-3">A counsellor removed you from this video call.</div>
+      <template v-if="removedByCounsellor">
+        <div class="text-sm font-medium text-red-700 mb-1">You were removed from this call</div>
+        <div class="text-sm text-gray-600 mb-3">A counsellor removed you from this video call.</div>
+      </template>
+      <!-- TT-3.3b/SCRUM-459: the provider's own stop or a refused rejoin can't say who did it. -->
+      <div v-else class="text-sm font-medium text-gray-800 mb-3">You were taken out of this video call.</div>
       <button
         type="button"
         class="text-sm text-gray-600 hover:underline"

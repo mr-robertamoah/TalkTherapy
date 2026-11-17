@@ -23,7 +23,7 @@ export default function createDailyVideoClient(callbacks) {
     // recover from.
     let intentionalTeardown = false
     // TT-3.3b/SCRUM-459: which of Daily's own connections ('signaling', 'sfu', 'peer-to-peer') are
-    // currently interrupted -- Daily is reconnecting while any is, and done once all are back.
+    // currently interrupted -- Daily is reconnecting while any is (see setInterrupted()).
     const interruptedConnections = new Set()
     const attachedElements = new Map()
 
@@ -64,6 +64,15 @@ export default function createDailyVideoClient(callbacks) {
         if (element) element.srcObject = new MediaStream([videoTrack, audioTrack].filter(Boolean))
     }
 
+    // Applies a change to interruptedConnections, reporting only an actual flip of "reconnecting".
+    function setInterrupted(change) {
+        if (intentionalTeardown) return
+        const was = interruptedConnections.size > 0
+        change()
+        const now = interruptedConnections.size > 0
+        if (now !== was) callbacks.onReconnecting?.(now)
+    }
+
     async function join(credentials) {
         callObject = DailyIframe.createCallObject()
 
@@ -76,16 +85,17 @@ export default function createDailyVideoClient(callbacks) {
         })
         // TT-3.3b/SCRUM-459: Daily's 'warning' is our 'poor' -- see connectionPolicy.js.
         callObject.on('network-quality-change', (e) => {
-            callbacks.onConnectionQualityChanged?.(dailyQuality(e.networkState))
+            const quality = dailyQuality(e.networkState)
+            // A good reading means media is flowing again -- never leave "Reconnecting…" stuck on a
+            // 'connected' event Daily didn't send (or sent for a different connection type).
+            if (quality === 'good') setInterrupted(() => interruptedConnections.clear())
+            callbacks.onConnectionQualityChanged?.(quality)
         })
         // TT-3.3b/SCRUM-459: Daily reconnecting by itself (event 'interrupted', then 'connected').
+        // Any 'connected' clears the lot: the call is back, whichever connection said so.
         callObject.on('network-connection', (e) => {
-            if (intentionalTeardown || !e?.type) return
-            const wasReconnecting = interruptedConnections.size > 0
-            if (e.event === 'interrupted') interruptedConnections.add(e.type)
-            else if (e.event === 'connected') interruptedConnections.delete(e.type)
-            const isReconnecting = interruptedConnections.size > 0
-            if (isReconnecting !== wasReconnecting) callbacks.onReconnecting?.(isReconnecting)
+            if (e?.event === 'interrupted' && e.type) setInterrupted(() => interruptedConnections.add(e.type))
+            else if (e?.event === 'connected') setInterrupted(() => interruptedConnections.clear())
         })
         // TT-3.1d/SCRUM-277: Daily's own docs describe 'error' (unlike 'nonfatal-error') as
         // meaning the call itself has ended -- an unrequested one is a disconnect, not just a

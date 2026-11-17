@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url'
 import {
     CHIME_RECOVERABLE_STATUS_CODES,
     DAILY_RECOVERABLE_ERROR_TYPES,
+    DEVICE_ERROR_NAMES,
+    MAX_MEDIA_RETRIES,
     QUALITY_ANNOUNCE_COOLDOWN_MS,
     RECONNECT_DELAYS_MS,
     RECONNECT_WINDOW_MS,
@@ -20,7 +22,9 @@ import {
     qualityAnnouncement,
     qualityLabel,
     reconnectDelay,
+    recoverableStop,
     shouldRetryJoin,
+    terminalStop,
 } from '../../resources/js/Video/connectionPolicy.js'
 
 const root = fileURLToPath(new URL('../../', import.meta.url))
@@ -63,7 +67,6 @@ describe('quality announcements', () => {
         assert.equal(qualityAnnouncement({ announced: 'good', next: 'good', sinceLastMs: Infinity }), null)
         assert.equal(qualityAnnouncement({ announced: 'good', next: 'unknown', sinceLastMs: Infinity }), null)
         assert.equal(qualityAnnouncement({ announced: 'poor', next: 'poor', sinceLastMs: long }), null)
-        assert.equal(qualityAnnouncement({ announced: 'unknown', next: 'good', sinceLastMs: Infinity }), null)
     })
 
     it('announces getting worse and recovering', () => {
@@ -75,7 +78,12 @@ describe('quality announcements', () => {
 
     it('stays quiet within the cooldown, so a flapping connection is not spammed', () => {
         assert.equal(qualityAnnouncement({ announced: 'poor', next: 'good', sinceLastMs: long - 1 }), null)
-        assert.equal(qualityAnnouncement({ announced: 'good', next: 'bad', sinceLastMs: 0 }), null)
+        assert.equal(qualityAnnouncement({ announced: 'good', next: 'poor', sinceLastMs: 0 }), null)
+    })
+
+    it('says a drop to very weak at once, cooldown or not', () => {
+        assert.equal(qualityAnnouncement({ announced: 'good', next: 'bad', sinceLastMs: 0 }), 'Your video connection is very weak.')
+        assert.equal(qualityAnnouncement({ announced: 'poor', next: 'bad', sinceLastMs: 1 }), 'Your video connection is very weak.')
     })
 })
 
@@ -176,6 +184,22 @@ describe('Chime stop classification', () => {
     })
 })
 
+describe('provider-neutral stop builders', () => {
+    it('builds a recoverable stop', () => {
+        assert.deepEqual(recoverableStop('fake-drop'), { recoverable: true, outcome: 'reconnect', message: '', reason: 'fake-drop' })
+        assert.equal(recoverableStop().reason, 'unknown')
+        assert.deepEqual(normalizeStop(recoverableStop('x')), recoverableStop('x'))
+    })
+
+    it('builds a terminal stop, reading anything unknown as an error', () => {
+        assert.deepEqual(terminalStop('ended', 'ignored', 'r'), { recoverable: false, outcome: 'ended', message: '', reason: 'r' })
+        assert.equal(terminalStop('removed').outcome, 'removed')
+        assert.equal(terminalStop('error', 'Custom.').message, 'Custom.')
+        assert.equal(terminalStop('reconnect').outcome, 'error')
+        assert.ok(terminalStop(undefined).message.length > 0)
+    })
+})
+
 describe('normalizeStop', () => {
     it('passes a classified recoverable stop through', () => {
         const stop = classifyDailyStop('connection-error')
@@ -233,5 +257,18 @@ describe('retrying a failed rejoin', () => {
         for (const s of [400, 401, 402, 403, 404, 419, 422, 429, 600]) assert.equal(shouldRetryJoin({ httpStatus: s }), false, String(s))
         assert.equal(shouldRetryJoin({ httpStatus: 503, consentRequired: true }), false)
         assert.equal(shouldRetryJoin({ httpStatus: null, consentRequired: true }), false)
+    })
+
+    it('never retries a camera/mic device failure after the join call succeeded', () => {
+        for (const name of DEVICE_ERROR_NAMES) {
+            assert.equal(shouldRetryJoin({ stage: 'media', errorName: name, mediaRetriesUsed: 0 }), false, name)
+        }
+    })
+
+    it('retries a provider connect failure once at most', () => {
+        assert.equal(MAX_MEDIA_RETRIES, 1)
+        assert.equal(shouldRetryJoin({ stage: 'media', errorName: 'Error', mediaRetriesUsed: 0 }), true)
+        assert.equal(shouldRetryJoin({ stage: 'media', errorName: null, mediaRetriesUsed: 0 }), true)
+        assert.equal(shouldRetryJoin({ stage: 'media', errorName: 'Error', mediaRetriesUsed: 1 }), false)
     })
 })

@@ -1,4 +1,4 @@
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { usePage } from '@inertiajs/vue3'
 import axios from 'axios'
 import { acquireChannel } from '@/Composables/sharedChannel'
@@ -101,7 +101,9 @@ import {
 //                                                     connectionPolicy.js's classifyDailyStop()/
 //                                                     classifyChimeStop(): { recoverable, outcome:
 //                                                     'reconnect'|'ended'|'removed'|'error',
-//                                                     message, reason }. Only an allow-listed
+//                                                     message, reason } (any other client builds
+//                                                     it with recoverableStop()/terminalStop()).
+//                                                     Only an allow-listed
 //                                                     recoverable stop is ever rejoined; anything
 //                                                     else (an unclassified value included) is
 //                                                     terminal.
@@ -113,9 +115,11 @@ export default function useVideoSession(session) {
     // TT-3.2c/SCRUM-310: 'removed' is deliberately its own status, not folded into 'ended' -- the
     // architect's own explicit requirement is that being forcibly removed by a counsellor must
     // never look like a transient network disconnect (which reconnects) OR like the whole room
-    // ending (which is symmetric/nobody's "fault"). Only ever reached via the removed participant's
-    // own listenForStatusChanges() handler below, never set locally by removeParticipant() itself
-    // (that call is the COUNSELLOR's own action against someone else, not self-directed).
+    // ending (which is symmetric/nobody's "fault"). Reached via the removed participant's own
+    // listenForStatusChanges() handler below (TT-3.3b/SCRUM-459: or the provider's own "removed"
+    // stop, or the server refusing an automatic rejoin -- see removedByCounsellor), never set
+    // locally by removeParticipant() itself (that call is the COUNSELLOR's own action against
+    // someone else, not self-directed).
     //
     // TT-3.3b/SCRUM-459: 'reconnect_failed' is where a dropped call lands once every automatic
     // rejoin within the reconnect window has failed -- the panel offers a "try again" that never
@@ -141,8 +145,12 @@ export default function useVideoSession(session) {
     const reconnectAttempt = ref(0)
     // TT-3.3b/SCRUM-459: the latest thing worth telling a screen reader about the connection (a
     // quality change, a drop, a reconnect) -- VideoCallPanel.vue renders it in a polite live region.
-    // Set only on meaningful changes (see announceConnectionChanges() below), never per SDK event.
+    // Set only on meaningful changes (see announce() and its watchers below), never per SDK event.
     const announcement = ref('')
+    // TT-3.3b/SCRUM-459: true only when 'removed' came from the participant-removed broadcast (a
+    // counsellor or the system took this person out); false when the provider's own stop or a
+    // refused rejoin said so -- the panel then uses neutral copy, since it can't say who did it.
+    const removedByCounsellor = ref(false)
 
     // TT-3.2f-j/SCRUM-327: what THIS viewer may do in the call -- seeded from the join response's
     // own `participant` key (JoinVideoSessionAction::participantStateFor()), then kept current by
@@ -261,26 +269,53 @@ export default function useVideoSession(session) {
         speakerUserIds.value = speakerUserIds.value.filter((uid) => uid !== userId)
     }
 
+    // TT-3.3b/SCRUM-459: bumped whenever a client is built (buildCallbacks()) or taken out of use
+    // (discardClient()). Each client's callbacks only act while their own generation is current,
+    // so a client being torn down -- or one that leaked -- can never fire into the call that
+    // replaced it.
+    let clientGeneration = 0
+
     function buildCallbacks() {
+        const generation = ++clientGeneration
+        const live = (callback) => (...args) => (generation === clientGeneration ? callback(...args) : undefined)
+
         return {
-            onParticipantJoined: upsertParticipant,
-            onParticipantLeft: dropParticipantTile,
+            onParticipantJoined: live(upsertParticipant),
+            onParticipantLeft: live(dropParticipantTile),
             // Purely a signal -- VideoCallPanel.vue owns the actual <video> element refs and
             // decides when to (re-)call attachVideo(); there's no state to track here.
             onVideoAvailable: () => {},
-            onConnectionQualityChanged: (quality) => {
+            onConnectionQualityChanged: live((quality) => {
                 connectionQuality.value = normalizeQuality(quality)
-            },
+            }),
             // TT-3.3b/SCRUM-459: only while connected -- once this composable has taken over (a
             // drop it is rejoining from, or a call that's over), a late SDK event must not flip it.
-            onReconnecting: (isReconnecting) => {
+            onReconnecting: live((isReconnecting) => {
                 if (status.value !== 'connected') return
                 reconnecting.value = !!isReconnecting
-            },
-            onError: (error) => {
+            }),
+            onError: live((error) => {
                 lastError.value = error?.message || error?.errorMsg || 'An unexpected video error occurred.'
-            },
-            onDisconnected: handleDisconnected,
+            }),
+            onDisconnected: live(handleDisconnected),
+        }
+    }
+
+    // Takes the current client out of use (its callbacks go quiet) and hands it back to be destroyed.
+    function discardClient() {
+        const stale = client
+        client = null
+        clientGeneration++
+        return stale
+    }
+
+    async function destroyQuietly(staleClient) {
+        if (!staleClient) return
+        try {
+            await staleClient.destroy()
+        } catch (err) {
+            // Best-effort, same reasoning as leave()/end()'s own provider-call handling -- the
+            // client is already gone from this composable's point of view either way.
         }
     }
 
@@ -308,40 +343,62 @@ export default function useVideoSession(session) {
     // provider connection) found in review, not just a stale-UI cosmetic issue.
     let joinToken = 0
 
+    // TT-3.3b/SCRUM-459: the VideoSession (call epoch) this browser last joined, from the join
+    // response -- an automatic rejoin names it, so the server can refuse to put someone back into a
+    // call that has ended or that they were taken out of (JoinVideoSessionAction).
+    let videoSessionId = null
+
     // The public join: the panel's first join and every "try again". TT-3.3b/SCRUM-459: a user's own
-    // join supersedes any automatic rejoin still pending, so the two never race.
+    // join supersedes any automatic rejoin still pending, so the two never race -- and, being the
+    // user's own choice, it is never marked as a rejoin (exactly as allowed as it always was).
     async function join() {
-        stopReconnecting()
-        reconnecting.value = false
+        abortReconnect()
         await attemptJoin()
     }
 
     // TT-3.3b/SCRUM-459: the join itself, shared by join() and the automatic rejoin -- which needs
     // to know how an attempt ended to decide whether another is worth making:
-    //   { outcome: 'connected' | 'failed' | 'cancelled' | 'skipped', httpStatus, consentRequired }
-    // `httpStatus` is null for a network failure, and for a provider/media-layer failure after the
-    // join call itself succeeded.
-    async function attemptJoin() {
+    //   { outcome: 'connected' | 'failed' | 'cancelled' | 'skipped',
+    //     stage: 'http' | 'media', httpStatus, consentRequired, errorName }
+    // stage 'http' is the sessions.video.join call failing (httpStatus null: no response at all --
+    // the network, or `timeoutMs` running out); 'media' is the provider SDK failing after it
+    // succeeded (errorName says why, e.g. a refused camera).
+    async function attemptJoin({ rejoin = false, timeoutMs = 0 } = {}) {
         if (!session.value?.id) return { outcome: 'skipped' }
         if (status.value === 'connecting' || status.value === 'connected') return { outcome: 'skipped' }
 
         const token = ++joinToken
         status.value = 'connecting'
         lastError.value = ''
+        removedByCounsellor.value = false
         // Fresh labels on every (re)join -- e.g. a group made anonymous since the last one.
         displayNames = new Map()
 
         let credentials
         try {
-            const response = await axios.post(route('sessions.video.join', session.value.id))
+            const response = await axios.post(
+                route('sessions.video.join', session.value.id),
+                rejoin ? { rejoin: true, videoSessionId } : {},
+                timeoutMs > 0 ? { timeout: timeoutMs } : {},
+            )
             credentials = response.data
         } catch (err) {
             if (token !== joinToken) return { outcome: 'cancelled' }
 
             const failure = {
                 outcome: 'failed',
+                stage: 'http',
                 httpStatus: err.response?.status ?? null,
                 consentRequired: !!err.response?.data?.videoConsentRequired,
+            }
+
+            // TT-3.3b/SCRUM-459: the server refused an automatic rejoin -- the call ended, or this
+            // person was taken out of it, while this browser was cut off and missed the broadcast.
+            const refused = err.response?.data?.rejoinRefused
+            if (refused === 'ended' || refused === 'removed') {
+                stopListeningForStatusChanges()
+                status.value = refused
+                return failure
             }
 
             if (err.response?.status === 402) {
@@ -373,6 +430,8 @@ export default function useVideoSession(session) {
             return { outcome: 'cancelled' }
         }
 
+        videoSessionId = credentials.videoSessionId ?? null
+
         // TT-3.2f-j/SCRUM-327 review finding: subscribed as soon as the join response arrives, not
         // after client.join()'s media setup (seconds, longer behind a camera prompt) -- a hand
         // raised or grant made in that window would otherwise never reach a counsellor's lists.
@@ -383,16 +442,14 @@ export default function useVideoSession(session) {
             client = await loadClient()
 
             if (token !== joinToken) {
-                await client.destroy()
-                client = null
+                await destroyQuietly(discardClient())
                 return { outcome: 'cancelled' }
             }
 
             await client.join(credentials)
 
             if (token !== joinToken) {
-                await client.destroy()
-                client = null
+                await destroyQuietly(discardClient())
                 return { outcome: 'cancelled' }
             }
 
@@ -403,7 +460,20 @@ export default function useVideoSession(session) {
             if (token !== joinToken) return { outcome: 'cancelled' }
 
             stopIdleTracking()
-            stopListeningForStatusChanges()
+            // TT-3.3b/SCRUM-459: not while an automatic rejoin is running -- an "ended"/"removed"
+            // broadcast arriving before its next attempt must still be seen (reconnect() lets go of
+            // them itself when it gives up on a refusal).
+            if (!rejoin) stopListeningForStatusChanges()
+
+            // TT-3.3b/SCRUM-459 review: destroyed, not just dropped -- daily-js refuses to create a
+            // second call object while one exists, so a leaked one failed every later attempt.
+            await destroyQuietly(discardClient())
+
+            // The join call opened a participant row for this attempt; nobody is in the call on
+            // it, so close it (best effort) rather than leave it counted as "in the call".
+            axios.post(route('sessions.video.leave', session.value.id)).catch(() => {})
+
+            if (token !== joinToken) return { outcome: 'cancelled' }
 
             // The join-video HTTP call already succeeded (a VideoSession/room exists) -- this is
             // strictly the SDK/media layer failing (camera/mic permission denial, a connection
@@ -411,19 +481,18 @@ export default function useVideoSession(session) {
             // payment-gate/authorization failures caught above.
             lastError.value = 'Could not connect to the video call. Check your camera/microphone permissions and try again.'
             status.value = 'error'
-            client = null
-            return { outcome: 'failed', httpStatus: null, consentRequired: false }
+            return { outcome: 'failed', stage: 'media', httpStatus: null, consentRequired: false, errorName: err?.name ?? null }
         }
     }
 
-    // Called instead of leave() when a caller (VideoCallPanel.vue) goes away while status is
-    // still 'connecting' -- leave() assumes a connected client/room to notify the backend about
-    // in the normal way; this instead invalidates whichever join() is in flight so IT handles
-    // its own teardown once its next await resolves (see the token checks above).
+    // Called instead of leave() when a caller (VideoCallPanel.vue) goes away without a connected
+    // call -- leave() assumes a connected client/room to notify the backend about in the normal
+    // way; this instead invalidates whichever join() is in flight so IT handles its own teardown
+    // once its next await resolves (see the token checks above). Safe in any state.
     async function cancel() {
         joinToken++
         // TT-3.3b/SCRUM-459: leaving the page mid-reconnect clears every pending timer/listener.
-        stopReconnecting()
+        abortReconnect()
         // Not inside teardownClient()'s `if (client)` only -- join() now subscribes before a client
         // exists, so a cancel during loadClient() must unsubscribe too.
         stopIdleTracking()
@@ -453,8 +522,8 @@ export default function useVideoSession(session) {
 
         // Security-review finding (2026-09-11): captured here, the same way join() captures its
         // own token, so cancel() firing anywhere in this function's own async gaps (most
-        // importantly while `staleClient.destroy()` is pending, the one window where `client` is
-        // already null and cancel()'s `if (client) …` branch has nothing left to tear down) is
+        // importantly while the stale client's destroy() is pending, the one window where `client`
+        // is already null and cancel()'s `if (client) …` branch has nothing left to tear down) is
         // actually noticed before the reconnect's HTTP call goes out -- without this, a
         // component unmounting during exactly that window left a live camera/mic feed and
         // provider connection open for nobody, the same resource-leak class join()'s own token
@@ -467,8 +536,7 @@ export default function useVideoSession(session) {
         // this reconnect silently resurrect the call after they'd already left it.
         const token = ++joinToken
 
-        const staleClient = client
-        client = null
+        const staleClient = discardClient()
         participants.value = []
         connectionQuality.value = 'unknown'
         // TT-3.2f-j/SCRUM-327 review finding: no activity pings for a call this browser isn't in --
@@ -482,7 +550,6 @@ export default function useVideoSession(session) {
             reconnecting.value = false
             lastError.value = stop.message
             status.value = stop.outcome
-            announcement.value = TERMINAL_STOP_ANNOUNCEMENTS[stop.outcome] ?? stop.message
             await destroyQuietly(staleClient)
             return
         }
@@ -493,7 +560,7 @@ export default function useVideoSession(session) {
         // through the reconnect gap is so an "ended" broadcast arriving DURING it (e.g. the other
         // participant ending the call at the same moment this side disconnected) is still seen.
         // listenForStatusChanges()'s own handler below reacts to that by invalidating this same
-        // token and stopping reconnect() (see stopReconnecting()).
+        // token and stopping reconnect() (see abortReconnect()).
 
         // 'idle', not 'connecting' -- attemptJoin()'s own re-entry guard only blocks 'connecting'/
         // 'connected', so this must clear 'connected' without tripping that guard on a rejoin.
@@ -511,26 +578,18 @@ export default function useVideoSession(session) {
         await reconnect()
     }
 
-    async function destroyQuietly(staleClient) {
-        if (!staleClient) return
-        try {
-            await staleClient.destroy()
-        } catch (err) {
-            // Best-effort, same reasoning as leave()/end()'s own provider-call handling -- the
-            // client is already gone from this composable's point of view either way.
-        }
-    }
-
     // TT-3.3b/SCRUM-459: the automatic rejoin after a recoverable stop -- connectionPolicy.js's
     // RECONNECT_DELAYS_MS (2s, 5s, 10s) within RECONNECT_WINDOW_MS (60s), each attempt waiting for
-    // the browser to be online first, each a normal attemptJoin() through sessions.video.join. A
-    // failed attempt is retried only for a network failure, 5xx or 409 (shouldRetryJoin()); a
-    // payment/consent/validation refusal stays in the state attemptJoin() already put it in (e.g.
+    // the browser to be online first, each a normal attemptJoin() through sessions.video.join --
+    // marked as a rejoin of the same call, and given only the time left in the window. Whether a
+    // failed attempt is retried is shouldRetryJoin()'s call (network/5xx/409; a provider connect
+    // failure once more at most; never a device error). A payment/consent/validation refusal, or
+    // the server refusing the rejoin, stays in the state attemptJoin() already put it in (e.g.
     // consent_required), so a revoked consent never gets media back. Nothing is ever sent to the
     // server as a leave because of a drop.
     //
     // Stopped at once by anything that ends the call here (cancel(), leave(), end(), the ended/
-    // removed broadcasts, the user's own join()) via stopReconnecting(): each await below re-checks
+    // removed broadcasts, the user's own join()) via abortReconnect(): each await below re-checks
     // its run id, so a stale attempt can never bring the call back.
     let reconnectRun = 0
     let stopReconnectWait = null
@@ -539,6 +598,8 @@ export default function useVideoSession(session) {
         const run = ++reconnectRun
         const startedAt = Date.now()
         const isCurrent = () => run === reconnectRun
+        const timeLeft = () => RECONNECT_WINDOW_MS - (Date.now() - startedAt)
+        let mediaRetriesUsed = 0
 
         for (let attempt = 0; ; attempt++) {
             const delay = reconnectDelay(attempt, Date.now() - startedAt)
@@ -546,31 +607,38 @@ export default function useVideoSession(session) {
 
             if (!(await waitForReconnect(delay, false)) || !isCurrent()) return
 
-            const remaining = RECONNECT_WINDOW_MS - (Date.now() - startedAt)
-            const online = remaining > 0 && await waitForReconnect(remaining, true)
+            const online = timeLeft() > 0 && await waitForReconnect(timeLeft(), true)
             if (!isCurrent()) return
             if (!online) break
 
             reconnectAttempt.value = attempt + 1
-            const result = await attemptJoin()
+            const result = await attemptJoin({ rejoin: true, timeoutMs: Math.max(1000, timeLeft()) })
             if (!isCurrent()) return
 
             if (result.outcome === 'connected') {
-                finishReconnecting()
+                abortReconnect()
                 return
             }
 
-            // A refusal (or a join that never ran) keeps whatever state attemptJoin() left.
-            if (result.outcome !== 'failed' || status.value !== 'error' || !shouldRetryJoin(result)) {
-                finishReconnecting()
-                return
+            // A join that never ran (or was cancelled by something that didn't stop this run):
+            // there is nothing more to try automatically.
+            if (result.outcome !== 'failed') break
+
+            if (status.value === 'error' && shouldRetryJoin({ ...result, mediaRetriesUsed })) {
+                if (result.stage === 'media') mediaRetriesUsed++
+                // Back to "Reconnecting…" until the next attempt.
+                status.value = 'idle'
+                continue
             }
 
-            // Back to "Reconnecting…" until the next attempt.
-            status.value = 'idle'
+            // A refusal: it keeps whatever state attemptJoin() left, and this browser is no
+            // longer in the call, so stop listening for it.
+            abortReconnect()
+            stopListeningForStatusChanges()
+            return
         }
 
-        finishReconnecting()
+        abortReconnect()
         lastError.value = ''
         status.value = 'reconnect_failed'
     }
@@ -597,33 +665,41 @@ export default function useVideoSession(session) {
         })
     }
 
-    function finishReconnecting() {
+    // Ends any automatic rejoin: its pending wait resolves false (clearing its own timer/listener),
+    // its run id goes stale, and the "Reconnecting…" state is cleared -- whoever calls this sets the
+    // status that replaces it.
+    function abortReconnect() {
+        reconnectRun++
+        stopReconnectWait?.(false)
         reconnecting.value = false
         reconnectAttempt.value = 0
     }
 
-    // Abandons any automatic rejoin: its pending wait resolves false and clears its own timer/
-    // listener, and its run id goes stale. Does not touch `reconnecting` -- the caller sets the
-    // state that replaces it.
-    function stopReconnecting() {
-        reconnectRun++
-        stopReconnectWait?.(false)
-        reconnectAttempt.value = 0
-    }
-
-    // TT-3.3b/SCRUM-459: screen-reader announcements, on meaningful changes only. Quality changes go
-    // through connectionPolicy.js's qualityAnnouncement() (no first reading, nothing for unknown,
-    // at most one per cooldown); a drop, a reconnect and a failed reconnect are each said once.
-    const TERMINAL_STOP_ANNOUNCEMENTS = {
-        ended: 'The video call ended.',
-        removed: 'You were removed from this video call.',
-    }
+    // TT-3.3b/SCRUM-459: screen-reader announcements (VideoCallPanel.vue's live region), on
+    // meaningful changes only -- the three watchers below. Quality goes through connectionPolicy.js's
+    // qualityAnnouncement() (nothing for unknown, a cooldown except for 'bad'); a drop and a
+    // reconnect are said once each; every status a call can land in is said from one map.
     let announcedQuality = QUALITY_GOOD
     let qualityAnnouncedAt = -Infinity
 
     function resetQualityAnnouncements() {
         announcedQuality = QUALITY_GOOD
         qualityAnnouncedAt = -Infinity
+    }
+
+    // Cleared first so a live region re-reads a message identical to the last one.
+    function announce(message) {
+        announcement.value = ''
+        nextTick(() => { announcement.value = message })
+    }
+
+    const STATUS_ANNOUNCEMENTS = {
+        ended: () => 'The video call ended.',
+        removed: () => (removedByCounsellor.value ? 'A counsellor removed you from this video call.' : 'You were taken out of this video call.'),
+        reconnect_failed: () => 'We couldn\'t reconnect the video call.',
+        payment_required: () => lastError.value,
+        consent_required: () => lastError.value,
+        error: () => lastError.value,
     }
 
     watch(connectionQuality, (next) => {
@@ -633,16 +709,19 @@ export default function useVideoSession(session) {
         if (!message) return
         announcedQuality = next
         qualityAnnouncedAt = now
-        announcement.value = message
+        announce(message)
     })
 
-    watch(reconnecting, (isReconnecting, was) => {
-        if (isReconnecting && !was) announcement.value = 'Video connection lost. Reconnecting…'
-        else if (!isReconnecting && was && status.value === 'connected') announcement.value = 'Video reconnected.'
-    })
+    // One watcher for both, so where a reconnect ends up is said once, whichever changed last.
+    watch([status, reconnecting], ([next, isReconnecting], [previous, wasReconnecting]) => {
+        if (isReconnecting && !wasReconnecting) return announce('Video connection lost. Reconnecting…')
+        // A failed attempt between automatic rejoins isn't news -- only where the call lands is.
+        if (isReconnecting) return
+        if (wasReconnecting && next === 'connected') return announce('Video reconnected.')
+        if (next === previous && !wasReconnecting) return
 
-    watch(status, (next) => {
-        if (next === 'reconnect_failed') announcement.value = 'We couldn\'t reconnect the video call.'
+        const message = STATUS_ANNOUNCEMENTS[next]?.()
+        if (message) announce(message)
     })
 
     async function leave() {
@@ -653,8 +732,7 @@ export default function useVideoSession(session) {
         // click could complete its own automatic rejoin afterward and silently resurrect a call
         // the user just left.
         joinToken++
-        stopReconnecting()
-        reconnecting.value = false
+        abortReconnect()
 
         try {
             await axios.post(route('sessions.video.leave', session.value.id))
@@ -680,8 +758,7 @@ export default function useVideoSession(session) {
 
         // Same reasoning as leave()'s own joinToken bump above.
         joinToken++
-        stopReconnecting()
-        reconnecting.value = false
+        abortReconnect()
 
         try {
             await axios.post(route('sessions.video.end', session.value.id))
@@ -856,8 +933,7 @@ export default function useVideoSession(session) {
     async function teardownClient() {
         stopIdleTracking()
         stopListeningForStatusChanges()
-        if (client) await client.destroy()
-        client = null
+        await destroyQuietly(discardClient())
         participants.value = []
     }
 
@@ -927,10 +1003,9 @@ export default function useVideoSession(session) {
 
             joinToken++
             // TT-3.3b/SCRUM-459: no automatic rejoin may outlive the call.
-            stopReconnecting()
+            abortReconnect()
             teardownClient()
             status.value = 'ended'
-            reconnecting.value = false
         })
 
         // TT-3.2c/SCRUM-310: fires for EVERY participant when anyone is removed, but only the
@@ -943,10 +1018,10 @@ export default function useVideoSession(session) {
             if (data.removedParticipantKey !== ownUserId || status.value === 'ended' || status.value === 'removed') return
 
             joinToken++
-            stopReconnecting()
+            abortReconnect()
             teardownClient()
+            removedByCounsellor.value = true
             status.value = 'removed'
-            reconnecting.value = false
         })
 
         // TT-3.2f-j/SCRUM-327: hand-raise and speaking broadcasts carry ids only (anonymity-safe);
@@ -982,7 +1057,7 @@ export default function useVideoSession(session) {
 
     return {
         status, participants, isMuted, isCameraOn, connectionQuality, lastError, reconnecting,
-        reconnectAttempt, announcement, capabilities, holdsSpeakingGrant, handRaised, raisedHandUserIds, speakerUserIds, speakingNotice,
+        reconnectAttempt, announcement, removedByCounsellor, capabilities, holdsSpeakingGrant, handRaised, raisedHandUserIds, speakerUserIds, speakingNotice,
         idleSecondsRemaining, mediaBusy, mediaError,
         join, leave, end, removeParticipant, cancel, toggleMute, toggleCamera, attachVideo,
         raiseHand, lowerHand, grantSpeaking, revokeSpeaking,

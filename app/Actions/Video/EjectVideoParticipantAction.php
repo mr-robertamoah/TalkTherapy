@@ -55,7 +55,12 @@ class EjectVideoParticipantAction extends Action
         // Every open row, not just the live one -- a stale row left open by a reconnect (SCRUM-330)
         // would otherwise keep the removed user counted as "in the call", grantable, and able to
         // raise a hand again.
-        $videoSession->participantRowsFor($userId)->whereNull('left_at')->update(['left_at' => now()]);
+        // TT-3.3b/SCRUM-459: and marked removed, not just left -- an automatic rejoin (a browser
+        // reconnecting after a drop, which may have missed the removal broadcast) is refused for
+        // a removed row (JoinVideoSessionAction::ensureRejoinAllowed()). Every server-initiated
+        // removal comes through here (a counsellor's, RemovePersonFromLiveCallsAction's).
+        $now = now();
+        $videoSession->participantRowsFor($userId)->whereNull('left_at')->update(['left_at' => $now, 'removed_at' => $now]);
 
         // Second pass, now that every row is left: catches a grant/raise that landed between the
         // cleanup above and marking left (this can't sit behind the participant-row lock grant/raise

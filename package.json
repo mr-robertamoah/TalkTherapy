@@ -4,7 +4,7 @@
     "scripts": {
         "dev": "vite",
         "build": "vite build",
-        "test:js": "node --test tests/js/",
+        "test:js": "node --test tests/js/*.test.mjs",
         "countries:generate": "node scripts/generate-countries.mjs"
     },
     "devDependencies": {

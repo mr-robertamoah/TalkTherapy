@@ -54,20 +54,21 @@ export function qualityLabel(quality) {
 }
 
 // A connection hovering on a threshold can flip every few seconds -- a screen reader is told at
-// most once per this long, and nothing at all for a first reading or an unknown one.
+// most once per this long (except about a connection turning very weak), and nothing at all for an
+// unknown reading.
 export const QUALITY_ANNOUNCE_COOLDOWN_MS = 20000
 
 // What to tell a screen reader about a quality change, or null for nothing. `announced` is the
-// last quality the user was told about (QUALITY_GOOD before anything was said: a call that starts
-// healthy needs no announcement); `sinceLastMs` is how long ago that was (Infinity if never).
+// last quality the user was told about (pass QUALITY_GOOD before anything was said: a call that
+// starts healthy needs no announcement); `sinceLastMs` is how long ago that was (Infinity if
+// never). A drop to 'bad' is said at once, cooldown or not -- it is the one the user may need to
+// act on.
 export function qualityAnnouncement({ announced, next, sinceLastMs }) {
     const from = normalizeQuality(announced)
     const to = normalizeQuality(next)
 
     if (to === QUALITY_UNKNOWN || to === from) return null
-    if (sinceLastMs < QUALITY_ANNOUNCE_COOLDOWN_MS) return null
-    // Nothing was said about the unknown start, so a good first reading is no news either.
-    if (from === QUALITY_UNKNOWN && to === QUALITY_GOOD) return null
+    if (to !== QUALITY_BAD && sinceLastMs < QUALITY_ANNOUNCE_COOLDOWN_MS) return null
 
     if (to === QUALITY_GOOD) return 'Your video connection is good again.'
     if (to === QUALITY_BAD) return 'Your video connection is very weak.'
@@ -137,21 +138,32 @@ const CHIME_TERMINAL = {
 // The shape every client passes to onDisconnected (see useVideoSession.js's contract):
 //   { recoverable, outcome, message, reason }
 // `message` is for the error state only; `reason` is the provider's own type/code, for logs.
-function classify(reason, recoverableList, terminalMap) {
-    const key = typeof reason === 'string' ? reason : null
+// These two build it, provider-neutrally -- classify*Stop() below use them, and so can any other
+// client.
+export function recoverableStop(reason) {
+    return { recoverable: true, outcome: OUTCOME_RECONNECT, message: '', reason: reason ?? 'unknown' }
+}
 
-    if (key && recoverableList.includes(key)) {
-        return { recoverable: true, outcome: OUTCOME_RECONNECT, message: '', reason: key }
-    }
-
-    const terminal = (key && Object.hasOwn(terminalMap, key)) ? terminalMap[key] : { outcome: OUTCOME_ERROR }
+// `outcome` is OUTCOME_ENDED, OUTCOME_REMOVED or OUTCOME_ERROR (anything else reads as an error).
+export function terminalStop(outcome, message = '', reason = 'unknown') {
+    const known = [OUTCOME_ENDED, OUTCOME_REMOVED].includes(outcome) ? outcome : OUTCOME_ERROR
 
     return {
         recoverable: false,
-        outcome: terminal.outcome,
-        message: terminal.outcome === OUTCOME_ERROR ? (terminal.message ?? GENERIC_STOP_MESSAGE) : '',
-        reason: key ?? 'unknown',
+        outcome: known,
+        message: known === OUTCOME_ERROR ? (message || GENERIC_STOP_MESSAGE) : '',
+        reason: reason ?? 'unknown',
     }
+}
+
+function classify(reason, recoverableList, terminalMap) {
+    const key = typeof reason === 'string' ? reason : null
+
+    if (key && recoverableList.includes(key)) return recoverableStop(key)
+
+    const terminal = (key && Object.hasOwn(terminalMap, key)) ? terminalMap[key] : { outcome: OUTCOME_ERROR }
+
+    return terminalStop(terminal.outcome, terminal.message, key ?? 'unknown')
 }
 
 // `type` is the Daily 'error' event's error.type.
@@ -170,14 +182,7 @@ export function classifyChimeStop(statusCodeName) {
 export function normalizeStop(stop) {
     if (stop && stop.recoverable === true && stop.outcome === OUTCOME_RECONNECT) return stop
 
-    const outcome = [OUTCOME_ENDED, OUTCOME_REMOVED].includes(stop?.outcome) ? stop.outcome : OUTCOME_ERROR
-
-    return {
-        recoverable: false,
-        outcome,
-        message: outcome === OUTCOME_ERROR ? (stop?.message || GENERIC_STOP_MESSAGE) : '',
-        reason: stop?.reason ?? 'unknown',
-    }
+    return terminalStop(stop?.outcome, stop?.message, stop?.reason)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -199,12 +204,37 @@ export function reconnectDelay(attemptIndex, elapsedMs) {
     return elapsedMs + delay < RECONNECT_WINDOW_MS ? delay : null
 }
 
-// Whether a failed rejoin is worth another attempt. Only a network failure (no HTTP status), a
-// server error (5xx) or "still joining you" (409) is. Everything else -- payment (402), refused or
-// consent needed (403), validation (422), anything unrecognised -- is the server's answer, and
-// retrying would only repeat it.
-export function shouldRetryJoin({ httpStatus = null, consentRequired = false } = {}) {
+// getUserMedia/device failures (DOMException names, plus Chime's own wrappers): the camera or mic
+// is refused, missing or busy. Retrying can't fix any of them -- only the user can.
+export const DEVICE_ERROR_NAMES = Object.freeze([
+    'NotAllowedError',
+    'PermissionDeniedError',
+    'NotFoundError',
+    'NotReadableError',
+    'OverconstrainedError',
+    'SecurityError',
+    'GetUserMediaError',
+])
+
+// A provider connect failure (the join call succeeded, the SDK then failed) is retried at most
+// this many times per reconnect -- it is usually the network, but not always.
+export const MAX_MEDIA_RETRIES = 1
+
+// Whether a failed rejoin is worth another attempt.
+//  - stage 'http' (the sessions.video.join call failed): only a network failure (no HTTP status,
+//    a timeout included), a server error (5xx) or "still joining you" (409). Everything else --
+//    payment (402), refused or consent needed (403), validation or a refused rejoin (422),
+//    anything unrecognised -- is the server's answer, and retrying would only repeat it.
+//  - stage 'media' (the join call succeeded, the provider SDK failed): never for a device error
+//    (DEVICE_ERROR_NAMES), otherwise only while `mediaRetriesUsed` < MAX_MEDIA_RETRIES.
+export function shouldRetryJoin({ stage = 'http', httpStatus = null, consentRequired = false, errorName = null, mediaRetriesUsed = 0 } = {}) {
     if (consentRequired) return false
+
+    if (stage === 'media') {
+        if (DEVICE_ERROR_NAMES.includes(errorName)) return false
+        return mediaRetriesUsed < MAX_MEDIA_RETRIES
+    }
+
     if (httpStatus == null) return true
     if (httpStatus === 409) return true
 
