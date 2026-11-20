@@ -218,6 +218,20 @@ Check every item before going live.
     `php artisan migrate:rollback --path=database/migrations/2026_12_11_100000_add_removed_at_to_video_session_participants_table.php --force`,
     then deploy the old code. The ADD and DROP are `ALGORITHM=INSTANT` on MySQL >= 8.0.29 (INPLACE, non-blocking,
     below that).
+- [ ] **Platform fee waivers (SCRUM-467):**
+  - The deploy that brings `2026_12_12_100001` and `2026_12_12_100002` adds a foreign key to `counsellor_earnings` and
+    `organization_invoice_lines`, which MySQL 8 does as a full table copy (writes blocked; measured ~12 s for 250,000
+    rows combined) under maintenance mode. Before promoting to `main`, count them
+    (`SELECT (SELECT COUNT(*) FROM counsellor_earnings) + (SELECT COUNT(*) FROM organization_invoice_lines);`) and
+    make sure there is free disk for one more copy of each table.
+  - `PAYMENTS_FEE_WAIVER_CHECKOUT_GRACE_MINUTES` (default 30): how long after a client starts checkout a payment still
+    takes the waiver in force at the start, once that waiver has ended. Leave the default unless support sees genuine
+    slow checkouts losing a waiver.
+  - Rolling back SCRUM-467: roll back the code, not the migrations -- older code ignores the waiver table and columns.
+    Dropping them loses which fees were waived and why (`fee_amount` stays 0): dump
+    `platform_fee_waivers counsellor_earnings organization_invoice_lines` first, then on the **current** code
+    (`php artisan down`) roll back `2026_12_12_100002`, `100001`, `100000` with `--path=` each, never a bare rollback.
+    A waiver that any earning or invoice line refers to can't be deleted (restrict) -- end it instead.
 
 ## The proxy
 

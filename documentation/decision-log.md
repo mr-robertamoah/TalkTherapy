@@ -13413,3 +13413,37 @@ Planned with the product-owner, architect and project-manager; split into SCRUM-
   `app-message.fromId` matches the tile; Chime -- that a stopped local tile reaches others as removed, that paused
   remote tiles (incl. later arrivals) behave, that data messages arrive with the right sender id and are allowed for
   receive-only attendees, and whether presence-before-tile causes a brief "Camera off".
+
+## SCRUM-463 / SCRUM-467 — commission-free periods: the fee decision (TT-7.10a, 2026-11-20)
+
+- **User decisions:** a waiver means no platform fee anywhere (counsellors keep the full amount from paying clients;
+  organisations aren't charged the fee on top); a period covers payments made in it -- card payments by when checkout
+  starts, retainer invoice lines by when the session is held (so the amounts on an invoice never change after the
+  fact); periods don't overlap; counsellors and organisations get an on-page notice only (no emails).
+- **One table for both tickets:** `platform_fee_waivers`, half-open [starts_at, ends_at); `counsellor_id` NULL is a
+  platform-wide period, set is a per-counsellor waiver (SCRUM-464, which will approve them through the existing
+  `Request` flow and create the row only once approved -- so the table only holds waivers in force or scheduled).
+  `counsellor_id` cascades on delete (nulling it would turn one counsellor's waiver into everyone's); the money rows'
+  `platform_fee_waiver_id` restricts, so a waiver anything refers to is ended, never deleted.
+- **One fee decision:** `ResolvePlatformFeePolicyAction::execute($at)` reads the percentage and the waivers covering
+  that moment in one query; `PlatformFeePolicy::feeFor($base, ?$counsellor)` gives the fee, the waiver id and the fee
+  waived. `ComputePlatformFeeAction` (basis points, overflow guard) is only used from the policy, enforced by an arch
+  test, and now takes the percentage explicitly. A platform-wide waiver wins over a counsellor's own for the recorded
+  id. A waiver id is recorded only when there was a fee to waive.
+- **Moments:** personal payments at `transactions.created_at`; organisation card charges at the moment the charge is
+  made (stamped as its `created_at`); retainer lines when recorded, the same moment that picks the invoice month.
+  Breakdown and settled-invoice earnings copy what was stored; refunds never re-decide. Accepted (security review, Low):
+  the retainer moment can be moved by when a session is confirmed held, and a pay-per-use charge by when the member
+  pays -- both benefit the organisation slightly and follow the user's rules.
+- **Grace after a waiver ends (security review, Medium):** a client could open checkout during a period and pay long
+  after it ended. A personal payment now keeps the waiver in force at checkout start only if it succeeds within
+  `payments.fee_waiver_checkout_grace_minutes` (30), or if that waiver is still in force when the success is recorded --
+  so a long checkout inside a period stays waived, and no waiver carries past its end by more than the grace.
+- **Organisation charges:** the pooled fee is taken only over the parts that aren't waived and split as before, so with
+  no waiver every amount is identical to today (no per-part rounding change). Waived amounts are worked out per part
+  (informational; may differ from a pooled figure by a minor unit). Every breakdown line carries both new keys.
+- **Robustness:** a stored waiver id that no longer exists is copied as null (stored fee and waived amount kept, a
+  warning logged) rather than failing a successful charge; a breakdown surplus lands on a line that wasn't waived, and
+  a row never carries both a fee and a waiver id. A failed policy lookup while recording a retainer line records no
+  line and logs at error level (as other failures there already did). The migration is split per table so a partial
+  failure can be re-run.
