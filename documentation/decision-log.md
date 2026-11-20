@@ -13473,3 +13473,47 @@ Planned with the product-owner, architect and project-manager; split into SCRUM-
   the platform's favour (a fee taken, never one skipped). Using `paid_at` from the verified response is a possible
   later refinement. Likewise, a payment whose counsellor waiver ended but a platform-wide one is in force at success
   pays the fee (different waiver) -- conservative, left as is.
+
+## SCRUM-468 — commission-free periods: admin, labels, notices (TT-7.10b, 2026-11-20)
+
+- **Statuses, worked out server-side (`PlatformFeeWaiver::status()`), never stored:** *cancelled* = an admin ended it
+  early with "End now" (`ended_by_id` set) -- checked first, so a cancelled period stays cancelled after its new end
+  passes; *upcoming* = not started; *active* = started and not yet at its end (half-open, so a period whose end is this
+  very second is *ended*); *ended* = reached the end it was scheduled with.
+- **Notice horizon: 30 days** (`PlatformFeeWaiver::NOTICE_HORIZON_DAYS`). The notice shows the platform-wide period in
+  force now, else the next one starting within 30 days; a cancelled one never shows (it has already ended). Only
+  `startsAt`/`endsAt` are passed -- never the reason or the creating admin. Shown on the counsellor's profile Payouts
+  section, the counsellor dashboard's Earnings card and the organisation reconciliation page. The seeded upcoming period
+  (20–27 days ahead) is inside it.
+- **403 for an ordinary admin, before validation:** the FormRequests' `authorize()` refuses anyone but a super admin
+  (as `AdminUpdateUserRequest` does), so an ordinary admin gets a 403 and learns nothing from the field errors. The
+  service checks again with the existing `EnsureIsSuperAdminAction`, which gained an optional status argument (default
+  422 -- existing callers unchanged; this ticket passes 403).
+- **Validation:** `counsellor_id` uses `prohibited` (absent or null passes, any value is refused); a start up to a
+  minute in the past is accepted and moved up to now (so nothing already paid is ever covered); ends must be after the
+  start; both ends within **2 years** of now (a typo'd year would otherwise also overflow MySQL's `timestamp`); reason
+  required, max **500** characters, trimmed, shown as plain text. A value without an offset is UTC (the form says so);
+  one with an offset is converted to UTC before storing.
+- **Overlap check under a lock:** every platform-wide row is read `lockForUpdate` inside the create transaction and
+  compared in PHP (half-open: touching ends allowed; an open-ended row overlaps everything after its start). The
+  transaction is retried (3 attempts) so a deadlock between two simultaneous creates ends with the second seeing the
+  first and being refused. Per-counsellor waivers (SCRUM-464) don't block a platform-wide period.
+- **Delete guard:** only an *upcoming* platform-wide period. Earnings and invoice lines are checked by FK column; a
+  charge breakdown is JSON with no FK, so only transactions created since the period's start are read (a breakdown can
+  only name the period covering its own moment) -- portable across MySQL and the SQLite test database. A
+  `QueryException` from the restricting FKs is turned into a field error, not a 500. A per-counsellor waiver id given
+  to end/delete is a 404 (not managed here).
+- **No edit endpoint** (security review): a period's start never changes once set; "End now" is the only change to a
+  running one, and it is refused on upcoming, ended and already-cancelled periods.
+- **Labels:** `CounsellorEarningResource` gains `commissionFree` + `waivedFeeAmount`; `OrganizationInvoiceLineResource`
+  gains `feeWaived` + `waivedFeeAmount`; `OrganizationFinancedTransactionResource` reads them from the charge's stored
+  breakdown (so they show from the moment the charge is made, even before earnings exist); `OrganizationInvoiceResource`
+  also sums `waivedFeeAmount`. No waiver id or reason is exposed outside the admin page.
+- **Admin list:** the 50 platform-wide periods with the latest start (a handful a year is expected); "End now" and
+  "Delete" need a second click to confirm. Dates are shown in UTC labelled GMT everywhere (`resources/js/Support/
+  commissionFree.js`), so admins, counsellors and organisations all see the same instant.
+- **Seed data beyond the two periods:** `CommissionFreePeriodSeeder` also adds a new counsellor,
+  `commission_free_demo_counsellor`, with one waived and one ordinary pending earning, and one waived USD 50 card
+  charge (plus its pending earning for `org_demo_counsellor`'s profile) on the demo organisation -- so the labels can be
+  seen without manual setup. All dated inside/after the ended period. A waived *invoice line* is not seeded (a line
+  needs its own held session and a non-clashing invoice month); it is covered by tests.
