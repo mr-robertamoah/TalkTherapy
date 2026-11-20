@@ -13447,3 +13447,9 @@ Planned with the product-owner, architect and project-manager; split into SCRUM-
   a row never carries both a fee and a waiver id. A failed policy lookup while recording a retainer line records no
   line and logs at error level (as other failures there already did). The migration is split per table so a partial
   failure can be re-run.
+- **"Success" means when we process it, not Paystack's `paid_at` (security re-check, accepted):** the grace is measured
+  to the moment the webhook or verify callback is processed. A webhook held up for over 30 minutes by a queue outage
+  can cost a quick payment its waiver -- but only if that exact waiver also ended meanwhile, and the error is always in
+  the platform's favour (a fee taken, never one skipped). Using `paid_at` from the verified response is a possible
+  later refinement. Likewise, a payment whose counsellor waiver ended but a platform-wide one is in force at success
+  pays the fee (different waiver) -- conservative, left as is.
