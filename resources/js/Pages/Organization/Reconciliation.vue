@@ -1,6 +1,7 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import Pagination from '@/Components/Pagination.vue';
+import CommissionFreeNotice from '@/Components/CommissionFreeNotice.vue';
 import { Head, Link } from '@inertiajs/vue3';
 import { reactive, ref } from 'vue';
 
@@ -21,6 +22,11 @@ const props = defineProps({
         type: Object,
         required: true,
     },
+    // TT-7.10b/SCRUM-468: a platform-wide commission-free period running or coming up ({ startsAt, endsAt }).
+    commissionFreeNotice: {
+        type: Object,
+        default: null,
+    },
 })
 
 const transactions = reactive({ data: [...props.financedTransactions.data], meta: props.financedTransactions.meta })
@@ -35,6 +41,9 @@ function formatMoney(minorUnitsAmount, currency) {
 
     return `${currency} ${(minorUnitsAmount / 100).toFixed(2)}`
 }
+
+// TT-7.10b/SCRUM-468: a charge or invoice line whose platform fee was waived (a commission-free period).
+const waivedPill = 'ml-1 inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800'
 
 function formatDate(value) {
     return value ? new Date(value).toLocaleDateString() : '--'
@@ -105,6 +114,8 @@ function invoiceStatusClass(status) {
                 </div>
             </div>
 
+            <CommissionFreeNotice :notice="commissionFreeNotice" />
+
             <!-- Pay-Per-Use Financed Transactions -->
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg p-6">
                 <div class="text-lg font-medium text-gray-900">Financed Sessions (Pay-Per-Use)</div>
@@ -132,7 +143,14 @@ function invoiceStatusClass(status) {
                                 <td class="py-2 pr-4">{{ transaction.counsellorName ?? '--' }}</td>
                                 <td class="py-2 pr-4">{{ formatMoney(transaction.amount, transaction.currency) }}</td>
                                 <td class="py-2 pr-4">{{ formatMoney(transaction.counsellorShare, transaction.currency) }}</td>
-                                <td class="py-2 pr-4">{{ formatMoney(transaction.platformFee, transaction.currency) }}</td>
+                                <td class="py-2 pr-4">
+                                    {{ formatMoney(transaction.platformFee, transaction.currency) }}
+                                    <span
+                                        v-if="transaction.feeWaived"
+                                        :class="waivedPill"
+                                        :title="`Platform fee waived: ${formatMoney(transaction.waivedFeeAmount, transaction.currency)}`"
+                                    >Waived</span>
+                                </td>
                                 <td class="py-2 pr-4">{{ (transaction.payoutStatus ?? 'not yet earned').toLowerCase() }}</td>
                                 <td class="py-2 pr-4">{{ transaction.status.toLowerCase() }}</td>
                                 <td class="py-2 pr-4">{{ formatDate(transaction.createdAt) }}</td>
@@ -188,7 +206,14 @@ function invoiceStatusClass(status) {
                                                     <td class="py-1 pr-4">{{ line.sessionLabel ?? '--' }}</td>
                                                     <td class="py-1 pr-4">{{ line.counsellorName ?? '--' }}</td>
                                                     <td class="py-1 pr-4">{{ formatMoney(line.netAmount, line.currency) }}</td>
-                                                    <td class="py-1 pr-4">{{ formatMoney(line.feeAmount, line.currency) }}</td>
+                                                    <td class="py-1 pr-4">
+                                                        {{ formatMoney(line.feeAmount, line.currency) }}
+                                                        <span
+                                                            v-if="line.feeWaived"
+                                                            :class="waivedPill"
+                                                            :title="`Platform fee waived: ${formatMoney(line.waivedFeeAmount, line.currency)}`"
+                                                        >Waived</span>
+                                                    </td>
                                                 </tr>
                                                 <tr v-if="!invoice.lines.length">
                                                     <td colspan="4" class="py-2 text-center text-gray-500">No sessions recorded for this period.</td>

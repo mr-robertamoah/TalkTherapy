@@ -9,6 +9,7 @@ use App\Http\Resources\CounsellorEarningResource;
 use App\Http\Resources\CounsellorPayoutAccountResource;
 use App\Http\Resources\CounsellorPayoutResource;
 use App\Models\Counsellor;
+use App\Services\PlatformFeeWaiverService;
 use App\Services\SettingsService;
 
 // TT-7.6d/SCRUM-228: read-only aggregation for the counsellor's own payout screen -- deliberately
@@ -44,6 +45,8 @@ class GetCounsellorPayoutOverviewAction extends Action
             'currency' => $currency,
             'minimumPayoutAmount' => $currency ? SettingsService::new()->getMinimumPayoutAmount($currency) : null,
             'payoutHistory' => CounsellorPayoutResource::collection($counsellor->payouts()->latest()->limit(10)->get()),
+            // TT-7.10b/SCRUM-468: a platform-wide commission-free period running or coming up -- its dates only.
+            'commissionFreeNotice' => PlatformFeeWaiverService::new()->getCommissionFreeNotice(),
         ];
     }
 }

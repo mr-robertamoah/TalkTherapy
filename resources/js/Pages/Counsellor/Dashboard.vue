@@ -12,6 +12,7 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue'
 import RequestBadge from '@/Components/RequestBadge.vue'
 import HelpPushSettings from '@/Components/HelpNow/HelpPushSettings.vue'
 import CounsellorVerificationStatusCard from '@/Components/CounsellorVerificationStatusCard.vue'
+import CommissionFreeNotice from '@/Components/CommissionFreeNotice.vue'
 import MiniTherapyComponent from '@/Components/MiniTherapyComponent.vue'
 import MiniGroupTherapyComponent from '@/Components/MiniGroupTherapyComponent.vue'
 import Alert from '@/Components/Alert.vue'
@@ -178,6 +179,8 @@ const more = 'text-sm font-medium text-blue-700 underline'
                     </dl>
                     <p v-if="dashboard.earnings.onHold" class="mt-3 text-sm text-amber-800">Payouts are on hold while your counsellor role is suspended.</p>
                     <p v-else-if="!dashboard.earnings.hasPayoutDestination" class="mt-3 text-sm text-gray-600">Add a payout destination on your profile to withdraw.</p>
+                    <!-- TT-7.10b/SCRUM-468 -->
+                    <CommissionFreeNotice class="mt-3" :notice="dashboard.earnings.commissionFreeNotice" />
                 </section>
             </div>
 

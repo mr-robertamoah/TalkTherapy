@@ -8,6 +8,7 @@ use App\Http\Resources\OrganizationInvoiceResource;
 use App\Http\Resources\OrganizationResource;
 use App\Models\Organization;
 use App\Services\OrganizationService;
+use App\Services\PlatformFeeWaiverService;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Redirect;
@@ -41,6 +42,8 @@ class OrganizationReconciliationController extends Controller
                 'organization' => new OrganizationResource($organization),
                 'financedTransactions' => $this->paginatedResource(OrganizationFinancedTransactionResource::collection($transactionsPaginator)),
                 'retainerInvoices' => $this->paginatedResource(OrganizationInvoiceResource::collection($invoicesPaginator)),
+                // TT-7.10b/SCRUM-468: a platform-wide commission-free period running or coming up -- its dates only.
+                'commissionFreeNotice' => PlatformFeeWaiverService::new()->getCommissionFreeNotice(),
             ]);
         } catch (Throwable $th) {
             $message = $this->messageFor($th, $this->statusFor($th));

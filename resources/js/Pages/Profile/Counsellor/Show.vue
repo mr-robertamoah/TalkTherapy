@@ -37,6 +37,7 @@ import TestimonialSection from '@/Components/TestimonialSection.vue';
 import CounsellorVerificationBadge from '@/Components/CounsellorVerificationBadge.vue';
 import CounsellorVerificationStatusCard from '@/Components/CounsellorVerificationStatusCard.vue';
 import CopyLinkField from '@/Components/CopyLinkField.vue';
+import CommissionFreeNotice from '@/Components/CommissionFreeNotice.vue';
 
 const { modalData, showModal } = useModal()
 const { alertData, clearAlertData, setAlertData, setFailedAlertData, setSuccessAlertData } = useAlert()
@@ -818,6 +819,8 @@ function closeModal() {
                         <div class="mt-1 text-sm text-gray-600">
                             Your earnings and where they're withdrawn to. Private to you.
                         </div>
+                        <!-- TT-7.10b/SCRUM-468 -->
+                        <CommissionFreeNotice class="mt-3" :notice="payoutOverview?.commissionFreeNotice" />
 
                         <div class="mt-4">
                             <div class="text-sm font-semibold text-gray-700 mb-1">Payout Destination</div>
@@ -844,7 +847,14 @@ function closeModal() {
                                     :key="earning.id"
                                     class="flex justify-between text-xs text-gray-600 py-1 border-b border-gray-200 last:border-b-0"
                                 >
-                                    <span>gross {{ formatMoney(earning.grossAmount, earning.currency) }} − fee {{ formatMoney(earning.feeAmount, earning.currency) }}</span>
+                                    <span>
+                                        gross {{ formatMoney(earning.grossAmount, earning.currency) }} − fee {{ formatMoney(earning.feeAmount, earning.currency) }}
+                                        <span
+                                            v-if="earning.commissionFree"
+                                            class="ml-1 inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800"
+                                            :title="`No platform commission (${formatMoney(earning.waivedFeeAmount, earning.currency)} waived)`"
+                                        >Commission-free</span>
+                                    </span>
                                     <span class="font-medium">= {{ formatMoney(earning.netAmount, earning.currency) }}</span>
                                 </div>
                             </div>
