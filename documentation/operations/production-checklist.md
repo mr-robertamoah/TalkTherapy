@@ -218,6 +218,8 @@ Check every item before going live.
     `php artisan migrate:rollback --path=database/migrations/2026_12_11_100000_add_removed_at_to_video_session_participants_table.php --force`,
     then deploy the old code. The ADD and DROP are `ALGORITHM=INSTANT` on MySQL >= 8.0.29 (INPLACE, non-blocking,
     below that).
+- [ ] **Video against a real provider (SCRUM-317):** before launch, work through
+  `documentation/operations/video-real-provider-checklist.md` on the provider being deployed.
 
 ## The proxy
 
