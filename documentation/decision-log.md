@@ -13418,11 +13418,13 @@ Planned with the product-owner, architect and project-manager; split into SCRUM-
 
 - **The regression** (`tests/Feature/VideoRejoinLeavesBillingUntouchedTest.php`, 1:1 and group, with the fake
   provider): both people join, then each rejoins automatically three times in a row without leaving. Unchanged:
-  `Session.status` and `ended_at`, `session_attendances`, counsellor earnings, transactions, organisation invoice
-  lines, and the number of distinct people in the call (the Chime capacity head count, checked after every rejoin).
-  One call epoch; each rejoin closed the row before it (four rows each, one open, none marked removed). Past its end,
-  `FailUnheldSessionsAction` treats the session exactly as an identical session with no video (both fail) -- video
-  is not evidence a session was held. Single rejoins, refused rejoins and Join/Leave/End vs. status were already
+  `Session.status` and `ended_at`, `session_attendances`, counsellor earnings, transactions and organisation invoice
+  lines -- one existing row of each is seeded first, so existing rows are proved left alone and nothing new written.
+  One call epoch; the call has exactly two open rows after every rejoin; each rejoin closed the row before it (four
+  rows each, one open, none marked removed). Past its end, `FailUnheldSessionsAction` treats the session exactly as
+  an identical session with no video (both fail, both get `ended_at`) -- video is not evidence a session was held.
+  Not a test of the Chime capacity check (that excludes the joiner and runs only for Chime groups); its
+  people-not-rows cases are SCRUM-330's, in `tests/Unit/JoinVideoSessionActionTest.php`. Single rejoins, refused rejoins and Join/Leave/End vs. status were already
   covered (`VideoRejoinGuardTest`, `VideoActionsNeverMutateSessionStatusTest`) and are not repeated.
 - **Sessions in "in session confirmation", not "in session":** that is the state the scheduler acts on, so the
   FailUnheld comparison means something; video is allowed in both.

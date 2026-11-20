@@ -46,7 +46,8 @@ feature doc `documentation/features/scrum-28-video-weak-connections.md`.
 - [ ] **Provider reconnect keeps a speaking grant** (SCRUM-28 planning). A granted member's short
   drop (under the provider's own reconnect window) keeps the floor; only an app-level rejoin makes
   them raise a hand again (SCRUM-462).
-- [ ] **`update-permissions` is keyed by our user id** (from the SCRUM-327 spike, still open): the
+- [ ] **`update-permissions` is keyed by our user id** (from the SCRUM-320 spike; left open in the
+  SCRUM-328 closeout): the
   grant/revoke above actually reaches the right participant.
 
 ## Chime
@@ -73,6 +74,7 @@ feature doc `documentation/features/scrum-28-video-weak-connections.md`.
   labels. (A watch-only member never sends one; that is expected.)
 - [ ] **Presence-before-tile** (SCRUM-460). Join with a camera on and watch the others' screens:
   note whether a brief "Camera off" flashes before the tile arrives.
-- [ ] **Capacity counts people, not rows** (SCRUM-330/461). In a group call, have one person drop
-  and rejoin several times; the call's head count (the 25-person cap) must not grow
-  (`tests/Feature/VideoRejoinLeavesBillingUntouchedTest.php` covers the server side).
+- [ ] **Capacity counts people, not rows** (SCRUM-330). In a group call, have one person drop and
+  rejoin several times; they must never be turned away as "maximum number of participants", and
+  nobody else loses a place (the 25-person cap). The server side is covered by the SCRUM-330 cases
+  in `tests/Unit/JoinVideoSessionActionTest.php`.

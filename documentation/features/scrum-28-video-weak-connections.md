@@ -59,10 +59,11 @@ changes `Session.status`, attendance, counsellor earnings, transactions or organ
 - **Closeout regression (SCRUM-461).** `tests/Feature/VideoRejoinLeavesBillingUntouchedTest.php`:
   for a 1:1 and a group session, two people each rejoining automatically three times in a row
   without leaving leave `Session.status`, `session_attendances`, counsellor earnings, transactions
-  and organisation invoice lines unchanged; `FailUnheldSessionsAction` treats the session exactly as
-  it treats the same session with no video; the call still counts two people (the Chime capacity
-  head count); one call epoch; each rejoin closed the row before it (one open row each, none marked
-  removed).
+  and organisation invoice lines unchanged (one existing row of each is seeded first and left alone;
+  nothing new is written); `FailUnheldSessionsAction` treats the session exactly as it treats the
+  same session with no video; one call epoch; each rejoin closed the row before it (the call has
+  exactly two open rows after every rejoin, none marked removed). The Chime capacity check's own
+  people-not-rows cases are SCRUM-330's, in `tests/Unit/JoinVideoSessionActionTest.php`.
 
 ## How to try it
 
@@ -106,7 +107,9 @@ Each starts from a freshly joined call (leave and "join video" again between scr
 
 **4. Running out of attempts**
 1. `__ttFakeVideo.failNextJoin('TimeoutError', 5)`, then `__ttFakeVideo.dropRecoverable()`.
-2. The attempt number climbs, then "We couldn't reconnect" with "try again" and the text-chat hint.
+2. "Reconnecting… (attempt 1)", then "(attempt 2)" -- a provider connect failure is retried once
+   only, so it stops at attempt 2 -- then "We couldn't reconnect" with "try again" and the
+   text-chat hint.
 3. `__ttFakeVideo.failNextJoin(null)`, then "try again" -- the call is back.
 
 **5. A device error is not retried**
@@ -119,19 +122,32 @@ Each starts from a freshly joined call (leave and "join video" again between scr
 2. Rejoin, then `__ttFakeVideo.stopTerminal('meeting-ended')` (or `'room-expired'`) -- "The video
    call ended."; no reconnect.
 
-**7. Server rejoin guard**
-1. As `group_video_call_demo_member`, join the group call.
-2. Take that browser offline (devtools Network → "Offline"), then `__ttFakeVideo.dropRecoverable()`
-   -- the rejoin waits for the browser to be online.
-3. Two fake browsers don't see each other, so the counsellor has no tile to press "remove" on;
-   remove the member on the server instead, as the group's counsellor would
-   (`docker compose exec -u www-data -e HOME=/tmp php php artisan tinker`):
-   ```php
-   $s = App\Models\Session::whereHasMorph('for', [App\Models\GroupTherapy::class], fn ($q) => $q->where('name', 'Group Video Call Demo'))->latest('id')->first();
-   App\Actions\Video\RemoveParticipantFromVideoSessionAction::new()->execute($s, App\Models\User::firstWhere('username', 'group_video_call_demo_counsellor'), App\Models\User::firstWhere('username', 'group_video_call_demo_member')->id);
-   ```
-4. Put the browser back online. The rejoin is refused (422, `rejoinRefused: 'removed'`) and the
-   member sees "You were taken out of this video call." Their own "join video" still works.
+**7. Removal while the connection is down, and the server rejoin guard**
+
+Two fake browsers don't see each other, so the counsellor has no tile to press "remove" on; remove
+the member on the server instead, as the group's counsellor would
+(`docker compose exec -u www-data -e HOME=/tmp php php artisan tinker`):
+```php
+$s = App\Models\Session::whereHasMorph('for', [App\Models\GroupTherapy::class], fn ($q) => $q->where('name', 'Group Video Call Demo'))->latest('id')->first();
+App\Actions\Video\RemoveParticipantFromVideoSessionAction::new()->execute($s, App\Models\User::firstWhere('username', 'group_video_call_demo_counsellor'), App\Models\User::firstWhere('username', 'group_video_call_demo_member')->id);
+```
+
+*a) With live updates up (the usual case).* Devtools "Offline" does not reliably close an open
+WebSocket, so the removal broadcast still arrives:
+1. As `group_video_call_demo_member`, join the group call. Take the browser offline (devtools
+   Network → "Offline"), then `__ttFakeVideo.dropRecoverable()` -- the rejoin waits for online.
+2. Run the tinker snippet.
+3. The member sees "A counsellor removed you from this video call." and the reconnect loop stops;
+   no further rejoin is sent, even once back online.
+
+*b) The server refusal itself* (the broadcast was missed):
+1. As `group_video_call_demo_member`, join the group call. Take the browser offline, then
+   `__ttFakeVideo.dropRecoverable()`.
+2. `docker compose stop reverb`, so the removal broadcast can't reach the browser.
+3. Run the tinker snippet.
+4. `docker compose start reverb`, then put the browser back online. The automatic rejoin is
+   refused (422, `rejoinRefused: 'removed'`, visible in the network tab) and the member sees "You
+   were taken out of this video call." Their own "join video" still works.
 
 **8. Automatic audio only**
 1. Camera on. `__ttFakeVideo.setQuality('bad')` -- the camera pauses at once; the banner "Video
@@ -149,9 +165,11 @@ Each starts from a freshly joined call (leave and "join video" again between scr
 2. `__ttFakeVideo.setRemoteVideo(id, false)` -- the tile says "Camera off".
 3. `__ttFakeVideo.setRemoteNetworkPause(id, true)` -- it says "Video paused -- weak connection".
 4. `__ttFakeVideo.setRemoteVideo(id, true)` -- the label goes (it only shows while their video is
-   off). `__ttFakeVideo.setRemoteNetworkPause(id, { ttNetworkPause: 'yes' })` -- ignored
-   (malformed).
-5. While your own camera is paused by script 8, `state().sentNetworkPause` is `true`.
+   off).
+5. `__ttFakeVideo.setRemoteVideo(id, false)` and `__ttFakeVideo.setRemoteNetworkPause(id, false)`
+   -- "Camera off". Now `__ttFakeVideo.setRemoteNetworkPause(id, { ttNetworkPause: 'yes' })`: the
+   malformed message is ignored and the tile still says "Camera off".
+6. While your own camera is paused by script 8, `state().sentNetworkPause` is `true`.
 
 **10. Manual "audio only"**
 1. Add a participant as in script 9. Press "audio only".

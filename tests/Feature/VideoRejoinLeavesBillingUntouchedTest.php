@@ -1,11 +1,16 @@
 <?php
 
 use App\Actions\Session\FailUnheldSessionsAction;
+use App\Enums\SessionAttendanceStatusEnum;
 use App\Enums\SessionStatusEnum;
 use App\Models\Counsellor;
+use App\Models\CounsellorEarning;
 use App\Models\GroupTherapy;
+use App\Models\OrganizationInvoiceLine;
 use App\Models\Session;
+use App\Models\SessionAttendance;
 use App\Models\Therapy;
+use App\Models\Transaction;
 use App\Models\User;
 use App\Models\VideoSession;
 use App\Models\VideoSessionParticipant;
@@ -16,8 +21,9 @@ use Illuminate\Support\Facades\Notification;
 // can make a browser rejoin automatically several times in a row without ever leaving (SCRUM-459).
 // None of that may reach the session's own record or its money: Session.status, attendance, whether
 // the scheduler fails an unheld session, counsellor earnings, transactions and organisation invoice
-// lines all stay as they were, and the call still counts each person once (the Chime head count,
-// JoinVideoSessionAction::ensureChimeGroupTherapyCapacity). Each rejoin closes the row it replaces.
+// lines all stay as they were (rows that already exist are left alone, and nothing new is written), and
+// each rejoin closes the row it replaces, so the call never has more open rows than people in it.
+// The Chime capacity check's own SCRUM-330 cases are in tests/Unit/JoinVideoSessionActionTest.php.
 // The single-rejoin and refused-rejoin cases are in VideoRejoinGuardTest; Join/Leave/End vs.
 // Session.status in VideoActionsNeverMutateSessionStatusTest.
 
@@ -48,6 +54,7 @@ function vrbOneToOne(): array
 
     return [
         'people' => [$client, $counsellorUser],
+        'counsellor' => $counsellor,
         'session' => vrbSessionFor(Therapy::class, $therapy->id),
         'control' => vrbSessionFor(Therapy::class, $therapy->id),
     ];
@@ -60,12 +67,14 @@ function vrbGroup(): array
         'public' => true, 'anonymous' => false,
     ]);
     $counsellorUser = User::factory()->adult()->create();
-    $groupTherapy->counsellors()->attach(Counsellor::factory()->create(['user_id' => $counsellorUser->id])->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
+    $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);
+    $groupTherapy->counsellors()->attach($counsellor->id, ['state' => 'ACTIVE', 'role' => 'NORMAL']);
     $member = User::factory()->adult()->create();
     $groupTherapy->users()->attach($member->id, ['anonymous' => false, 'was_minor_at_join' => false]);
 
     return [
         'people' => [$member, $counsellorUser],
+        'counsellor' => $counsellor,
         'session' => vrbSessionFor(GroupTherapy::class, $groupTherapy->id),
         'control' => vrbSessionFor(GroupTherapy::class, $groupTherapy->id),
     ];
@@ -86,15 +95,27 @@ function vrbSnapshot(Session $session): array
     ];
 }
 
-// The same count the Chime capacity check makes: distinct people with an open row in this call.
-function vrbPeopleInCall(int $videoSessionId): int
+// Rows already there before the call -- a payment, an earning, an invoice line and an attendance mark
+// for this session -- so "left alone" is proved, not just "nothing written".
+function vrbExistingRecords(Session $session, User $person, Counsellor $counsellor): void
+{
+    $transaction = Transaction::factory()->create(['user_id' => $person->id, 'for_type' => Session::class, 'for_id' => $session->id]);
+    CounsellorEarning::factory()->create(['transaction_id' => $transaction->id, 'counsellor_id' => $counsellor->id]);
+    OrganizationInvoiceLine::factory()->create(['session_id' => $session->id, 'user_id' => $person->id, 'counsellor_id' => $counsellor->id]);
+    SessionAttendance::query()->create([
+        'session_id' => $session->id, 'user_id' => $person->id,
+        'status' => SessionAttendanceStatusEnum::present->value,
+        'marked_by_counsellor_id' => $counsellor->id, 'marked_at' => now(),
+    ]);
+}
+
+// Open join rows in this call -- each rejoin must close the one it replaces, so this stays at one per person.
+function vrbOpenRows(int $videoSessionId): int
 {
     return VideoSessionParticipant::query()
         ->where('video_session_id', $videoSessionId)
-        ->where('participant_type', User::class)
         ->whereNull('left_at')
-        ->distinct()
-        ->count('participant_id');
+        ->count();
 }
 
 dataset('vrb calls', [
@@ -105,7 +126,8 @@ dataset('vrb calls', [
 test('three automatic rejoins in a row leave the session, attendance and money untouched', function (Closure $call) {
     config(['video.provider' => 'fake']);
     Notification::fake();
-    ['people' => $people, 'session' => $session, 'control' => $control] = $call();
+    ['people' => $people, 'counsellor' => $counsellor, 'session' => $session, 'control' => $control] = $call();
+    vrbExistingRecords($session, $people[0], $counsellor);
     $before = vrbSnapshot($session);
 
     $videoSessionId = null;
@@ -115,7 +137,7 @@ test('three automatic rejoins in a row leave the session, attendance and money u
             ->assertOk()
             ->json('videoSessionId');
     }
-    expect(vrbPeopleInCall($videoSessionId))->toBe(2);
+    expect(vrbOpenRows($videoSessionId))->toBe(2);
 
     // Each person drops and rejoins three times, never leaving.
     foreach ($people as $person) {
@@ -126,7 +148,7 @@ test('three automatic rejoins in a row leave the session, attendance and money u
                 ->assertOk()
                 ->assertJsonPath('videoSessionId', $videoSessionId);
 
-            expect(vrbPeopleInCall($videoSessionId))->toBe(2);
+            expect(vrbOpenRows($videoSessionId))->toBe(2);
         }
     }
 
@@ -141,7 +163,11 @@ test('three automatic rejoins in a row leave the session, attendance and money u
             ->and($rows->whereNotNull('removed_at'))->toHaveCount(0);
     }
 
-    expect(vrbSnapshot($session))->toEqual($before);
+    expect($before['attendances'])->toHaveCount(1)
+        ->and($before['earnings'])->toHaveCount(1)
+        ->and($before['transactions'])->toHaveCount(1)
+        ->and($before['invoice_lines'])->toHaveCount(1)
+        ->and(vrbSnapshot($session))->toEqual($before);
 
     // Past its end, the scheduler treats the session exactly as it treats the same session with no video at all.
     $this->travel(2)->hours();
@@ -151,7 +177,8 @@ test('three automatic rejoins in a row leave the session, attendance and money u
     expect($controlBefore)->toBe($before['status'])
         ->and($control->fresh()->status)->toBe(SessionStatusEnum::failed->value)
         ->and($session->fresh()->status)->toBe($control->fresh()->status)
-        ->and($session->fresh()->ended_at === null)->toBe($control->fresh()->ended_at === null);
+        ->and($session->fresh()->ended_at)->not->toBeNull()
+        ->and($control->fresh()->ended_at)->not->toBeNull();
 
     $after = vrbSnapshot($session);
     expect(collect($after)->except(['status', 'ended_at'])->all())
