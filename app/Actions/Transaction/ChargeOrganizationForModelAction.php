@@ -166,16 +166,15 @@ class ChargeOrganizationForModelAction extends Action
             'currency' => $currency,
             'status' => TransactionStatusEnum::pending->value,
             // SCRUM-420: what each counsellor is owed from this charge, as charged -- earnings are made from this.
-            // TT-7.10a/SCRUM-467: a line whose fee was waived also carries the waiver and what it waived; a charged
-            // line keeps the shape it always had (an absent waiver reads as none, as on rows from before waivers).
+            // TT-7.10a/SCRUM-467: and the waiver each line's fee was waived under (null: the fee was taken) with what
+            // it waived. Rows from before waivers don't have these and read as none.
             'breakdown' => ['lines' => array_map(fn (array $line) => [
                 'counsellor_id' => $line['counsellor']->id,
                 'net_amount' => $line['net'],
                 'fee_amount' => $line['fee'],
-            ] + ($line['platform_fee_waiver_id'] === null ? [] : [
                 'platform_fee_waiver_id' => $line['platform_fee_waiver_id'],
                 'waived_fee_amount' => $line['waived_fee_amount'],
-            ]), $breakdown['lines'])],
+            ], $breakdown['lines'])],
         ]);
         $transaction->created_at = $at;
         $transaction->save();

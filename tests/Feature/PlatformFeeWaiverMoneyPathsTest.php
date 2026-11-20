@@ -5,6 +5,7 @@ use App\Actions\Organization\SettleOrganizationInvoiceAction;
 use App\Actions\Transaction\ChargeOrganizationForModelAction;
 use App\Actions\Transaction\GenerateCounsellorEarningsAction;
 use App\Actions\Transaction\RecordRefundStatusAction;
+use App\Actions\Transaction\ResolvePlatformFeePolicyAction;
 use App\DTOs\TransactionDTO;
 use App\Enums\CounsellorEarningStatusEnum;
 use App\Enums\CounsellorGroupTherapyStateEnum;
@@ -42,7 +43,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
-use Illuminate\Support\Facades\Schema;
 
 // TT-7.10a/SCRUM-467: during a fee-free period no money path takes a platform fee -- a counsellor keeps the whole of
 // a personal payment, an organisation pays nothing on top -- and each earning or invoice line records the waiver and
@@ -179,14 +179,33 @@ test('a personal payment started before the period, succeeding during it, pays t
         ->and($earning->waived_fee_amount)->toBe(0);
 });
 
-test('a personal payment started in the period pays no fee even if it succeeds after the period ended', function () {
-    $waiver = PlatformFeeWaiver::factory()->between(now()->subDay(), now()->subHour())->create();
-    $transaction = pfwPersonalPayment(pfwTherapy(pfwCounsellor(), User::factory()->adult()->create()), 10000, ['created_at' => now()->subHours(2)]);
+test('a personal payment opened in the period and paid within the grace after it ended pays no fee', function () {
+    $waiver = PlatformFeeWaiver::factory()->between(now()->subDay(), now()->subMinutes(5))->create();
+    $transaction = pfwPersonalPayment(pfwTherapy(pfwCounsellor(), User::factory()->adult()->create()), 10000, ['created_at' => now()->subMinutes(10)]);
 
     GenerateCounsellorEarningsAction::new()->execute($transaction);
 
     expect($transaction->earnings()->sole()->only('fee_amount', 'platform_fee_waiver_id', 'waived_fee_amount'))
         ->toBe(['fee_amount' => 0, 'platform_fee_waiver_id' => $waiver->id, 'waived_fee_amount' => 1000]);
+});
+
+test('a personal payment opened in the period and paid after the grace, once it ended, pays the fee', function () {
+    PlatformFeeWaiver::factory()->between(now()->subDay(), now()->subMinutes(5))->create();
+    $transaction = pfwPersonalPayment(pfwTherapy(pfwCounsellor(), User::factory()->adult()->create()), 10000, ['created_at' => now()->subMinutes(31)]);
+
+    GenerateCounsellorEarningsAction::new()->execute($transaction);
+
+    expect($transaction->earnings()->sole()->only('fee_amount', 'platform_fee_waiver_id', 'waived_fee_amount'))
+        ->toBe(['fee_amount' => 1000, 'platform_fee_waiver_id' => null, 'waived_fee_amount' => 0]);
+});
+
+test('a personal payment opened in the period and paid after the grace keeps the waiver while the period still runs', function () {
+    $waiver = PlatformFeeWaiver::factory()->create();
+    $transaction = pfwPersonalPayment(pfwTherapy(pfwCounsellor(), User::factory()->adult()->create()), 10000, ['created_at' => now()->subHours(3)]);
+
+    GenerateCounsellorEarningsAction::new()->execute($transaction);
+
+    expect($transaction->earnings()->sole()->platform_fee_waiver_id)->toBe($waiver->id);
 });
 
 test('a counsellor\'s own waiver frees only their earnings from a personal payment', function () {
@@ -369,10 +388,91 @@ test('a held session whose fee can\'t be worked out records no line, logged as a
     $organization = pfwOrganization([$counsellor]);
     $therapy = pfwTherapy($counsellor, pfwRetainerMember($organization));
     $session = Session::factory()->create(['for_id' => $therapy->id, 'for_type' => Therapy::class]);
-    Schema::drop('platform_fee_waivers');
+    $this->mock(ResolvePlatformFeePolicyAction::class)->shouldReceive('execute')->andThrow(new RuntimeException('unavailable'));
 
     RecordOrganizationInvoiceLineForSessionAction::new()->execute($session);
 
     expect(OrganizationInvoiceLine::query()->count())->toBe(0);
     Log::shouldHaveReceived('error')->withArgs(fn ($message) => str_contains($message, 'Unable to resolve the platform fee'))->once();
+});
+
+// Stored decisions -----------------------------------------------------------------------------------------------
+
+test('a charge breakdown naming a waiver that no longer exists still pays out, without it, and is logged', function () {
+    Log::spy();
+    $counsellor = pfwCounsellor();
+    $transaction = pfwPersonalPayment(pfwTherapy($counsellor, User::factory()->adult()->create()), 8000, [
+        'organization_id' => Organization::factory()->create()->id,
+        'breakdown' => ['lines' => [['counsellor_id' => $counsellor->id, 'net_amount' => 8000, 'fee_amount' => 0, 'platform_fee_waiver_id' => 999999, 'waived_fee_amount' => 1000]]],
+    ]);
+
+    GenerateCounsellorEarningsAction::new()->execute($transaction);
+
+    expect($transaction->earnings()->sole()->only('net_amount', 'fee_amount', 'platform_fee_waiver_id', 'waived_fee_amount'))
+        ->toBe(['net_amount' => 8000, 'fee_amount' => 0, 'platform_fee_waiver_id' => null, 'waived_fee_amount' => 1000]);
+    Log::shouldHaveReceived('warning')->withArgs(fn ($message) => str_contains($message, 'waiver recorded for this fee no longer exists'))->once();
+});
+
+test('a surplus over the breakdown goes to the first line whose fee wasn\'t waived, or clears the waiver it lands on', function () {
+    Log::spy();
+    $waiver = PlatformFeeWaiver::factory()->create();
+    $group = pfwGroup(2);
+    [$first, $second] = $group->activeCounsellors()->values()->all();
+    $waived = fn (Counsellor $counsellor) => ['counsellor_id' => $counsellor->id, 'net_amount' => 5000, 'fee_amount' => 0, 'platform_fee_waiver_id' => $waiver->id, 'waived_fee_amount' => 500];
+    $charged = fn (Counsellor $counsellor) => ['counsellor_id' => $counsellor->id, 'net_amount' => 4500, 'fee_amount' => 500, 'platform_fee_waiver_id' => null, 'waived_fee_amount' => 0];
+    $organization = Organization::factory()->create();
+
+    $mixed = pfwPersonalPayment($group, 10100, ['organization_id' => $organization->id, 'breakdown' => ['lines' => [$waived($first), $charged($second)]]]);
+    $allWaived = pfwPersonalPayment($group, 10100, ['organization_id' => $organization->id, 'breakdown' => ['lines' => [$waived($first), $waived($second)]]]);
+    GenerateCounsellorEarningsAction::new()->execute($mixed);
+    GenerateCounsellorEarningsAction::new()->execute($allWaived);
+
+    expect($mixed->earnings()->orderBy('id')->get()->map->only('fee_amount', 'platform_fee_waiver_id')->all())
+        ->toBe([['fee_amount' => 0, 'platform_fee_waiver_id' => $waiver->id], ['fee_amount' => 600, 'platform_fee_waiver_id' => null]])
+        ->and($allWaived->earnings()->orderBy('id')->get()->map->only('fee_amount', 'platform_fee_waiver_id')->all())
+        ->toBe([['fee_amount' => 100, 'platform_fee_waiver_id' => null], ['fee_amount' => 0, 'platform_fee_waiver_id' => $waiver->id]]);
+    pfwExpectInvariant($mixed);
+    pfwExpectInvariant($allWaived);
+});
+
+// An organisation charge from before breakdowns were stored: the counsellor's share is recomputed (fixed GHS 50 here;
+// listed GHS 100, so the fee would be 1000).
+function pfwLegacyOrgCharge(int $amount): Transaction
+{
+    $counsellor = pfwCounsellor();
+    $organization = pfwOrganization([]);
+    $affiliation = OrganizationCounsellor::factory()->create([
+        'organization_id' => $organization->id, 'counsellor_id' => $counsellor->id,
+        'status' => OrganizationCounsellorStatusEnum::active->value,
+    ]);
+    OrganizationCounsellorCompensation::factory()->create([
+        'organization_counsellor_id' => $affiliation->id,
+        'type' => OrganizationCounsellorCompensationTypeEnum::fixed->value, 'amount' => 5000, 'currency' => 'GHS',
+    ]);
+
+    return pfwPersonalPayment(pfwTherapy($counsellor, User::factory()->adult()->create()), $amount, ['organization_id' => $organization->id]);
+}
+
+test('an old organisation charge made in a fee-free period isn\'t flagged as drift, and records its waiver', function () {
+    Log::spy();
+    $waiver = PlatformFeeWaiver::factory()->create();
+    $transaction = pfwLegacyOrgCharge(5000);
+
+    GenerateCounsellorEarningsAction::new()->execute($transaction);
+
+    expect($transaction->earnings()->sole()->only('net_amount', 'fee_amount', 'platform_fee_waiver_id', 'waived_fee_amount'))
+        ->toBe(['net_amount' => 5000, 'fee_amount' => 0, 'platform_fee_waiver_id' => $waiver->id, 'waived_fee_amount' => 1000]);
+    Log::shouldNotHaveReceived('warning');
+});
+
+test('an old organisation charge whose remainder drifted from a waived fee records the fee taken and no waiver', function () {
+    Log::spy();
+    PlatformFeeWaiver::factory()->create();
+    $transaction = pfwLegacyOrgCharge(6000);
+
+    GenerateCounsellorEarningsAction::new()->execute($transaction);
+
+    expect($transaction->earnings()->sole()->only('net_amount', 'fee_amount', 'platform_fee_waiver_id', 'waived_fee_amount'))
+        ->toBe(['net_amount' => 5000, 'fee_amount' => 1000, 'platform_fee_waiver_id' => null, 'waived_fee_amount' => 0]);
+    Log::shouldHaveReceived('warning')->withArgs(fn ($message) => str_contains($message, 'does not match the amount implied'))->once();
 });

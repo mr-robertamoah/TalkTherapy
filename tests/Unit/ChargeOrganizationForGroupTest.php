@@ -117,8 +117,8 @@ test('the price is split between the counsellors, each paid their own rate on th
         ->and($transaction->amount)->toBe(12000)
         ->and($transaction->reference)->toStartWith(ChargeOrganizationForModelAction::REFERENCE_PREFIX)
         ->and($transaction->fresh()->breakdown['lines'])->toBe([
-            ['counsellor_id' => $counsellors[0]->id, 'net_amount' => 6000, 'fee_amount' => 750],
-            ['counsellor_id' => $counsellors[1]->id, 'net_amount' => 4500, 'fee_amount' => 750],
+            ['counsellor_id' => $counsellors[0]->id, 'net_amount' => 6000, 'fee_amount' => 750, 'platform_fee_waiver_id' => null, 'waived_fee_amount' => 0],
+            ['counsellor_id' => $counsellors[1]->id, 'net_amount' => 4500, 'fee_amount' => 750, 'platform_fee_waiver_id' => null, 'waived_fee_amount' => 0],
         ]);
 
     $earnings = CounsellorEarning::query()->orderBy('id')->get();
@@ -342,7 +342,7 @@ test('a one-to-one therapy charge records its split too', function () {
     ocgFakesCharge(13500);
 
     expect(ocgCharge($organization, $clients[0], $therapy)->fresh()->breakdown['lines'])
-        ->toBe([['counsellor_id' => $counsellors[0]->id, 'net_amount' => 12000, 'fee_amount' => 1500]]);
+        ->toBe([['counsellor_id' => $counsellors[0]->id, 'net_amount' => 12000, 'fee_amount' => 1500, 'platform_fee_waiver_id' => null, 'waived_fee_amount' => 0]]);
 });
 
 test('an amount over the recorded split goes to the first earning written, as fee -- past a counsellor who\'s gone', function () {

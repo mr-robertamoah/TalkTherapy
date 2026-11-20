@@ -15,8 +15,9 @@ class PlatformFeeWaiver extends Model
 {
     use HasFactory;
 
+    // Who created or ended a period is set from the acting user (forceFill), never mass-assigned.
     protected $fillable = [
-        'counsellor_id', 'starts_at', 'ends_at', 'reason', 'created_by_id', 'ended_by_id',
+        'counsellor_id', 'starts_at', 'ends_at', 'reason',
     ];
 
     protected $casts = [

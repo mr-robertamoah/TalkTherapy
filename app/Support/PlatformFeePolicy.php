@@ -52,17 +52,29 @@ final readonly class PlatformFeePolicy
     }
 
     /**
-     * The fee on $baseAmount (minor units) for work by $counsellor.
+     * The fee on $baseAmount (minor units) for work by $counsellor. A waiver is recorded only when there was a fee to
+     * waive.
      *
      * @return array{fee: int, waiverId: ?int, waived: int}
      */
     public function feeFor(int $baseAmount, ?Counsellor $counsellor = null): array
     {
         $fee = ComputePlatformFeeAction::new()->execute($baseAmount, $this->percentage);
-        $waiverId = $this->waiverFor($counsellor);
+        $waiverId = $fee > 0 ? $this->waiverFor($counsellor) : null;
 
         return $waiverId === null
             ? ['fee' => $fee, 'waiverId' => null, 'waived' => 0]
             : ['fee' => 0, 'waiverId' => $waiverId, 'waived' => $fee];
+    }
+
+    // This policy keeping only the waivers $later still has in force (security review, SCRUM-467): a personal payment
+    // paid long after its checkout started keeps the waiver it started under only while that same waiver still runs.
+    public function keepingOnlyWaiversStillIn(self $later): self
+    {
+        return new self(
+            $this->percentage,
+            $this->platformWaiverId !== null && $this->platformWaiverId === $later->platformWaiverId ? $this->platformWaiverId : null,
+            array_intersect_assoc($this->counsellorWaiverIds, $later->counsellorWaiverIds),
+        );
     }
 }

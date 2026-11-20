@@ -13,6 +13,12 @@ use Carbon\CarbonInterface;
 // to: a payment's transactions.created_at (when checkout started), or now() when a retainer line is recorded.
 class ResolvePlatformFeePolicyAction extends Action
 {
+    // From the container, so a test can stand in a resolver that fails.
+    public static function new(): static
+    {
+        return app(static::class);
+    }
+
     public function execute(CarbonInterface $at): PlatformFeePolicy
     {
         $waivers = PlatformFeeWaiver::query()->coveringTime($at)->orderBy('id')->get(['id', 'counsellor_id']);

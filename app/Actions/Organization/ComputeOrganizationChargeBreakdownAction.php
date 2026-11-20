@@ -24,7 +24,7 @@ use InvalidArgumentException;
 //   for a card charge (paid before anyone knows who'll come) -- any remainder on the first. A therapy has one client,
 //   so its one line is what it always was.
 // - The platform fee is on the price of the parts billed, shared across the lines the same way.
-// - TT-7.10a/SCRUM-467: $fees is the fee as it stood when this bill is decided (required, so no caller can forget a
+// - TT-7.10a/SCRUM-467: $policy is the fee as it stood when this bill is decided (required, so no caller can forget a
 //   fee-free period). A line whose counsellor is covered by a waiver pays no fee and records what it would have
 //   been on its own part; the pooled fee is over the other lines' parts only, split across them as before. With no
 //   waiver in force every number is what it was before waivers existed.
@@ -39,7 +39,7 @@ class ComputeOrganizationChargeBreakdownAction extends Action
      * @param  array{0: int, 1: int}  $seat
      * @return array{lines: list<array{counsellor: Counsellor, net: int, fee: int, platform_fee_waiver_id: ?int, waived_fee_amount: int}>, skipped: list<array{counsellor: Counsellor, reason: string, message: ?string}>}
      */
-    public function execute(Collection $counsellors, Closure $termsFor, ?int $listedAmount, array $seat, PlatformFeePolicy $fees): array
+    public function execute(Collection $counsellors, Closure $termsFor, ?int $listedAmount, array $seat, PlatformFeePolicy $policy): array
     {
         $counsellors = $counsellors->values();
         $parts = self::split($listedAmount, max(1, $counsellors->count()));
@@ -81,24 +81,25 @@ class ComputeOrganizationChargeBreakdownAction extends Action
 
         // The fee on the parts billed: a counsellor this organisation doesn't pay takes their part's fee with them, and
         // so does one whose fee is waived.
-        $charged = array_keys(array_filter($billed, fn (array $entry) => $fees->waiverFor($entry['counsellor']) === null));
+        $charged = array_keys(array_filter($billed, fn (array $entry) => $policy->waiverFor($entry['counsellor']) === null));
         $fee = $listedAmount !== null && $charged
-            ? $fees->feeFor(array_sum(array_map(fn (int $index) => $billed[$index]['part'], $charged)))['fee']
+            ? $policy->feeFor(array_sum(array_map(fn (int $index) => $billed[$index]['part'], $charged)))['fee']
             : 0;
         $chargedFees = $charged ? array_combine($charged, self::split($fee, count($charged))) : [];
 
-        $lines = array_map(function (array $entry, int $index) use ($chargedFees, $fees) {
-            // A waived line: no fee, and what its own part's fee would have been is recorded (0 with no listed price).
-            $waiver = array_key_exists($index, $chargedFees)
+        $lines = array_map(function (array $entry, int $index) use ($chargedFees, $policy) {
+            // A waived line: no fee, and what its own part's fee would have been is recorded (none with no listed
+            // price, and then no waiver either -- there was nothing to waive).
+            $decision = array_key_exists($index, $chargedFees)
                 ? ['fee' => $chargedFees[$index], 'waiverId' => null, 'waived' => 0]
-                : $fees->feeFor($entry['part'] ?? 0, $entry['counsellor']);
+                : $policy->feeFor($entry['part'] ?? 0, $entry['counsellor']);
 
             return [
                 'counsellor' => $entry['counsellor'],
                 'net' => $entry['net'],
-                'fee' => $waiver['fee'],
-                'platform_fee_waiver_id' => $waiver['waiverId'],
-                'waived_fee_amount' => $waiver['waived'],
+                'fee' => $decision['fee'],
+                'platform_fee_waiver_id' => $decision['waiverId'],
+                'waived_fee_amount' => $decision['waived'],
             ];
         }, $billed, array_keys($billed));
 

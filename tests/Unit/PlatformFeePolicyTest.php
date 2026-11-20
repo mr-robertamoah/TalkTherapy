@@ -86,6 +86,13 @@ test('an open-ended period has no end', function () {
     expect(pfpPolicy('2036-12-01')->feeFor(10000)['fee'])->toBe(0);
 });
 
+test('a waiver is recorded only when there was a fee to waive', function () {
+    PlatformFeeWaiver::factory()->create();
+
+    expect(pfpPolicy()->feeFor(0))->toBe(['fee' => 0, 'waiverId' => null, 'waived' => 0])
+        ->and(pfpPolicy()->feeFor(9))->toBe(['fee' => 0, 'waiverId' => null, 'waived' => 0]);
+});
+
 test('an ended or upcoming period waives nothing now', function () {
     PlatformFeeWaiver::factory()->ended()->create();
     PlatformFeeWaiver::factory()->upcoming()->create();
@@ -141,14 +148,14 @@ test('the breakdown\'s fee taken plus fee waived is never more than the fee on t
         ->and(array_sum(array_column($lines, 'fee')) + array_sum(array_column($lines, 'waived_fee_amount')))->toBeGreaterThanOrEqual($whole - count($lines));
 });
 
-test('a breakdown with no listed price waives nothing (there was no fee)', function () {
+test('a breakdown with no listed price records no waiver -- there was no fee to waive', function () {
     $counsellors = collect([pfpCounsellor()]);
-    $waiver = PlatformFeeWaiver::factory()->create();
+    PlatformFeeWaiver::factory()->create();
     $fixed = new OrganizationCounsellorCompensation(['type' => OrganizationCounsellorCompensationTypeEnum::fixed->value, 'amount' => 3000]);
 
     $lines = ComputeOrganizationChargeBreakdownAction::new()->execute($counsellors, fn () => $fixed, null, [0, 1], pfpPolicy())['lines'];
 
     expect($lines[0]['fee'])->toBe(0)
         ->and($lines[0]['waived_fee_amount'])->toBe(0)
-        ->and($lines[0]['platform_fee_waiver_id'])->toBe($waiver->id);
+        ->and($lines[0]['platform_fee_waiver_id'])->toBeNull();
 });

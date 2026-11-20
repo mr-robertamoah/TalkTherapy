@@ -3,25 +3,19 @@
 namespace App\Actions\Transaction;
 
 use App\Actions\Action;
-use App\Services\SettingsService;
 use InvalidArgumentException;
 
 // Reviewer finding (TT-7.3b-b/SCRUM-233): the ONE place the platform-fee percentage actually
-// multiplies against a money amount -- previously duplicated verbatim between
-// GenerateCounsellorEarningsAction (fee deducted from a personal-pay gross amount) and
-// ChargeOrganizationForModelAction (fee added on top of an org-compensation share). Both callers
-// pass a different base amount; this action only owns the basis-points conversion and the
-// multiplication, never what the base represents.
+// multiplies against a money amount, whatever the base represents (a personal payment the fee is
+// taken from, or a listed rate an organisation pays the fee on top of). This action only owns the
+// basis-points conversion and the multiplication.
 //
 // TT-7.10a/SCRUM-467: only PlatformFeePolicy calls this (an arch test enforces it), passing the percentage it read
-// once -- whether a fee applies at all (a fee-free period) is the policy's decision, never this action's. The
-// settings read when no percentage is passed stays for this action's own unit tests.
+// once -- whether a fee applies at all (a fee-free period) is the policy's decision, never this action's.
 class ComputePlatformFeeAction extends Action
 {
-    public function execute(int $baseAmount, ?float $percentage = null): int
+    public function execute(int $baseAmount, float $percentage): int
     {
-        $percentage ??= SettingsService::new()->getPlatformFeePercentage();
-
         // Basis points (percentage * 100), not the raw float percentage, are what actually
         // multiply the money -- SettingsService allows an admin to set a fractional fee (e.g.
         // 12.5%), and floating-point arithmetic directly on a currency amount can drift by a

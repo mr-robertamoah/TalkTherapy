@@ -13,8 +13,11 @@ use App\Models\CounsellorEarning;
 use App\Models\GroupTherapy;
 use App\Models\Organization;
 use App\Models\OrganizationInvoice;
+use App\Models\PlatformFeeWaiver;
 use App\Models\Therapy;
 use App\Models\Transaction;
+use App\Support\PlatformFeePolicy;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
@@ -104,7 +107,7 @@ class GenerateCounsellorEarningsAction extends Action
 
     // SCRUM-420: one earning per counsellor line of an organisation card charge, as charged. Its gross is that line's
     // net plus its fee, so the earnings add up to the transaction's amount -- they do by construction; if not, it's
-    // logged: an amount over the breakdown goes to the first written line's fee, and a breakdown over the amount pays out
+    // logged: an amount over the breakdown goes to the first written line's fee (one whose fee wasn't waived), and a breakdown over the amount pays out
     // nothing (never more than was collected) until it's reconciled by hand. A counsellor deleted since is still paid
     // (soft-deleted); one that's gone entirely is skipped and logged.
     private function generateFromBreakdown(Transaction $transaction): void
@@ -126,33 +129,77 @@ class GenerateCounsellorEarningsAction extends Action
 
         $counsellors = Counsellor::withTrashed()->whereIn('id', $lines->pluck('counsellor_id'))->get()->keyBy('id');
 
-        foreach ($lines as $line) {
-            $counsellor = $counsellors->get($line['counsellor_id']);
-
-            if (! $counsellor) {
-                Log::warning('Cannot generate an org-financed counsellor earning -- the counsellor no longer exists.', [
-                    'transaction_id' => $transaction->id,
-                    'counsellor_id' => $line['counsellor_id'],
-                ]);
-
-                continue;
+        $written = $lines->filter(function (array $line) use ($counsellors, $transaction) {
+            if ($counsellors->has($line['counsellor_id'])) {
+                return true;
             }
 
-            $net = (int) $line['net_amount'];
-            // Any surplus goes on the first line actually written.
-            $fee = (int) $line['fee_amount'] + $difference;
-            $difference = 0;
+            Log::warning('Cannot generate an org-financed counsellor earning -- the counsellor no longer exists.', [
+                'transaction_id' => $transaction->id,
+                'counsellor_id' => $line['counsellor_id'],
+            ]);
 
+            return false;
+        })->values();
+
+        // Any surplus is a fee taken, so it goes on the first line written whose fee wasn't waived; if every line's
+        // was, on the first, which then records no waiver (a fee and a waiver never sit on one earning).
+        $surplusAt = $written->search(fn (array $line) => ($line['platform_fee_waiver_id'] ?? null) === null);
+        $surplusAt = $surplusAt === false ? 0 : $surplusAt;
+        $waivers = $this->existingWaiverIds($written->pluck('platform_fee_waiver_id'));
+
+        foreach ($written as $index => $line) {
+            $net = (int) $line['net_amount'];
+            $fee = (int) $line['fee_amount'];
             // TT-7.10a/SCRUM-467: the fee as decided when the charge was made, never decided again here.
-            $this->createEarning(
-                $transaction,
-                $counsellor,
-                $net + $fee,
-                $fee,
-                $net,
-                waiver: ['waiverId' => $line['platform_fee_waiver_id'] ?? null, 'waived' => (int) ($line['waived_fee_amount'] ?? 0)]
-            );
+            $waiver = $this->storedWaiver($transaction, $line['platform_fee_waiver_id'] ?? null, (int) ($line['waived_fee_amount'] ?? 0), $waivers);
+
+            if ($index === $surplusAt && $difference > 0) {
+                $fee += $difference;
+                $waiver['waiverId'] = null;
+            }
+
+            $this->createEarning($transaction, $counsellors->get($line['counsellor_id']), $net + $fee, $fee, $net, waiver: $waiver);
         }
+    }
+
+    // TT-7.10a/SCRUM-467 (security review): which of these waiver ids still exist -- one query for all of them.
+    private function existingWaiverIds(Collection $ids): Collection
+    {
+        $ids = $ids->filter()->unique()->values();
+
+        return $ids->isEmpty() ? collect() : PlatformFeeWaiver::query()->whereIn('id', $ids)->pluck('id');
+    }
+
+    // A stored waiver decision as written onto an earning. A waiver that no longer exists isn't referenced (the
+    // foreign key would roll back a successful payment's status with it); the fee and the amount waived stand.
+    private function storedWaiver(Transaction $transaction, ?int $waiverId, int $waived, Collection $existing): array
+    {
+        if ($waiverId !== null && ! $existing->contains($waiverId)) {
+            Log::warning('Counsellor earning: the platform fee waiver recorded for this fee no longer exists -- recording the earning without it.', [
+                'transaction_id' => $transaction->id,
+                'platform_fee_waiver_id' => $waiverId,
+            ]);
+
+            $waiverId = null;
+        }
+
+        return ['waiverId' => $waiverId, 'waived' => $waived];
+    }
+
+    // TT-7.10a/SCRUM-467: a personal payment's fee is decided as it stood when checkout started. Paid more than the
+    // grace period later (security review), it keeps a waiver only if that same waiver is still in force now -- so a
+    // checkout opened during a fee-free period and paid long after it ended doesn't skip the fee. Now is when the
+    // success is being recorded (this runs as the transaction becomes successful).
+    private function personalPaymentPolicy(Transaction $transaction): PlatformFeePolicy
+    {
+        $policy = ResolvePlatformFeePolicyAction::new()->execute($transaction->created_at);
+
+        if (now()->lessThanOrEqualTo($transaction->created_at->copy()->addMinutes(config('payments.fee_waiver_checkout_grace_minutes')))) {
+            return $policy;
+        }
+
+        return $policy->keepingOnlyWaiversStillIn(ResolvePlatformFeePolicyAction::new()->execute(now()));
     }
 
     private function generateForIndividual(Transaction $transaction, Therapy $therapy): void
@@ -168,7 +215,7 @@ class GenerateCounsellorEarningsAction extends Action
 
         // TT-7.10a/SCRUM-467: the fee as it stood when checkout started -- a payment begun before a fee-free period
         // pays the fee even if it succeeds during one.
-        $fee = ResolvePlatformFeePolicyAction::new()->execute($transaction->created_at)->feeFor($transaction->amount, $therapy->counsellor);
+        $fee = $this->personalPaymentPolicy($transaction)->feeFor($transaction->amount, $therapy->counsellor);
 
         $this->createEarning($transaction, $therapy->counsellor, $transaction->amount, $fee['fee'], $transaction->amount - $fee['fee'], waiver: $fee);
     }
@@ -311,7 +358,7 @@ class GenerateCounsellorEarningsAction extends Action
             : CounsellorEarningShareBasisEnum::percentage->value;
 
         // TT-7.10a/SCRUM-467: the fee as it stood when checkout started, looked up once for every counsellor.
-        $fees = ResolvePlatformFeePolicyAction::new()->execute($transaction->created_at);
+        $fees = $this->personalPaymentPolicy($transaction);
 
         foreach ($counsellors as $index => $counsellor) {
             $gross = $baseShare + ($index === 0 ? $remainder : 0);
@@ -337,6 +384,8 @@ class GenerateCounsellorEarningsAction extends Action
     // so the drift concern that method's own comment describes structurally cannot occur here.
     private function generateForSettledInvoice(Transaction $transaction, OrganizationInvoice $invoice): void
     {
+        $waivers = $this->existingWaiverIds($invoice->lines->pluck('platform_fee_waiver_id'));
+
         foreach ($invoice->lines as $line) {
             if (! $line->counsellor) {
                 Log::warning('Cannot generate a retainer counsellor earning -- invoice line has no assigned counsellor.', [
@@ -366,7 +415,7 @@ class GenerateCounsellorEarningsAction extends Action
                 $line->net_amount,
                 organizationInvoiceLineId: $line->id,
                 // TT-7.10a/SCRUM-467: as decided when the line was recorded, never decided again at settlement.
-                waiver: ['waiverId' => $line->platform_fee_waiver_id, 'waived' => $line->waived_fee_amount]
+                waiver: $this->storedWaiver($transaction, $line->platform_fee_waiver_id, $line->waived_fee_amount, $waivers)
             );
         }
     }
