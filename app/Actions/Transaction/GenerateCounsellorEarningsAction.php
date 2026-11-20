@@ -143,7 +143,15 @@ class GenerateCounsellorEarningsAction extends Action
             $fee = (int) $line['fee_amount'] + $difference;
             $difference = 0;
 
-            $this->createEarning($transaction, $counsellor, $net + $fee, $fee, $net);
+            // TT-7.10a/SCRUM-467: the fee as decided when the charge was made, never decided again here.
+            $this->createEarning(
+                $transaction,
+                $counsellor,
+                $net + $fee,
+                $fee,
+                $net,
+                waiver: ['waiverId' => $line['platform_fee_waiver_id'] ?? null, 'waived' => (int) ($line['waived_fee_amount'] ?? 0)]
+            );
         }
     }
 
@@ -158,9 +166,11 @@ class GenerateCounsellorEarningsAction extends Action
             return;
         }
 
-        $feeAmount = ComputePlatformFeeAction::new()->execute($transaction->amount);
+        // TT-7.10a/SCRUM-467: the fee as it stood when checkout started -- a payment begun before a fee-free period
+        // pays the fee even if it succeeds during one.
+        $fee = ResolvePlatformFeePolicyAction::new()->execute($transaction->created_at)->feeFor($transaction->amount, $therapy->counsellor);
 
-        $this->createEarning($transaction, $therapy->counsellor, $transaction->amount, $feeAmount, $transaction->amount - $feeAmount);
+        $this->createEarning($transaction, $therapy->counsellor, $transaction->amount, $fee['fee'], $transaction->amount - $fee['fee'], waiver: $fee);
     }
 
     // TT-7.3b-d/SCRUM-235: the collection side (TT-7.3b-b/-c) already computed and charged the
@@ -229,7 +239,12 @@ class GenerateCounsellorEarningsAction extends Action
         // so it's surfaced here as a warning (not corrected -- there is no persisted charge-time
         // split to correct AGAINST) purely for finance/ops visibility, comparing against what the
         // SAME fee computation would independently yield off today's listed amount.
-        $expectedFeeAmount = $counsellorListedAmount !== null ? ComputePlatformFeeAction::new()->execute($counsellorListedAmount) : null;
+        // TT-7.10a/SCRUM-467: the fee as it stood when the charge was made, so a charge made in a fee-free period (no fee)
+        // isn't flagged as drift.
+        $expected = $counsellorListedAmount !== null
+            ? ResolvePlatformFeePolicyAction::new()->execute($transaction->created_at)->feeFor($counsellorListedAmount, $therapy->counsellor)
+            : null;
+        $expectedFeeAmount = $expected['fee'] ?? null;
 
         if ($expectedFeeAmount !== null && $transaction->amount - $netAmount !== $expectedFeeAmount) {
             Log::warning('Org-financed counsellor earning: recomputed compensation share does not match the amount implied by the original charge -- compensation terms or the platform fee may have changed since. Flagging for manual reconciliation.', [
@@ -249,7 +264,8 @@ class GenerateCounsellorEarningsAction extends Action
         $netAmount = max(0, min($netAmount, $transaction->amount));
         $feeAmount = $transaction->amount - $netAmount;
 
-        $this->createEarning($transaction, $therapy->counsellor, $transaction->amount, $feeAmount, $netAmount);
+        // A waiver is recorded only when the fee taken is the waived one (none) -- a drifted remainder is a fee taken.
+        $this->createEarning($transaction, $therapy->counsellor, $transaction->amount, $feeAmount, $netAmount, waiver: $feeAmount === 0 ? $expected : null);
     }
 
     private function generateForGroup(Transaction $transaction, GroupTherapy $groupTherapy): void
@@ -294,18 +310,22 @@ class GenerateCounsellorEarningsAction extends Action
             ? CounsellorEarningShareBasisEnum::equal->value
             : CounsellorEarningShareBasisEnum::percentage->value;
 
+        // TT-7.10a/SCRUM-467: the fee as it stood when checkout started, looked up once for every counsellor.
+        $fees = ResolvePlatformFeePolicyAction::new()->execute($transaction->created_at);
+
         foreach ($counsellors as $index => $counsellor) {
             $gross = $baseShare + ($index === 0 ? $remainder : 0);
-            $feeAmount = ComputePlatformFeeAction::new()->execute($gross);
+            $fee = $fees->feeFor($gross, $counsellor);
 
             $this->createEarning(
                 $transaction,
                 $counsellor,
                 $gross,
-                $feeAmount,
-                $gross - $feeAmount,
+                $fee['fee'],
+                $gross - $fee['fee'],
                 $shareBasis,
-                $shareEqually ? null : $poolPercentage
+                $shareEqually ? null : $poolPercentage,
+                waiver: $fee
             );
         }
     }
@@ -344,7 +364,9 @@ class GenerateCounsellorEarningsAction extends Action
                 $line->fee_amount + $line->net_amount,
                 $line->fee_amount,
                 $line->net_amount,
-                organizationInvoiceLineId: $line->id
+                organizationInvoiceLineId: $line->id,
+                // TT-7.10a/SCRUM-467: as decided when the line was recorded, never decided again at settlement.
+                waiver: ['waiverId' => $line->platform_fee_waiver_id, 'waived' => $line->waived_fee_amount]
             );
         }
     }
@@ -357,7 +379,10 @@ class GenerateCounsellorEarningsAction extends Action
         int $netAmount,
         ?string $shareBasis = null,
         ?int $sharePercentage = null,
-        ?int $organizationInvoiceLineId = null
+        ?int $organizationInvoiceLineId = null,
+        // TT-7.10a/SCRUM-467: the fee-free period the fee was waived under and what it waived (PlatformFeePolicy::feeFor()'s
+        // shape), or null when none applied.
+        ?array $waiver = null
     ): void {
         $earning = $transaction->earnings()->create([
             'counsellor_id' => $counsellor->id,
@@ -365,6 +390,8 @@ class GenerateCounsellorEarningsAction extends Action
             'gross_amount' => $grossAmount,
             'fee_amount' => $feeAmount,
             'net_amount' => $netAmount,
+            'platform_fee_waiver_id' => $waiver['waiverId'] ?? null,
+            'waived_fee_amount' => $waiver['waived'] ?? 0,
             'currency' => $transaction->currency,
             'share_basis' => $shareBasis,
             'share_percentage' => $sharePercentage,

@@ -1,6 +1,7 @@
 <?php
 
 use App\Actions\Organization\ComputeOrganizationChargeBreakdownAction;
+use App\Actions\Transaction\ResolvePlatformFeePolicyAction;
 use App\Enums\OrganizationCounsellorCompensationBasisEnum;
 use App\Enums\OrganizationCounsellorCompensationTypeEnum;
 use App\Models\Counsellor;
@@ -23,7 +24,7 @@ function cobBreakdown($counsellors, array $termsById, ?int $listed, array $seat 
 {
     config(['settings.platform_fee_percentage' => 10]);
 
-    return ComputeOrganizationChargeBreakdownAction::new()->execute($counsellors, fn (Counsellor $counsellor) => $termsById[$counsellor->id] ?? null, $listed, $seat);
+    return ComputeOrganizationChargeBreakdownAction::new()->execute($counsellors, fn (Counsellor $counsellor) => $termsById[$counsellor->id] ?? null, $listed, $seat, ResolvePlatformFeePolicyAction::new()->execute(now()));
 }
 
 test('a price that doesn\'t divide evenly gives the first counsellor the remainder, and the fee splits the same way', function () {

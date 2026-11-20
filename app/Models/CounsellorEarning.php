@@ -13,13 +13,14 @@ class CounsellorEarning extends Model
     protected $fillable = [
         'transaction_id', 'counsellor_id', 'organization_invoice_line_id', 'counsellor_payout_id',
         'gross_amount', 'fee_amount', 'net_amount', 'currency', 'share_basis', 'share_percentage',
-        'status',
+        'status', 'platform_fee_waiver_id', 'waived_fee_amount',
     ];
 
     protected $casts = [
         'gross_amount' => 'integer',
         'fee_amount' => 'integer',
         'net_amount' => 'integer',
+        'waived_fee_amount' => 'integer',
     ];
 
     public function transaction()
@@ -38,6 +39,13 @@ class CounsellorEarning extends Model
     public function organizationInvoiceLine()
     {
         return $this->belongsTo(OrganizationInvoiceLine::class);
+    }
+
+    // TT-7.10a/SCRUM-467: the fee-free period this earning's fee was waived under (fee_amount 0, waived_fee_amount
+    // what it would have been), or null when the fee was taken.
+    public function platformFeeWaiver()
+    {
+        return $this->belongsTo(PlatformFeeWaiver::class);
     }
 
     public function statusHistories()
