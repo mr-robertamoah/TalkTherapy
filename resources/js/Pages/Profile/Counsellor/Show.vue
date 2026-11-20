@@ -37,6 +37,8 @@ import TestimonialSection from '@/Components/TestimonialSection.vue';
 import CounsellorVerificationBadge from '@/Components/CounsellorVerificationBadge.vue';
 import CounsellorVerificationStatusCard from '@/Components/CounsellorVerificationStatusCard.vue';
 import CopyLinkField from '@/Components/CopyLinkField.vue';
+import CommissionFreeNotice from '@/Components/CommissionFreeNotice.vue';
+import FeeWaivedBadge from '@/Components/FeeWaivedBadge.vue';
 
 const { modalData, showModal } = useModal()
 const { alertData, clearAlertData, setAlertData, setFailedAlertData, setSuccessAlertData } = useAlert()
@@ -818,6 +820,8 @@ function closeModal() {
                         <div class="mt-1 text-sm text-gray-600">
                             Your earnings and where they're withdrawn to. Private to you.
                         </div>
+                        <!-- TT-7.10b/SCRUM-468 -->
+                        <CommissionFreeNotice class="mt-3" :notice="payoutOverview?.commissionFreeNotice" />
 
                         <div class="mt-4">
                             <div class="text-sm font-semibold text-gray-700 mb-1">Payout Destination</div>
@@ -844,7 +848,16 @@ function closeModal() {
                                     :key="earning.id"
                                     class="flex justify-between text-xs text-gray-600 py-1 border-b border-gray-200 last:border-b-0"
                                 >
-                                    <span>gross {{ formatMoney(earning.grossAmount, earning.currency) }} − fee {{ formatMoney(earning.feeAmount, earning.currency) }}</span>
+                                    <span>
+                                        gross {{ formatMoney(earning.grossAmount, earning.currency) }} − fee {{ formatMoney(earning.feeAmount, earning.currency) }}
+                                        <FeeWaivedBadge
+                                            v-if="earning.commissionFree"
+                                            class="ml-1"
+                                            label="Commission-free"
+                                            :amount="earning.waivedFeeAmount"
+                                            :currency="earning.currency"
+                                        />
+                                    </span>
                                     <span class="font-medium">= {{ formatMoney(earning.netAmount, earning.currency) }}</span>
                                 </div>
                             </div>

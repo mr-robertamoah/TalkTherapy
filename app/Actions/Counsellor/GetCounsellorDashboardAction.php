@@ -110,6 +110,7 @@ class GetCounsellorDashboardAction extends Action
             'onHold' => $overview['onHold'],
             'hasPayoutDestination' => (bool) $overview['payoutAccount'],
             'lastPayout' => $last,
+            'commissionFreeNotice' => $overview['commissionFreeNotice'],
         ];
     }
 

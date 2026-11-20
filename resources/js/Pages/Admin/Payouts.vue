@@ -5,6 +5,8 @@ import AdminRow from '@/Components/Admin/AdminRow.vue'
 import AdminCell from '@/Components/Admin/AdminCell.vue'
 import AdminStatusPill from '@/Components/Admin/AdminStatusPill.vue'
 import Alert from '@/Components/Alert.vue';
+import DangerButton from '@/Components/DangerButton.vue';
+import SecondaryButton from '@/Components/SecondaryButton.vue';
 import FormLoader from '@/Components/FormLoader.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
@@ -13,7 +15,8 @@ import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import useAlert from '@/Composables/useAlert';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, router, useForm } from '@inertiajs/vue3';
+import { formatUtc } from '@/Support/commissionFree.js';
 import { computed, reactive, ref, watch } from 'vue';
 import { default as _ } from 'lodash';
 
@@ -29,6 +32,10 @@ const { alertData, clearAlertData, setAlertData, setFailedAlertData, setSuccessA
 const props = defineProps({
     settings: { type: Object, required: true },
     payoutHistory: { type: Object, required: true },
+    // TT-7.10b/SCRUM-468: platform-wide commission-free periods; only a super admin changes them.
+    feeWaivers: { type: Array, default: () => [] },
+    canManageFeeWaivers: { type: Boolean, default: false },
+    feeWaiverReasonMax: { type: Number, default: 500 },
 })
 
 // ---- Platform settings ----
@@ -54,6 +61,60 @@ function saveMinimumAmounts() {
             if (errors.alert) setFailedAlertData({ message: errors.alert })
         },
     })
+}
+
+// ---- Commission-free periods (TT-7.10b/SCRUM-468) ----
+
+// Times are typed and sent as UTC (the labels say so); the server reads a value with no offset as UTC.
+const waiverForm = useForm({ starts_at: '', ends_at: '', reason: '' })
+// The row waiting for a second click to confirm "end now" or "delete": { id, kind }.
+const confirmingWaiver = ref(null)
+const waiverAction = ref(null)
+
+function createWaiver() {
+    waiverForm.post(route('admin.settings.platform-fee-waivers.store'), {
+        preserveScroll: true,
+        onSuccess: () => {
+            waiverForm.reset()
+            setSuccessAlertData({ message: 'Commission-free period created.' })
+        },
+        onError: (errors) => {
+            const message = errors.waiver ?? errors.alert
+            if (message) setFailedAlertData({ message })
+        },
+    })
+}
+
+function actOnWaiver(waiver, kind) {
+    const name = kind === 'end' ? 'admin.settings.platform-fee-waivers.end' : 'admin.settings.platform-fee-waivers.delete'
+    waiverAction.value = waiver.id
+
+    router.post(route(name, { waiver: waiver.id }), {}, {
+        preserveScroll: true,
+        onSuccess: () => setSuccessAlertData({ message: kind === 'end' ? 'Commission-free period ended.' : 'Commission-free period deleted.' }),
+        onError: (errors) => setFailedAlertData({ message: errors.waiver ?? errors.alert ?? 'Could not change this commission-free period.' }),
+        onFinish: () => {
+            waiverAction.value = null
+            confirmingWaiver.value = null
+        },
+    })
+}
+
+function isConfirming(waiver, kind) {
+    return confirmingWaiver.value?.id === waiver.id && confirmingWaiver.value?.kind === kind
+}
+
+const waiverColumns = [
+    { label: 'Starts' },
+    { label: 'Ends' },
+    { label: 'Status' },
+    { label: 'Reason' },
+    { label: 'Created by' },
+    { label: 'Actions' },
+]
+
+function waiverTone(status) {
+    return { upcoming: 'blue', active: 'green', ended: 'gray', cancelled: 'amber' }[status] ?? 'gray'
 }
 
 // ---- Trigger payout on a counsellor's behalf ----
@@ -275,6 +336,76 @@ function statusTone(status) {
                     </form>
                 </div>
             </div>
+
+            <!-- Commission-free periods (TT-7.10b/SCRUM-468) -->
+            <section aria-labelledby="fee-waivers-heading" class="bg-white overflow-hidden shadow-sm sm:rounded-lg p-6">
+                <h2 id="fee-waivers-heading" class="text-lg font-medium text-gray-900">Commission-free periods</h2>
+                <div class="mt-1 text-sm text-gray-600">
+                    No platform fee is taken on payments made during a period, across the whole platform. Counsellors and
+                    organisations see the dates (never the reason) while one is running or starts within 30 days.
+                    <template v-if="!canManageFeeWaivers"> Only a super administrator can add, end or delete one.</template>
+                </div>
+
+                <form v-if="canManageFeeWaivers" class="mt-6 grid gap-4 sm:grid-cols-2" @submit.prevent="createWaiver">
+                    <div>
+                        <InputLabel for="waiverStartsAt" value="Starts (UTC/GMT)" />
+                        <TextInput id="waiverStartsAt" type="datetime-local" class="mt-1 block w-full" v-model="waiverForm.starts_at" required />
+                        <InputError class="mt-2" :message="waiverForm.errors.starts_at" />
+                    </div>
+                    <div>
+                        <InputLabel for="waiverEndsAt" value="Ends (UTC/GMT)" />
+                        <TextInput id="waiverEndsAt" type="datetime-local" class="mt-1 block w-full" v-model="waiverForm.ends_at" required />
+                        <InputError class="mt-2" :message="waiverForm.errors.ends_at" />
+                    </div>
+                    <div class="sm:col-span-2">
+                        <InputLabel for="waiverReason" value="Reason (administrators only)" />
+                        <textarea
+                            id="waiverReason"
+                            v-model="waiverForm.reason"
+                            rows="2"
+                            :maxlength="feeWaiverReasonMax"
+                            required
+                            class="mt-1 block w-full border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm text-sm"
+                        ></textarea>
+                        <InputError class="mt-2" :message="waiverForm.errors.reason" />
+                    </div>
+                    <div class="sm:col-span-2 flex items-center justify-between gap-4">
+                        <p class="text-xs text-gray-500">A period runs from its start up to (not including) its end. It can't start in the past or overlap another.</p>
+                        <PrimaryButton :class="{ 'opacity-25': waiverForm.processing }" :disabled="waiverForm.processing">add period</PrimaryButton>
+                    </div>
+                </form>
+
+                <div class="mt-6">
+                    <AdminTable :columns="waiverColumns" caption="Commission-free periods" :empty="!feeWaivers.length" empty-text="No commission-free periods yet.">
+                        <AdminRow v-for="waiver in feeWaivers" :key="waiver.id">
+                            <AdminCell label="Starts" half><span class="whitespace-nowrap">{{ formatUtc(waiver.startsAt) }}</span></AdminCell>
+                            <AdminCell label="Ends" half><span class="whitespace-nowrap">{{ waiver.endsAt ? formatUtc(waiver.endsAt) : 'no end set' }}</span></AdminCell>
+                            <AdminCell label="Status" half>
+                                <AdminStatusPill :label="waiver.status" :tone="waiverTone(waiver.status)" />
+                                <div v-if="waiver.endedBy" class="mt-1 text-xs text-gray-500">ended by {{ waiver.endedBy }}</div>
+                            </AdminCell>
+                            <AdminCell label="Reason"><span class="whitespace-pre-line break-words">{{ waiver.reason }}</span></AdminCell>
+                            <AdminCell label="Created by" half>{{ waiver.createdBy ?? '--' }}</AdminCell>
+                            <AdminCell actions>
+                                <template v-if="waiver.canEnd">
+                                    <template v-if="isConfirming(waiver, 'end')">
+                                        <DangerButton :disabled="waiverAction === waiver.id" @click="actOnWaiver(waiver, 'end')">confirm end now</DangerButton>
+                                        <SecondaryButton :disabled="waiverAction === waiver.id" @click="confirmingWaiver = null">cancel</SecondaryButton>
+                                    </template>
+                                    <SecondaryButton v-else @click="confirmingWaiver = { id: waiver.id, kind: 'end' }">end now</SecondaryButton>
+                                </template>
+                                <template v-if="waiver.canDelete">
+                                    <template v-if="isConfirming(waiver, 'delete')">
+                                        <DangerButton :disabled="waiverAction === waiver.id" @click="actOnWaiver(waiver, 'delete')">confirm delete</DangerButton>
+                                        <SecondaryButton :disabled="waiverAction === waiver.id" @click="confirmingWaiver = null">cancel</SecondaryButton>
+                                    </template>
+                                    <SecondaryButton v-else @click="confirmingWaiver = { id: waiver.id, kind: 'delete' }">delete</SecondaryButton>
+                                </template>
+                            </AdminCell>
+                        </AdminRow>
+                    </AdminTable>
+                </div>
+            </section>
 
             <!-- Trigger Payout -->
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg p-6">

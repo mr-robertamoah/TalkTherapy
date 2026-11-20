@@ -15,9 +15,24 @@ class PlatformFeeWaiver extends Model
 {
     use HasFactory;
 
-    // Who created or ended a period is set from the acting user (forceFill), never mass-assigned.
+    // TT-7.10b/SCRUM-468: a period's status, worked out from its timestamps (never stored). Cancelled: an admin ended
+    // it early with "End now" (ended_by_id set); ended: it reached the end it was scheduled with.
+    public const UPCOMING = 'upcoming';
+
+    public const ACTIVE = 'active';
+
+    public const ENDED = 'ended';
+
+    public const CANCELLED = 'cancelled';
+
+    // How far ahead an upcoming platform-wide period is announced to counsellors and organisations.
+    public const NOTICE_HORIZON_DAYS = 30;
+
+    // Who created or ended a period is set from the acting user (forceFill), never mass-assigned. counsellor_id isn't
+    // fillable either until SCRUM-464 decides how a counsellor's own waiver is made (a row without one is
+    // platform-wide).
     protected $fillable = [
-        'counsellor_id', 'starts_at', 'ends_at', 'reason',
+        'starts_at', 'ends_at', 'reason',
     ];
 
     protected $casts = [
@@ -43,6 +58,23 @@ class PlatformFeeWaiver extends Model
     public function isPlatformWide(): bool
     {
         return $this->counsellor_id === null;
+    }
+
+    public function status(?CarbonInterface $at = null): string
+    {
+        $at ??= now();
+
+        return match (true) {
+            $this->ended_by_id !== null => self::CANCELLED,
+            $this->starts_at->gt($at) => self::UPCOMING,
+            $this->ends_at === null || $this->ends_at->gt($at) => self::ACTIVE,
+            default => self::ENDED,
+        };
+    }
+
+    public function scopePlatformWide(Builder $query): Builder
+    {
+        return $query->whereNull('counsellor_id');
     }
 
     // The waivers in force at $at: started at or before it, not yet ended (the end itself isn't covered).

@@ -36,6 +36,10 @@ class OrganizationInvoiceLineResource extends JsonResource
             'counsellorName' => $this->whenLoaded('counsellor', fn () => $this->counsellor?->name),
             'netAmount' => $this->net_amount,
             'feeAmount' => $this->fee_amount,
+            // TT-7.10b/SCRUM-468: the platform fee was waived (a commission-free period) -- waivedFeeAmount is what it
+            // would have been. Never which period, nor its reason.
+            'feeWaived' => $this->platform_fee_waiver_id !== null,
+            'waivedFeeAmount' => (int) $this->waived_fee_amount,
             'currency' => $this->currency,
         ];
     }

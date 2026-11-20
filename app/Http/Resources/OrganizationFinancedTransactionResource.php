@@ -38,6 +38,7 @@ class OrganizationFinancedTransactionResource extends JsonResource
         // shows their totals and every counsellor's name; a therapy has one.
         $earnings = $this->whenLoaded('earnings', fn () => $this->earnings, collect());
         $payoutStatuses = $earnings->map(fn (CounsellorEarning $earning) => $earning->payout?->status)->unique();
+        $breakdownLines = collect($this->breakdown['lines'] ?? [])->filter(fn ($line) => is_array($line));
 
         return [
             'id' => $this->id,
@@ -56,6 +57,10 @@ class OrganizationFinancedTransactionResource extends JsonResource
             'status' => $this->status,
             'counsellorShare' => $earnings->isNotEmpty() ? $earnings->sum('net_amount') : null,
             'platformFee' => $earnings->isNotEmpty() ? $earnings->sum('fee_amount') : null,
+            // TT-7.10b/SCRUM-468: from the charge as made (its breakdown) -- whether the platform fee was waived on any
+            // part of it (a commission-free period) and how much. Never which period, nor its reason.
+            'feeWaived' => $breakdownLines->contains(fn (array $line) => ($line['platform_fee_waiver_id'] ?? null) !== null),
+            'waivedFeeAmount' => (int) $breakdownLines->sum(fn (array $line) => (int) ($line['waived_fee_amount'] ?? 0)),
             // One status when they all agree; "MIXED" when some counsellors have been paid out and others not.
             'payoutStatus' => $earnings->isEmpty() ? null : ($payoutStatuses->count() === 1 ? $payoutStatuses->first() : 'MIXED'),
             'createdAt' => $this->created_at,

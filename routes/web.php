@@ -7,6 +7,7 @@ use App\Http\Controllers\AdminHelpRequestController;
 use App\Http\Controllers\AdministratorController;
 use App\Http\Controllers\AdminOrganizationBillingController;
 use App\Http\Controllers\AdminPayoutController;
+use App\Http\Controllers\AdminPlatformFeeWaiverController;
 use App\Http\Controllers\AdminRefundRequestController;
 use App\Http\Controllers\AdminReportController;
 use App\Http\Controllers\AdminRequestController;
@@ -218,6 +219,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/administrator/payouts', [AdminPayoutController::class, 'index'])->name('administrator.payouts')->middleware('admin');
     Route::post('/administrator/settings/platform-fee', [AdminPayoutController::class, 'updatePlatformFee'])->name('admin.settings.platform-fee.update')->middleware(['admin', 'throttle:10,1,admin.settings.platform-fee.update']);
     Route::post('/administrator/settings/minimum-payout', [AdminPayoutController::class, 'updateMinimumPayoutAmounts'])->name('admin.settings.minimum-payout.update')->middleware(['admin', 'throttle:10,1,admin.settings.minimum-payout.update']);
+    // TT-7.10b/SCRUM-468: platform-wide commission-free periods (a super administrator changes them; no edit route).
+    Route::post('/administrator/settings/platform-fee-waivers', [AdminPlatformFeeWaiverController::class, 'store'])->name('admin.settings.platform-fee-waivers.store')->middleware(['admin', 'throttle:10,1,admin.settings.platform-fee-waivers.store']);
+    Route::post('/administrator/settings/platform-fee-waivers/{waiver}/end', [AdminPlatformFeeWaiverController::class, 'end'])->name('admin.settings.platform-fee-waivers.end')->whereNumber('waiver')->middleware(['admin', 'throttle:10,1,admin.settings.platform-fee-waivers.end']);
+    Route::post('/administrator/settings/platform-fee-waivers/{waiver}/delete', [AdminPlatformFeeWaiverController::class, 'destroy'])->name('admin.settings.platform-fee-waivers.delete')->whereNumber('waiver')->middleware(['admin', 'throttle:10,1,admin.settings.platform-fee-waivers.delete']);
 
     // TT-7.3b-followup/SCRUM-245: the manual "resolve this" surface SCRUM-238 left unbuilt --
     // platform-admin only (mirrors administrator.payouts' own convention exactly). Write routes
