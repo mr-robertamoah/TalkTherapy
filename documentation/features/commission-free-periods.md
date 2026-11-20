@@ -105,12 +105,13 @@ created them.
    Robert Amoah", and its end is now. (Any payment started while it was active paid no fee.)
 5. **Counsellor notice and label.** Log in as `commission_free_demo_counsellor`, open your counsellor profile
    (profile menu, or `/counsellor/{id}`) and scroll to "Payouts": the green notice line names the seeded upcoming
-   period's dates in GMT, and the GHS 100.00 and GHS 50.00 earnings with fee GHS 0.00 carry a
-   **Commission-free · GHS 10.00 waived** label (the ordinary GHS 50.00 one, fee GHS 5.00, has none). `/counsellor/dashboard`'s Earnings card shows the same notice.
+   period's dates in GMT; the GHS 100.00 earning with fee GHS 0.00 carries **Commission-free · GHS 10.00 waived**, the
+   GHS 50.00 one with fee GHS 0.00 **Commission-free · GHS 5.00 waived** (at the default 10% fee), and the ordinary
+   GHS 50.00 one, fee GHS 5.00, has none. `/counsellor/dashboard`'s Earnings card shows the same notice.
 6. **Organisation notice and label.** Log in as `org_demo_admin`, open
    http://localhost:8000/organizations/1/reconciliation: the notice is under the heading, and in "Financed Sessions"
    the "Therapy with Dr. CommissionFree DemoCounsellor" row (GHS 50.00, dated about seven weeks ago) shows Platform
-   Fee GHS 0.00 with **Waived · GHS 10.00 waived**.
+   Fee GHS 0.00 with **Waived · GHS 5.00 waived**.
 7. **Direct-post refusal (optional).** As `suspension_demo_normal_admin`, a POST to any of the three routes above
    returns 403.
 

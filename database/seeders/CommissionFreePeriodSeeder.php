@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Actions\Transaction\ChargeOrganizationForModelAction;
+use App\Actions\Transaction\ResolvePlatformFeePolicyAction;
 use App\Enums\CounsellorEarningStatusEnum;
 use App\Enums\TherapyPaymentTypeEnum;
 use App\Enums\TherapyPerPaymentEnum;
@@ -116,13 +117,17 @@ class CommissionFreePeriodSeeder extends Seeder
             return;
         }
 
-        // GHS 100 paid during the period (no fee, GHS 10 waived), and GHS 50 paid after it (the usual 10%).
+        // GHS 100 paid during the period (no fee, the usual fee waived), and GHS 50 paid after it (the usual fee). The
+        // fee and waiver come from the real fee decision at each payment's moment, so they match the current percentage.
         $payments = [
-            ['at' => $ended->starts_at->copy()->addDays(3), 'gross' => 10000, 'fee' => 0, 'waived' => 1000, 'waiver' => $ended->id],
-            ['at' => $ended->ends_at->copy()->addDays(2), 'gross' => 5000, 'fee' => 500, 'waived' => 0, 'waiver' => null],
+            ['at' => $ended->starts_at->copy()->addDays(3), 'gross' => 10000],
+            ['at' => $ended->ends_at->copy()->addDays(2), 'gross' => 5000],
         ];
 
         foreach ($payments as $index => $payment) {
+            $decision = ResolvePlatformFeePolicyAction::new()->execute($payment['at'])->feeFor($payment['gross'], $counsellor);
+            $payment += ['fee' => $decision['fee'], 'waived' => $decision['waived'], 'waiver' => $decision['waiverId']];
+
             $therapy = $client->addedTherapies()->create([
                 'name' => 'Commission-Free Demo Therapy '.($index + 1),
                 'background_story' => 'Seeded PAID therapy whose payment backs a demo counsellor earning (SCRUM-468).',
@@ -165,7 +170,7 @@ class CommissionFreePeriodSeeder extends Seeder
     }
 
     // A pay-per-use charge to the demo organisation's card during the period, for a therapy of this counsellor's with
-    // org_demo_payperuse_member: GHS 50 to the counsellor, no fee on top (GHS 10 waived). GHS, like their other
+    // org_demo_payperuse_member: GHS 50 to the counsellor, no fee on top (the usual fee waived). GHS, like their other
     // earnings, so their available balance stays in one currency.
     private function organizationCharge(PlatformFeeWaiver $ended, Counsellor $counsellor): void
     {
@@ -190,6 +195,7 @@ class CommissionFreePeriodSeeder extends Seeder
         ]);
 
         $at = $ended->starts_at->copy()->addDays(5);
+        $decision = ResolvePlatformFeePolicyAction::new()->execute($at)->feeFor(5000, $counsellor);
         $transaction = new Transaction([
             'for_type' => Therapy::class,
             'for_id' => $therapy->id,
@@ -202,9 +208,9 @@ class CommissionFreePeriodSeeder extends Seeder
             'breakdown' => ['lines' => [[
                 'counsellor_id' => $counsellor->id,
                 'net_amount' => 5000,
-                'fee_amount' => 0,
-                'platform_fee_waiver_id' => $ended->id,
-                'waived_fee_amount' => 1000,
+                'fee_amount' => $decision['fee'],
+                'platform_fee_waiver_id' => $decision['waiverId'],
+                'waived_fee_amount' => $decision['waived'],
             ]]],
         ]);
         $transaction->created_at = $at;
@@ -214,12 +220,12 @@ class CommissionFreePeriodSeeder extends Seeder
             'transaction_id' => $transaction->id,
             'counsellor_id' => $counsellor->id,
             'gross_amount' => 5000,
-            'fee_amount' => 0,
+            'fee_amount' => $decision['fee'],
             'net_amount' => 5000,
             'currency' => 'GHS',
             'status' => CounsellorEarningStatusEnum::pending->value,
-            'platform_fee_waiver_id' => $ended->id,
-            'waived_fee_amount' => 1000,
+            'platform_fee_waiver_id' => $decision['waiverId'],
+            'waived_fee_amount' => $decision['waived'],
         ]);
         $earning->created_at = $at;
         $earning->save();

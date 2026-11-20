@@ -608,6 +608,11 @@ test('the seeder adds an ended and an upcoming period (never a running one) with
         ->and($charge->created_at->between($ended->starts_at, $ended->ends_at))->toBeTrue()
         ->and($earnings[2]->transaction_id)->toBe($charge->id)
         ->and($earnings[2]->platform_fee_waiver_id)->toBe($ended->id)
+        // The waived amounts come from the real fee decision: GHS 50 waives half what GHS 100 does.
+        ->and($earnings[0]->waived_fee_amount)->toBeGreaterThan(0)
+        ->and($earnings[2]->waived_fee_amount)->toBe(intdiv($earnings[0]->waived_fee_amount, 2))
+        ->and($charge->breakdown['lines'][0]['waived_fee_amount'])->toBe($earnings[2]->waived_fee_amount)
+        ->and($earnings[1]->fee_amount)->toBe($earnings[2]->waived_fee_amount)
         ->and(Transaction::query()->where('for_id', $existingTherapy->id)->where('for_type', Therapy::class)->exists())->toBeFalse()
         ->and(CounsellorEarning::query()->where('counsellor_id', $orgCounsellor->id)->exists())->toBeFalse();
 });
