@@ -734,10 +734,12 @@ password) can **disconnect** Google and connect it again. Any other seeded accou
 
 ## Commission-free periods (SCRUM-468, `CommissionFreePeriodSeeder`)
 
-Local and testing only; each period is skipped once it exists (matched by its reason), so the dates are relative to
-the **first** seed -- reseed (`migrate:fresh --seed`) to move them back to these offsets. Never a period running now
-(every payment made while trying other features would otherwise be fee-free). Both created by the super admin
-(`mr_robertamoah`).
+Local and testing only. Each part is skipped once it exists (a period matched by its reason), so it can be added to an
+existing local database on its own: `docker compose exec -u www-data php php artisan db:seed
+--class=CommissionFreePeriodSeeder`. The dates are relative to the run that first created each period; deleting the
+upcoming one (as the super admin) and running the command again recreates it 20 → 27 days ahead. Never a period
+running now (every payment made while trying other features would otherwise be fee-free). Both created by the super
+admin (`mr_robertamoah`).
 
 | Period (reason) | Dates | Status | What it shows |
 |---|---|---|---|
@@ -748,5 +750,5 @@ Waived money, made during the ended period, so the labels can be seen:
 
 | Account | Password | Purpose |
 |---|---|---|
-| `commission_free_demo_counsellor` | `password` | Dr. CommissionFree DemoCounsellor. Two pending GHS earnings from `payout_demo_client`: GHS 100.00 with **no fee** ("Commission-free" label, GHS 10.00 waived) and GHS 50.00 with the usual GHS 5.00 fee. Visit their own profile (`/counsellor/{id}`), "Payouts". |
-| `org_demo_admin` | `password` | `/organizations/1/reconciliation`, "Financed Sessions": an extra "Therapy with Dr. Org DemoCounsellor" row of USD 50.00 dated inside the ended period, Platform Fee USD 0.00 with a **"Waived"** label (USD 10.00 waived). Its pending USD 50.00 earning is also added to `org_demo_counsellor`'s balance. |
+| `commission_free_demo_counsellor` | `password` | Dr. CommissionFree DemoCounsellor. Three pending GHS earnings: from `payout_demo_client`, GHS 100.00 with **no fee** ("Commission-free · GHS 10.00 waived") and GHS 50.00 with the usual GHS 5.00 fee; and GHS 50.00 with no fee (GHS 10.00 waived) from the organisation charge below. Visit their own profile (`/counsellor/{id}`), "Payouts". |
+| `org_demo_admin` | `password` | `/organizations/1/reconciliation`, "Financed Sessions": a "Therapy with Dr. CommissionFree DemoCounsellor" row of GHS 50.00 dated inside the ended period, Platform Fee GHS 0.00 with **"Waived · GHS 10.00 waived"**. It is the seeder's own "Commission-Free Demo Org Therapy" (client `org_demo_payperuse_member`, counsellor `commission_free_demo_counsellor`); no other demo charge or balance changes. |

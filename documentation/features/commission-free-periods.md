@@ -67,14 +67,24 @@ routes.
 ## Test data
 
 From `CommissionFreePeriodSeeder` (called by `DatabaseSeeder`; see `documentation/seeded-data.md`, "Commission-free
-periods"). Dates are relative to when the database was first seeded.
+periods"). To add it to an existing local database without touching anything else, run:
 
-- Super admin `mr_robertamoah` (password: `SUPER_PASSWORD` in `.env.docker`).
-- Ordinary admin `suspension_demo_normal_admin` / `password`.
+```bash
+docker compose exec -u www-data php php artisan db:seed --class=CommissionFreePeriodSeeder
+```
+
+It skips whatever already exists, so it is safe to run again. The periods' dates are relative to the run that first
+created them.
+
+- The seeded super admin, `mr_robertamoah` (password from `SUPER_PASSWORD` in `.env.docker`).
+- An ordinary admin, `suspension_demo_normal_admin` (the shared demo password -- see `documentation/seeded-data.md`).
 - Periods: "Demo: launch month thank-you (ended)" (60 → 30 days ago, *ended*) and "Demo: Mental Health Awareness
   week (upcoming)" (20 → 27 days ahead, *upcoming*, inside the notice horizon).
-- `commission_free_demo_counsellor` / `password`: one commission-free and one ordinary pending earning.
-- `org_demo_admin` / `password`: a waived USD 50.00 card charge on `/organizations/1/reconciliation`.
+- `commission_free_demo_counsellor` (shared demo password): three pending GHS earnings -- two commission-free, one
+  ordinary.
+- `org_demo_admin` (shared demo password): a waived GHS 50.00 card charge on `/organizations/1/reconciliation`, for
+  "Commission-Free Demo Org Therapy" (`org_demo_payperuse_member` with `commission_free_demo_counsellor`). No other
+  demo account's charges or balances are touched.
 
 ## How to try it
 
@@ -86,20 +96,21 @@ periods"). Dates are relative to when the database was first seeded.
    few days after that (e.g. outside the seeded upcoming period's dates), a reason, and click **add period**. The
    list now shows it as *upcoming*, created by Robert Amoah.
    - Try a start in the past → "The start cannot be in the past." Try an end before the start → "The end must be
-     after the start." Try dates overlapping the seeded upcoming period → "This period overlaps another
+     after the start, and in the future." Try dates overlapping the seeded upcoming period → "This period overlaps another
      commission-free period."
 3. **Delete.** On the new period click **delete** → **confirm delete**: it disappears. The seeded *ended* period
-   offers no buttons.
-4. **End now.** Create a period starting now (set the start to the current minute in UTC -- a start up to a minute ago is moved up to now) and ending tomorrow: it shows as
-   *active* with an **end now** button. Click **end now** → **confirm end now**: it shows as *cancelled*, "ended by
+   offers no buttons. (A period starting within the next minute can no longer be deleted -- end it once it runs.)
+4. **End now.** Create a period starting now (set the start to the current minute in UTC -- a start up to a minute
+   ago is moved up to now) and ending tomorrow: it shows as *active* with an **end now** button. Click **end now** → **confirm end now**: it shows as *cancelled*, "ended by
    Robert Amoah", and its end is now. (Any payment started while it was active paid no fee.)
 5. **Counsellor notice and label.** Log in as `commission_free_demo_counsellor`, open your counsellor profile
    (profile menu, or `/counsellor/{id}`) and scroll to "Payouts": the green notice line names the seeded upcoming
-   period's dates in GMT, and of the two pending earnings the GHS 100.00 one (fee GHS 0.00) has a
-   **Commission-free** label. `/counsellor/dashboard`'s Earnings card shows the same notice.
+   period's dates in GMT, and the GHS 100.00 and GHS 50.00 earnings with fee GHS 0.00 carry a
+   **Commission-free · GHS 10.00 waived** label (the ordinary GHS 50.00 one, fee GHS 5.00, has none). `/counsellor/dashboard`'s Earnings card shows the same notice.
 6. **Organisation notice and label.** Log in as `org_demo_admin`, open
    http://localhost:8000/organizations/1/reconciliation: the notice is under the heading, and in "Financed Sessions"
-   the USD 50.00 row dated about seven weeks ago shows Platform Fee USD 0.00 with **Waived**.
+   the "Therapy with Dr. CommissionFree DemoCounsellor" row (GHS 50.00, dated about seven weeks ago) shows Platform
+   Fee GHS 0.00 with **Waived · GHS 10.00 waived**.
 7. **Direct-post refusal (optional).** As `suspension_demo_normal_admin`, a POST to any of the three routes above
    returns 403.
 
@@ -108,6 +119,7 @@ appears only while a period is running or starts within 30 days, showing only it
 
 ## Notes
 
-- To see the notice disappear, delete the seeded upcoming period (and any you created) as the super admin.
+- To see the notice disappear, delete the seeded upcoming period (and any you created) as the super admin. Running
+  the seeder command above afterwards puts the upcoming period back, 20 → 27 days from then.
 - Design decisions (cancelled vs ended, the 30-day horizon, validation limits, the delete guard) are in
   `documentation/decision-log.md`, "SCRUM-468 — commission-free periods: admin, labels, notices".

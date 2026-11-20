@@ -13498,11 +13498,17 @@ Planned with the product-owner, architect and project-manager; split into SCRUM-
   compared in PHP (half-open: touching ends allowed; an open-ended row overlaps everything after its start). The
   transaction is retried (3 attempts) so a deadlock between two simultaneous creates ends with the second seeing the
   first and being refused. Per-counsellor waivers (SCRUM-464) don't block a platform-wide period.
-- **Delete guard:** only an *upcoming* platform-wide period. Earnings and invoice lines are checked by FK column; a
-  charge breakdown is JSON with no FK, so only transactions created since the period's start are read (a breakdown can
-  only name the period covering its own moment) -- portable across MySQL and the SQLite test database. A
-  `QueryException` from the restricting FKs is turned into a field error, not a 500. A per-counsellor waiver id given
+- **Delete guard (review fix):** only an *upcoming* platform-wide period that starts **more than 60 seconds** from now
+  (`DELETE_CUTOFF_SECONDS`), so a delete can't race the start -- one that close is ended once it runs. Earnings and
+  invoice lines are checked by FK column; charge breakdowns (JSON, no FK) aren't scanned, since a breakdown can only
+  name a period that had started. Only an integrity-constraint `QueryException` (SQLSTATE 23000) from the restricting
+  FKs becomes a field error; any other database error is thrown and logged as a 500. A per-counsellor waiver id given
   to end/delete is a 404 (not managed here).
+- **End after now (review fix):** `ends_at` must also be `after:now`, and `PlatformFeeWaiverService::create` itself
+  refuses an end that isn't after the (possibly moved-up) start, on `ends_at` -- otherwise a start and end both inside
+  the minute's leeway could save a period ending before it starts. The overlap guarantee assumes InnoDB REPEATABLE READ
+  (MySQL's default) or SERIALIZABLE gap locks, not READ COMMITTED (noted in the code). `counsellor_id` is no longer
+  fillable on `PlatformFeeWaiver` until SCRUM-464.
 - **No edit endpoint** (security review): a period's start never changes once set; "End now" is the only change to a
   running one, and it is refused on upcoming, ended and already-cancelled periods.
 - **Labels:** `CounsellorEarningResource` gains `commissionFree` + `waivedFeeAmount`; `OrganizationInvoiceLineResource`
@@ -13513,7 +13519,8 @@ Planned with the product-owner, architect and project-manager; split into SCRUM-
   "Delete" need a second click to confirm. Dates are shown in UTC labelled GMT everywhere (`resources/js/Support/
   commissionFree.js`), so admins, counsellors and organisations all see the same instant.
 - **Seed data beyond the two periods:** `CommissionFreePeriodSeeder` also adds a new counsellor,
-  `commission_free_demo_counsellor`, with one waived and one ordinary pending earning, and one waived USD 50 card
-  charge (plus its pending earning for `org_demo_counsellor`'s profile) on the demo organisation -- so the labels can be
-  seen without manual setup. All dated inside/after the ended period. A waived *invoice line* is not seeded (a line
+  `commission_free_demo_counsellor`, with one waived and one ordinary pending earning, and a therapy of theirs with
+  `org_demo_payperuse_member` charged to the demo organisation's card (GHS 50, fee waived) -- so the labels can be seen
+  without manual setup, without changing any other demo account's charges or balance. All dated inside/after the
+  ended period; each part is skipped once it exists, so the seeder can be run on its own. A waived *invoice line* is not seeded (a line
   needs its own held session and a non-clashing invoice month); it is covered by tests.
