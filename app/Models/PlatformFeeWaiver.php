@@ -28,9 +28,11 @@ class PlatformFeeWaiver extends Model
     // How far ahead an upcoming platform-wide period is announced to counsellors and organisations.
     public const NOTICE_HORIZON_DAYS = 30;
 
-    // Who created or ended a period is set from the acting user (forceFill), never mass-assigned.
+    // Who created or ended a period is set from the acting user (forceFill), never mass-assigned. counsellor_id isn't
+    // fillable either until SCRUM-464 decides how a counsellor's own waiver is made (a row without one is
+    // platform-wide).
     protected $fillable = [
-        'counsellor_id', 'starts_at', 'ends_at', 'reason',
+        'starts_at', 'ends_at', 'reason',
     ];
 
     protected $casts = [

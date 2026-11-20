@@ -20,8 +20,10 @@ use App\Models\Transaction;
 use App\Models\User;
 use App\Services\PlatformFeeWaiverService;
 use Database\Seeders\CommissionFreePeriodSeeder;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\ValidationException;
 
 // TT-7.10b/SCRUM-468: platform-wide commission-free periods -- every admin sees them, only a super admin creates,
 // ends or deletes one; counsellors and organisations see labels on waived money and a notice with the dates only.
@@ -169,6 +171,36 @@ test('a start within the last minute is allowed and moved up to now; one further
 
     expect(PlatformFeeWaiver::query()->sole()->starts_at->toDateTimeString())->toBe('2026-11-20 12:00:00');
 });
+
+test('an end in the past is refused, even when the start is within the minute\'s leeway', function () {
+    // Both within the leeway: the start would be moved up to now, past the end.
+    $this->actingAs(pfwaAdmin())->post(route('admin.settings.platform-fee-waivers.store'), pfwaValid([
+        'starts_at' => '2026-11-20T11:59:20',
+        'ends_at' => '2026-11-20T11:59:40',
+    ]))->assertSessionHasErrors('ends_at');
+
+    expect(PlatformFeeWaiver::query()->count())->toBe(0);
+});
+
+test('the service refuses an end that isn\'t after the start, whoever calls it', function (string $endsAt) {
+    $dto = PlatformFeeWaiverDTO::new()->fromArray(['user' => pfwaAdmin()]);
+
+    try {
+        PlatformFeeWaiverService::new()->create($dto, [
+            'starts_at' => Carbon::parse('2026-11-20 12:00:00', 'UTC'),
+            'ends_at' => Carbon::parse($endsAt, 'UTC'),
+            'reason' => 'x',
+        ]);
+        $this->fail('Expected a validation error.');
+    } catch (ValidationException $e) {
+        expect($e->errors())->toHaveKey('ends_at');
+    }
+
+    expect(PlatformFeeWaiver::query()->count())->toBe(0);
+})->with([
+    'before the start' => ['2026-11-20 11:59:40'],
+    'equal to the start' => ['2026-11-20 12:00:00'],
+]);
 
 test('the end is required and must be after the start', function (?string $endsAt) {
     $this->actingAs(pfwaAdmin())->post(route('admin.settings.platform-fee-waivers.store'), pfwaValid(['ends_at' => $endsAt]))
@@ -338,17 +370,40 @@ test('an unstarted period something refers to is not deleted (a field error, not
             'platform_fee_waiver_id' => $waiver->id,
         ]),
         'invoice line' => OrganizationInvoiceLine::factory()->create(['platform_fee_waiver_id' => $waiver->id]),
-        'charge breakdown' => (function () use ($waiver) {
-            $transaction = pfwaTransaction(['breakdown' => ['lines' => [['counsellor_id' => 1, 'net_amount' => 100, 'fee_amount' => 0, 'platform_fee_waiver_id' => $waiver->id, 'waived_fee_amount' => 10]]]]);
-            $transaction->forceFill(['created_at' => Carbon::parse('2026-12-02', 'UTC')])->save();
-        })(),
     };
 
     $this->actingAs(pfwaAdmin())->post(route('admin.settings.platform-fee-waivers.delete', ['waiver' => $waiver->id]))
         ->assertSessionHasErrors('waiver');
 
     expect(PlatformFeeWaiver::query()->find($waiver->id))->not->toBeNull();
-})->with(['earning', 'invoice line', 'charge breakdown']);
+})->with(['earning', 'invoice line']);
+
+test('a period starting within a minute is not deleted, so a delete can\'t race its start', function (string $startsAt, bool $deleted) {
+    $waiver = pfwaWaiver($startsAt, '2026-11-25 00:00');
+
+    $response = $this->actingAs(pfwaAdmin())->post(route('admin.settings.platform-fee-waivers.delete', ['waiver' => $waiver->id]));
+
+    if ($deleted) {
+        $response->assertSessionHasNoErrors();
+        expect(PlatformFeeWaiver::query()->find($waiver->id))->toBeNull();
+    } else {
+        $response->assertSessionHasErrors('waiver');
+        expect(PlatformFeeWaiver::query()->find($waiver->id))->not->toBeNull();
+    }
+})->with([
+    'in 30 seconds' => ['2026-11-20 12:00:30', false],
+    'in exactly 60 seconds' => ['2026-11-20 12:01:00', false],
+    'in 61 seconds' => ['2026-11-20 12:01:01', true],
+]);
+
+test('a database error other than a foreign key refusal is not hidden as a field error', function () {
+    $waiver = pfwaWaiver('2026-12-01 00:00', '2026-12-08 00:00');
+    PlatformFeeWaiver::deleting(fn () => throw new QueryException('sqlite', 'delete', [], new PDOException('disk I/O error', 0)));
+
+    $dto = PlatformFeeWaiverDTO::new()->fromArray(['user' => pfwaAdmin(), 'waiverId' => $waiver->id]);
+
+    expect(fn () => PlatformFeeWaiverService::new()->delete($dto))->toThrow(QueryException::class);
+});
 
 // ---- Who may ----
 
@@ -517,12 +572,14 @@ test('the organisation reconciliation page carries the notice while a period is 
 
 // ---- Seed data ----
 
-test('the seeder adds an ended and an upcoming period (never a running one) with waived demo money, once', function () {
+test('the seeder adds an ended and an upcoming period (never a running one) with waived demo money of its own, once', function () {
     $superAdmin = User::factory()->create(['username' => 'mr_robertamoah']);
-    $client = User::factory()->create(['username' => 'payout_demo_client']);
+    User::factory()->create(['username' => 'payout_demo_client']);
+    $member = User::factory()->create(['username' => 'org_demo_payperuse_member']);
     $organization = Organization::factory()->create(['name' => 'Org Demo Wellness Collective']);
+    // The existing demo charge and its counsellor are left alone.
     $orgCounsellor = Counsellor::factory()->create(['user_id' => User::factory()]);
-    Therapy::factory()->create(['name' => 'Org Pay-Per-Use Demo Therapy', 'addedby_type' => User::class, 'addedby_id' => $client->id, 'counsellor_id' => $orgCounsellor->id]);
+    $existingTherapy = Therapy::factory()->create(['name' => 'Org Pay-Per-Use Demo Therapy', 'addedby_type' => User::class, 'addedby_id' => $member->id, 'counsellor_id' => $orgCounsellor->id]);
 
     $this->seed(CommissionFreePeriodSeeder::class);
     $this->seed(CommissionFreePeriodSeeder::class);
@@ -536,13 +593,21 @@ test('the seeder adds an ended and an upcoming period (never a running one) with
     $ended = $periods[0];
     $counsellor = User::query()->where('username', 'commission_free_demo_counsellor')->sole()->counsellor;
     $earnings = $counsellor->earnings()->orderBy('id')->get();
-    expect($earnings)->toHaveCount(2)
+    expect($earnings)->toHaveCount(3)
         ->and($earnings[0]->platform_fee_waiver_id)->toBe($ended->id)
         ->and($earnings[0]->fee_amount)->toBe(0)
-        ->and($earnings[1]->platform_fee_waiver_id)->toBeNull();
+        ->and($earnings[1]->platform_fee_waiver_id)->toBeNull()
+        ->and($earnings->pluck('currency')->unique()->all())->toBe(['GHS']);
 
     $charge = Transaction::query()->where('organization_id', $organization->id)->sole();
-    expect($charge->breakdown['lines'][0]['platform_fee_waiver_id'])->toBe($ended->id)
+    $orgTherapy = Therapy::query()->where('name', CommissionFreePeriodSeeder::ORG_THERAPY)->sole();
+    expect($charge->for_id)->toBe($orgTherapy->id)
+        ->and($orgTherapy->counsellor_id)->toBe($counsellor->id)
+        ->and($orgTherapy->addedby_id)->toBe($member->id)
+        ->and($charge->breakdown['lines'][0]['platform_fee_waiver_id'])->toBe($ended->id)
         ->and($charge->created_at->between($ended->starts_at, $ended->ends_at))->toBeTrue()
-        ->and(CounsellorEarning::query()->where('transaction_id', $charge->id)->sole()->platform_fee_waiver_id)->toBe($ended->id);
+        ->and($earnings[2]->transaction_id)->toBe($charge->id)
+        ->and($earnings[2]->platform_fee_waiver_id)->toBe($ended->id)
+        ->and(Transaction::query()->where('for_id', $existingTherapy->id)->where('for_type', Therapy::class)->exists())->toBeFalse()
+        ->and(CounsellorEarning::query()->where('counsellor_id', $orgCounsellor->id)->exists())->toBeFalse();
 });

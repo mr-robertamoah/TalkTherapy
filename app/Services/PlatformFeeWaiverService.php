@@ -8,7 +8,6 @@ use App\Exceptions\PlatformFeeWaiverException;
 use App\Models\CounsellorEarning;
 use App\Models\OrganizationInvoiceLine;
 use App\Models\PlatformFeeWaiver;
-use App\Models\Transaction;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\QueryException;
@@ -28,6 +27,10 @@ class PlatformFeeWaiverService extends Service
 
     // How many periods the admin list shows (newest start first) -- a handful a year at most.
     public const LIST_LIMIT = 50;
+
+    // A period starting this soon can no longer be deleted, so a delete can't race the start (it can be ended instead,
+    // once it is running).
+    public const DELETE_CUTOFF_SECONDS = 60;
 
     /**
      * @return Collection<int, PlatformFeeWaiver>
@@ -69,8 +72,21 @@ class PlatformFeeWaiverService extends Service
     {
         $this->ensureCanManage($dto);
 
+        // Every caller, not just the FormRequest: a start moved up to now (StorePlatformFeeWaiverRequest::values()) must
+        // still leave the end after it.
+        if (! $values['ends_at']->gt($values['starts_at'])) {
+            throw ValidationException::withMessages([
+                'ends_at' => 'The end must be after the start.',
+            ]);
+        }
+
         // Two periods created at once can't both pass the overlap check: the platform-wide rows are locked first (and
         // a deadlock between two such creates is retried, when the second then sees the first's row).
+        //
+        // This relies on InnoDB's REPEATABLE READ (MySQL's default) or SERIALIZABLE isolation, where the locking read
+        // also takes gap (next-key) locks on the counsellor_id IS NULL index range, so a concurrent insert of another
+        // platform-wide row waits. Under READ COMMITTED there are no gap locks, and two creates over an empty range
+        // could both pass.
         return DB::transaction(function () use ($dto, $values) {
             $overlapping = PlatformFeeWaiver::query()
                 ->platformWide()
@@ -86,8 +102,8 @@ class PlatformFeeWaiverService extends Service
                 ]);
             }
 
+            // counsellor_id isn't fillable (SCRUM-464 decides how a counsellor's waiver is made); null is platform-wide.
             $waiver = new PlatformFeeWaiver([
-                'counsellor_id' => null,
                 'starts_at' => $values['starts_at'],
                 'ends_at' => $values['ends_at'],
                 'reason' => $values['reason'],
@@ -134,14 +150,25 @@ class PlatformFeeWaiverService extends Service
                 ]);
             }
 
+            if ($waiver->starts_at->lte(now()->addSeconds(self::DELETE_CUTOFF_SECONDS))) {
+                throw ValidationException::withMessages([
+                    'waiver' => 'This commission-free period starts within a minute, so it can no longer be deleted. End it once it has started.',
+                ]);
+            }
+
             if ($this->isReferenced($waiver)) {
                 throw $this->stillReferenced();
             }
 
             try {
                 $waiver->delete();
-            } catch (QueryException) {
-                // The money rows' foreign keys restrict -- a reference the check above missed.
+            } catch (QueryException $e) {
+                // The money rows' foreign keys restrict -- a reference the check above missed. Any other database
+                // error is thrown on (and logged as a 500).
+                if ($e->getCode() !== '23000' && ($e->errorInfo[0] ?? null) !== '23000') {
+                    throw $e;
+                }
+
                 throw $this->stillReferenced();
             }
         });
@@ -152,11 +179,11 @@ class PlatformFeeWaiverService extends Service
         EnsureIsSuperAdminAction::new()->execute($dto, self::NOT_ALLOWED, 403);
     }
 
-    // The period, locked -- only a platform-wide one (a counsellor's waiver isn't managed here).
+    // The period, locked -- the only lookup, and only a platform-wide one (a counsellor's waiver isn't managed here).
     private function lockPlatformWide(PlatformFeeWaiverDTO $dto): PlatformFeeWaiver
     {
-        $waiver = $dto->waiver
-            ? PlatformFeeWaiver::query()->platformWide()->lockForUpdate()->find($dto->waiver->id)
+        $waiver = $dto->waiverId
+            ? PlatformFeeWaiver::query()->platformWide()->lockForUpdate()->find($dto->waiverId)
             : null;
 
         if (! $waiver) {
@@ -167,24 +194,12 @@ class PlatformFeeWaiverService extends Service
     }
 
     // An unstarted period can't have been used: a fee is only ever waived under the period covering the payment's
-    // moment. Checked anyway. A charge breakdown is JSON (no foreign key), and can only name a period it was made
-    // during, so only the charges made since this one's start are read.
+    // moment. Checked anyway, on the rows with a foreign key to it (a charge breakdown, JSON, can only name a period
+    // that had started when the charge was made, so it isn't read).
     private function isReferenced(PlatformFeeWaiver $waiver): bool
     {
-        if (CounsellorEarning::query()->where('platform_fee_waiver_id', $waiver->id)->exists()
-            || OrganizationInvoiceLine::query()->where('platform_fee_waiver_id', $waiver->id)->exists()) {
-            return true;
-        }
-
-        foreach (Transaction::query()->whereNotNull('breakdown')->where('created_at', '>=', $waiver->starts_at)->lazyById(200, 'id') as $transaction) {
-            foreach ($transaction->breakdown['lines'] ?? [] as $line) {
-                if ((int) ($line['platform_fee_waiver_id'] ?? 0) === $waiver->id) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
+        return CounsellorEarning::query()->where('platform_fee_waiver_id', $waiver->id)->exists()
+            || OrganizationInvoiceLine::query()->where('platform_fee_waiver_id', $waiver->id)->exists();
     }
 
     private function stillReferenced(): ValidationException

@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\DTOs\PlatformFeeWaiverDTO;
 use App\Http\Requests\ManagePlatformFeeWaiverRequest;
 use App\Http\Requests\StorePlatformFeeWaiverRequest;
-use App\Models\PlatformFeeWaiver;
 use App\Services\PlatformFeeWaiverService;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Validation\ValidationException;
@@ -24,7 +23,7 @@ class AdminPlatformFeeWaiverController extends Controller
                 $request->values(),
             );
 
-            return Redirect::back()->with('message', 'Commission-free period created.');
+            return Redirect::back();
         } catch (ValidationException $e) {
             throw $e;
         } catch (Throwable $th) {
@@ -37,7 +36,7 @@ class AdminPlatformFeeWaiverController extends Controller
         try {
             PlatformFeeWaiverService::new()->endNow($this->dto($request, $waiver));
 
-            return Redirect::back()->with('message', 'Commission-free period ended.');
+            return Redirect::back();
         } catch (ValidationException $e) {
             throw $e;
         } catch (Throwable $th) {
@@ -50,7 +49,7 @@ class AdminPlatformFeeWaiverController extends Controller
         try {
             PlatformFeeWaiverService::new()->delete($this->dto($request, $waiver));
 
-            return Redirect::back()->with('message', 'Commission-free period deleted.');
+            return Redirect::back();
         } catch (ValidationException $e) {
             throw $e;
         } catch (Throwable $th) {
@@ -62,7 +61,7 @@ class AdminPlatformFeeWaiverController extends Controller
     {
         return PlatformFeeWaiverDTO::new()->fromArray([
             'user' => $request->user(),
-            'waiver' => PlatformFeeWaiver::query()->find($waiver),
+            'waiverId' => $waiver,
         ]);
     }
 }

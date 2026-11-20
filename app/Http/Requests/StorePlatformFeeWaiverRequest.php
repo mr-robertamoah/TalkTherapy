@@ -22,7 +22,7 @@ class StorePlatformFeeWaiverRequest extends ManagePlatformFeeWaiverRequest
         return [
             'counsellor_id' => ['prohibited'],
             'starts_at' => ['required', 'date', 'after_or_equal:'.$now->subMinute()->toDateTimeString(), 'before:'.$now->addYears(self::MAX_YEARS_AHEAD)->toDateTimeString()],
-            'ends_at' => ['required', 'date', 'after:starts_at', 'before_or_equal:'.$now->addYears(self::MAX_YEARS_AHEAD)->toDateTimeString()],
+            'ends_at' => ['required', 'date', 'after:starts_at', 'after:now', 'before_or_equal:'.$now->addYears(self::MAX_YEARS_AHEAD)->toDateTimeString()],
             'reason' => ['required', 'string', 'max:'.self::REASON_MAX],
         ];
     }
@@ -32,7 +32,7 @@ class StorePlatformFeeWaiverRequest extends ManagePlatformFeeWaiverRequest
         return [
             'counsellor_id.prohibited' => 'Only platform-wide periods can be created here.',
             'starts_at.after_or_equal' => 'The start cannot be in the past.',
-            'ends_at.after' => 'The end must be after the start.',
+            'ends_at.after' => 'The end must be after the start, and in the future.',
         ];
     }
 

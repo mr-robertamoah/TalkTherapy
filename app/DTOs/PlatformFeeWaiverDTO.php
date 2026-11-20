@@ -2,7 +2,6 @@
 
 namespace App\DTOs;
 
-use App\Models\PlatformFeeWaiver;
 use App\Models\User;
 use MrRobertAmoah\DTO\BaseDTO;
 
@@ -11,5 +10,6 @@ class PlatformFeeWaiverDTO extends BaseDTO
 {
     public ?User $user = null;
 
-    public ?PlatformFeeWaiver $waiver = null;
+    // The period's id; PlatformFeeWaiverService looks it up (locked) itself.
+    public ?int $waiverId = null;
 }
