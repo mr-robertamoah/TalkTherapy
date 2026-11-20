@@ -79,7 +79,8 @@ function createWaiver() {
             setSuccessAlertData({ message: 'Commission-free period created.' })
         },
         onError: (errors) => {
-            if (errors.alert) setFailedAlertData({ message: errors.alert })
+            const message = errors.waiver ?? errors.alert
+            if (message) setFailedAlertData({ message })
         },
     })
 }
@@ -366,7 +367,7 @@ function statusTone(status) {
                             required
                             class="mt-1 block w-full border-gray-300 focus:border-indigo-500 focus:ring-indigo-500 rounded-md shadow-sm text-sm"
                         ></textarea>
-                        <InputError class="mt-2" :message="waiverForm.errors.reason || waiverForm.errors.counsellor_id" />
+                        <InputError class="mt-2" :message="waiverForm.errors.reason" />
                     </div>
                     <div class="sm:col-span-2 flex items-center justify-between gap-4">
                         <p class="text-xs text-gray-500">A period runs from its start up to (not including) its end. It can't start in the past or overlap another.</p>

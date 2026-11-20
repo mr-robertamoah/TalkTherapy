@@ -38,6 +38,7 @@ import CounsellorVerificationBadge from '@/Components/CounsellorVerificationBadg
 import CounsellorVerificationStatusCard from '@/Components/CounsellorVerificationStatusCard.vue';
 import CopyLinkField from '@/Components/CopyLinkField.vue';
 import CommissionFreeNotice from '@/Components/CommissionFreeNotice.vue';
+import FeeWaivedBadge from '@/Components/FeeWaivedBadge.vue';
 
 const { modalData, showModal } = useModal()
 const { alertData, clearAlertData, setAlertData, setFailedAlertData, setSuccessAlertData } = useAlert()
@@ -849,11 +850,13 @@ function closeModal() {
                                 >
                                     <span>
                                         gross {{ formatMoney(earning.grossAmount, earning.currency) }} − fee {{ formatMoney(earning.feeAmount, earning.currency) }}
-                                        <span
+                                        <FeeWaivedBadge
                                             v-if="earning.commissionFree"
-                                            class="ml-1 inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800"
-                                            :title="`No platform commission (${formatMoney(earning.waivedFeeAmount, earning.currency)} waived)`"
-                                        >Commission-free</span>
+                                            class="ml-1"
+                                            label="Commission-free"
+                                            :amount="earning.waivedFeeAmount"
+                                            :currency="earning.currency"
+                                        />
                                     </span>
                                     <span class="font-medium">= {{ formatMoney(earning.netAmount, earning.currency) }}</span>
                                 </div>

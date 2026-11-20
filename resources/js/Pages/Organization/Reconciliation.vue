@@ -2,6 +2,7 @@
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import Pagination from '@/Components/Pagination.vue';
 import CommissionFreeNotice from '@/Components/CommissionFreeNotice.vue';
+import FeeWaivedBadge from '@/Components/FeeWaivedBadge.vue';
 import { Head, Link } from '@inertiajs/vue3';
 import { reactive, ref } from 'vue';
 
@@ -41,9 +42,6 @@ function formatMoney(minorUnitsAmount, currency) {
 
     return `${currency} ${(minorUnitsAmount / 100).toFixed(2)}`
 }
-
-// TT-7.10b/SCRUM-468: a charge or invoice line whose platform fee was waived (a commission-free period).
-const waivedPill = 'ml-1 inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-800'
 
 function formatDate(value) {
     return value ? new Date(value).toLocaleDateString() : '--'
@@ -145,11 +143,13 @@ function invoiceStatusClass(status) {
                                 <td class="py-2 pr-4">{{ formatMoney(transaction.counsellorShare, transaction.currency) }}</td>
                                 <td class="py-2 pr-4">
                                     {{ formatMoney(transaction.platformFee, transaction.currency) }}
-                                    <span
+                                    <FeeWaivedBadge
                                         v-if="transaction.feeWaived"
-                                        :class="waivedPill"
-                                        :title="`Platform fee waived: ${formatMoney(transaction.waivedFeeAmount, transaction.currency)}`"
-                                    >Waived</span>
+                                        class="ml-1"
+                                        label="Waived"
+                                        :amount="transaction.waivedFeeAmount"
+                                        :currency="transaction.currency"
+                                    />
                                 </td>
                                 <td class="py-2 pr-4">{{ (transaction.payoutStatus ?? 'not yet earned').toLowerCase() }}</td>
                                 <td class="py-2 pr-4">{{ transaction.status.toLowerCase() }}</td>
@@ -208,11 +208,13 @@ function invoiceStatusClass(status) {
                                                     <td class="py-1 pr-4">{{ formatMoney(line.netAmount, line.currency) }}</td>
                                                     <td class="py-1 pr-4">
                                                         {{ formatMoney(line.feeAmount, line.currency) }}
-                                                        <span
+                                                        <FeeWaivedBadge
                                                             v-if="line.feeWaived"
-                                                            :class="waivedPill"
-                                                            :title="`Platform fee waived: ${formatMoney(line.waivedFeeAmount, line.currency)}`"
-                                                        >Waived</span>
+                                                            class="ml-1"
+                                                            label="Waived"
+                                                            :amount="line.waivedFeeAmount"
+                                                            :currency="line.currency"
+                                                        />
                                                     </td>
                                                 </tr>
                                                 <tr v-if="!invoice.lines.length">
