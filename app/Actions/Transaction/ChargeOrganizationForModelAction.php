@@ -129,11 +129,15 @@ class ChargeOrganizationForModelAction extends Action
         // a $0 share still means a nonzero fee ("the org is simply charged the platform fee
         // alone"). SCRUM-420: worked out per counsellor by the breakdown action the retainer invoice
         // uses too; a group member's seat shares a fixed rate across the group's members.
+        // TT-7.10a/SCRUM-467: the fee is decided as it stood at this moment -- the transaction's created_at, set to the
+        // same instant below -- and stored in the breakdown; a fee-free period means nothing on top for the organisation.
+        $at = now();
         $breakdown = ComputeOrganizationChargeBreakdownAction::new()->execute(
             $counsellors,
             fn (Counsellor $counsellor) => $terms[$counsellor->id],
             $counsellorListedAmount,
-            $this->seatOf($dto, $therapy)
+            $this->seatOf($dto, $therapy),
+            ResolvePlatformFeePolicyAction::new()->execute($at)
         );
 
         if ($breakdown['skipped']) {
@@ -152,7 +156,7 @@ class ChargeOrganizationForModelAction extends Action
         // moved real money with no local record left to reconcile against.
         $reference = self::REFERENCE_PREFIX.Str::uuid();
 
-        $transaction = Transaction::query()->create([
+        $transaction = new Transaction([
             'for_type' => $dto->for::class,
             'for_id' => $dto->for->id,
             'user_id' => $dto->user->id,
@@ -162,12 +166,18 @@ class ChargeOrganizationForModelAction extends Action
             'currency' => $currency,
             'status' => TransactionStatusEnum::pending->value,
             // SCRUM-420: what each counsellor is owed from this charge, as charged -- earnings are made from this.
+            // TT-7.10a/SCRUM-467: and the waiver each line's fee was waived under (null: the fee was taken) with what
+            // it waived. Rows from before waivers don't have these and read as none.
             'breakdown' => ['lines' => array_map(fn (array $line) => [
                 'counsellor_id' => $line['counsellor']->id,
                 'net_amount' => $line['net'],
                 'fee_amount' => $line['fee'],
+                'platform_fee_waiver_id' => $line['platform_fee_waiver_id'],
+                'waived_fee_amount' => $line['waived_fee_amount'],
             ], $breakdown['lines'])],
         ]);
+        $transaction->created_at = $at;
+        $transaction->save();
 
         $transaction->statusHistories()->create([
             'status' => TransactionStatusEnum::pending->value,

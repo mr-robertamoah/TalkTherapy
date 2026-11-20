@@ -6,6 +6,7 @@ use App\Actions\Action;
 use App\Actions\Therapy\GetTherapyClientsAction;
 use App\Actions\Transaction\GetPayableAmountAction;
 use App\Actions\Transaction\ResolveCounsellorListedAmountAction;
+use App\Actions\Transaction\ResolvePlatformFeePolicyAction;
 use App\Enums\OrganizationInvoiceStatusEnum;
 use App\Enums\TherapyPaymentTypeEnum;
 use App\Models\Counsellor;
@@ -16,6 +17,8 @@ use App\Models\OrganizationInvoice;
 use App\Models\OrganizationInvoiceLine;
 use App\Models\Session;
 use App\Models\User;
+use App\Support\PlatformFeePolicy;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -96,10 +99,25 @@ class RecordOrganizationInvoiceLineForSessionAction extends Action
         $currency = GetPayableAmountAction::new()->execute($session)['currency'] ?? null;
         $counsellorListedAmount = ResolveCounsellorListedAmountAction::new()->execute($session);
 
+        // TT-7.10a/SCRUM-467: the line's fee is decided when it's recorded (the session held), on the same clock that
+        // picks the invoice's month, once for every member and counsellor. If it can't be worked out nothing is billed
+        // for this session (under-billing, never a wrong fee) -- logged as an error, since it's lost revenue.
+        $at = now();
+
+        try {
+            $fees = ResolvePlatformFeePolicyAction::new()->execute($at);
+        } catch (Throwable $exception) {
+            Log::error('Unable to resolve the platform fee for a held session -- no retainer invoice line recorded.', $context + [
+                'exception' => $exception->getMessage(),
+            ]);
+
+            return;
+        }
+
         // Each member on their own: one that fails doesn't stop the others being billed.
         foreach ($covered as $entry) {
             try {
-                $this->recordFor($session, $entry['client'], $entry['organization'], $counsellors, $counsellorListedAmount, $currency, $context, [$entry['seat'], $clients->count()]);
+                $this->recordFor($session, $entry['client'], $entry['organization'], $counsellors, $counsellorListedAmount, $currency, $context, [$entry['seat'], $clients->count()], $at, $fees);
             } catch (Throwable $exception) {
                 Log::warning('Unable to record an organization invoice line for a held session.', $context + [
                     'organization_id' => $entry['organization']->id,
@@ -112,7 +130,7 @@ class RecordOrganizationInvoiceLineForSessionAction extends Action
     // One line per counsellor for this member, as ComputeOrganizationChargeBreakdownAction works them out (the same
     // rules as the organisation's card charge). A counsellor this organisation has no terms with is skipped (the
     // retainer covers a group through any one of its counsellors -- the payment gate's rule).
-    private function recordFor(Session $session, User $client, Organization $organization, Collection $counsellors, ?int $counsellorListedAmount, ?string $currency, array $context, array $seat): void
+    private function recordFor(Session $session, User $client, Organization $organization, Collection $counsellors, ?int $counsellorListedAmount, ?string $currency, array $context, array $seat, CarbonInterface $at, PlatformFeePolicy $fees): void
     {
         $context += ['organization_id' => $organization->id];
         $termsFor = fn (Counsellor $counsellor) => $this->termsFor($counsellor, $organization, $context);
@@ -127,7 +145,7 @@ class RecordOrganizationInvoiceLineForSessionAction extends Action
             return;
         }
 
-        $breakdown = ComputeOrganizationChargeBreakdownAction::new()->execute($counsellors, $termsFor, $counsellorListedAmount, $seat);
+        $breakdown = ComputeOrganizationChargeBreakdownAction::new()->execute($counsellors, $termsFor, $counsellorListedAmount, $seat, $fees);
 
         foreach ($breakdown['skipped'] as $skipped) {
             if ($skipped['reason'] === 'unable_to_compute') {
@@ -142,8 +160,8 @@ class RecordOrganizationInvoiceLineForSessionAction extends Action
             return;
         }
 
-        $periodStart = now()->startOfMonth()->toDateString();
-        $periodEnd = now()->endOfMonth()->toDateString();
+        $periodStart = $at->copy()->startOfMonth()->toDateString();
+        $periodEnd = $at->copy()->endOfMonth()->toDateString();
 
         // Lookup key is (organization_id, currency, period_start), NOT just (organization_id,
         // period_start) -- architect finding: different counsellors covered by the same org can
@@ -175,6 +193,8 @@ class RecordOrganizationInvoiceLineForSessionAction extends Action
             ], [
                 'net_amount' => $line['net'],
                 'fee_amount' => $line['fee'],
+                'platform_fee_waiver_id' => $line['platform_fee_waiver_id'],
+                'waived_fee_amount' => $line['waived_fee_amount'],
                 'currency' => $currency,
             ]);
         }

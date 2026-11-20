@@ -11,11 +11,13 @@ class OrganizationInvoiceLine extends Model
 
     protected $fillable = [
         'organization_invoice_id', 'session_id', 'user_id', 'counsellor_id', 'net_amount', 'fee_amount', 'currency',
+        'platform_fee_waiver_id', 'waived_fee_amount',
     ];
 
     protected $casts = [
         'net_amount' => 'integer',
         'fee_amount' => 'integer',
+        'waived_fee_amount' => 'integer',
     ];
 
     public function organizationInvoice()
@@ -36,5 +38,11 @@ class OrganizationInvoiceLine extends Model
         // for the counsellor to have since deleted their account. An already-earned line must
         // still generate its CounsellorEarning regardless.
         return $this->belongsTo(Counsellor::class)->withTrashed();
+    }
+
+    // TT-7.10a/SCRUM-467: the fee-free period this line's fee was waived under, decided when the line was recorded.
+    public function platformFeeWaiver()
+    {
+        return $this->belongsTo(PlatformFeeWaiver::class);
     }
 }
