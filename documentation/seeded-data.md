@@ -310,6 +310,9 @@ Audio only on a weak connection (SCRUM-460):
 
 Two browsers on the fake don't see each other. Set `VIDEO_PROVIDER` back afterwards.
 
+Step-by-step scripts for every weak-connection behaviour (quality, reconnect, rejoin guard, audio only, peer labels)
+and what a good result looks like: `documentation/features/scrum-28-video-weak-connections.md` (SCRUM-28).
+
 ## Group video call + participant removal + speaking permission (SCRUM-308/309/310, TT-3.2a/b/c; SCRUM-327)
 
 A FREE, non-strict-gated GroupTherapy with one active counsellor, its own (non-minor) creator, and
@@ -330,6 +333,8 @@ counsellor-only "remove participant" control, and raise-hand / let-speak moderat
 limitation as the 1:1 video call fixture above (no real Daily/Chime credentials in this dev
 environment, so join succeeds up to minting/room-creation only) — see
 `documentation/features/scrum-27-group-therapy-video.md`.
+The same group call works with `VIDEO_PROVIDER=fake` for the weak-connection scripts in
+`documentation/features/scrum-28-video-weak-connections.md` (SCRUM-28).
 
 ## Dob-change approval (SCRUM-294, TT-4.10e)
 

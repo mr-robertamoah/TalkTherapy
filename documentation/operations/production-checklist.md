@@ -218,6 +218,8 @@ Check every item before going live.
     `php artisan migrate:rollback --path=database/migrations/2026_12_11_100000_add_removed_at_to_video_session_participants_table.php --force`,
     then deploy the old code. The ADD and DROP are `ALGORITHM=INSTANT` on MySQL >= 8.0.29 (INPLACE, non-blocking,
     below that).
+- [ ] **Video against a real provider (SCRUM-317):** before launch, work through
+  `documentation/operations/video-real-provider-checklist.md` on the provider being deployed.
 - [ ] **Platform fee waivers (SCRUM-467):**
   - The deploy that brings `2026_12_12_100001` and `2026_12_12_100002` adds a foreign key to `counsellor_earnings` and
     `organization_invoice_lines`, which MySQL 8 does as a full table copy (writes blocked; measured ~12 s for 250,000

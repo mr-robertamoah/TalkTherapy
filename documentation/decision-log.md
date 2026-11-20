@@ -13414,6 +13414,26 @@ Planned with the product-owner, architect and project-manager; split into SCRUM-
   remote tiles (incl. later arrivals) behave, that data messages arrive with the right sender id and are allowed for
   receive-only attendees, and whether presence-before-tile causes a brief "Camera off".
 
+## SCRUM-461 — video on weak connections: closeout (TT-3.3d, 2026-11-20)
+
+- **The regression** (`tests/Feature/VideoRejoinLeavesBillingUntouchedTest.php`, 1:1 and group, with the fake
+  provider): both people join, then each rejoins automatically three times in a row without leaving. Unchanged:
+  `Session.status` and `ended_at`, `session_attendances`, counsellor earnings, transactions and organisation invoice
+  lines -- one existing row of each is seeded first, so existing rows are proved left alone and nothing new written.
+  One call epoch; the call has exactly two open rows after every rejoin; each rejoin closed the row before it (four
+  rows each, one open, none marked removed). Past its end, `FailUnheldSessionsAction` treats the session exactly as
+  an identical session with no video (both fail, both get `ended_at`) -- video is not evidence a session was held.
+  Not a test of the Chime capacity check (that excludes the joiner and runs only for Chime groups); its
+  people-not-rows cases are SCRUM-330's, in `tests/Unit/JoinVideoSessionActionTest.php`. Single rejoins, refused rejoins and Join/Leave/End vs. status were already
+  covered (`VideoRejoinGuardTest`, `VideoActionsNeverMutateSessionStatusTest`) and are not repeated.
+- **Sessions in "in session confirmation", not "in session":** that is the state the scheduler acts on, so the
+  FailUnheld comparison means something; video is allowed in both.
+- **SCRUM-28 closes on the fake provider plus unit tests.** Every "for SCRUM-317" item from the SCRUM-458/459/460
+  entries is now a checkbox, grouped Daily / Chime, in `documentation/operations/video-real-provider-checklist.md`
+  (new -- there was no SCRUM-317 checklist file), linked from the production checklist. Feature doc:
+  `documentation/features/scrum-28-video-weak-connections.md`. No seeder changes: the existing 1:1 and group video
+  fixtures cover every script.
+
 ## SCRUM-463 / SCRUM-467 — commission-free periods: the fee decision (TT-7.10a, 2026-11-20)
 
 - **User decisions:** a waiver means no platform fee anywhere (counsellors keep the full amount from paying clients;
