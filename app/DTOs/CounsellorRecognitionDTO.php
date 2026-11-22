@@ -20,4 +20,7 @@ class CounsellorRecognitionDTO extends BaseDTO
 
     // 'withdraw' or 'restore'.
     public ?string $consentAction = null;
+
+    // TT-7.11d2/SCRUM-474: the "add a counsellor" search text.
+    public ?string $search = null;
 }

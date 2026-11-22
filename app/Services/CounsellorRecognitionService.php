@@ -4,8 +4,10 @@ namespace App\Services;
 
 use App\Actions\EnsureIsSuperAdminAction;
 use App\Actions\Recognition\GetRecognitionEligibleCounsellorIdsAction;
+use App\Actions\Recognition\GetRecognitionEventsAction;
 use App\Actions\Recognition\GetRecognitionSuggestionsAction;
 use App\Actions\Recognition\RecordCounsellorRecognitionEventAction;
+use App\Actions\Recognition\SearchRecognitionCounsellorsAction;
 use App\Actions\Request\CreateRequestAction;
 use App\DTOs\CounsellorRecognitionDTO;
 use App\DTOs\CreateRequestDTO;
@@ -35,6 +37,8 @@ class CounsellorRecognitionService extends Service
 {
     public const NOT_ALLOWED = 'Only a super administrator can recognise counsellors.';
 
+    public const NOT_ALLOWED_TO_VIEW = 'Only an administrator can see counsellor recognitions.';
+
     public const NOT_FOUND = 'That recognition could not be found.';
 
     public const NOT_YOURS_TO_DECIDE = 'You can\'t decide your own recognition.';
@@ -45,11 +49,67 @@ class CounsellorRecognitionService extends Service
 
     public const RESTORE = 'restore';
 
+    // TT-7.11d2/SCRUM-474: any administrator may view the suggestions and the month's events; only a super
+    // administrator decides.
+    //
+    // Security review L1: the viewer's own counsellor row (an administrator who is also a counsellor) is redacted --
+    // no stars, first star, rank, cutoff tie or open-report flag -- and so is who acted on their own recognition in the
+    // events. Counsellors never see their star counts or ranks, nor who reported them, wherever they look.
     public function getSuggestions(CounsellorRecognitionDTO $dto): array
+    {
+        $this->ensureCanView($dto);
+
+        $result = GetRecognitionSuggestionsAction::new()->execute($this->month($dto));
+        $ownId = $this->ownCounsellorId($dto);
+
+        if ($ownId !== null) {
+            foreach (['suggestions', 'others'] as $list) {
+                $result[$list] = array_map(fn (array $row) => $row['counsellorId'] === $ownId ? $this->redactOwnRow($row) : $row, $result[$list]);
+            }
+        }
+
+        return $result;
+    }
+
+    public function getEvents(CounsellorRecognitionDTO $dto): array
+    {
+        $this->ensureCanView($dto);
+
+        $events = GetRecognitionEventsAction::new()->execute($this->month($dto));
+        $ownId = $this->ownCounsellorId($dto);
+
+        return $ownId === null ? $events : array_map(
+            fn (array $event) => $event['counsellorId'] === $ownId ? [...$event, 'actorName' => null] : $event,
+            $events,
+        );
+    }
+
+    // The viewer's own counsellor profile, deleted or not; null when they have none.
+    public function ownCounsellorId(CounsellorRecognitionDTO $dto): ?int
+    {
+        $id = Counsellor::withTrashed()->where('user_id', $dto->user?->id)->value('id');
+
+        return $id === null ? null : (int) $id;
+    }
+
+    private function redactOwnRow(array $row): array
+    {
+        return [
+            ...$row,
+            'stars' => null,
+            'firstStarAt' => null,
+            'rank' => null,
+            'tiedAtCutoff' => false,
+            'flags' => [...$row['flags'], 'openReport' => false],
+        ];
+    }
+
+    // TT-7.11d2/SCRUM-474: counsellors who could be added now, for the super administrator's "add a counsellor".
+    public function searchCounsellors(CounsellorRecognitionDTO $dto): array
     {
         $this->ensureCanManage($dto);
 
-        return GetRecognitionSuggestionsAction::new()->execute($this->month($dto));
+        return SearchRecognitionCounsellorsAction::new()->execute($dto->user, (string) $dto->search, $this->month($dto));
     }
 
     // A suggested counsellor (ranked within the month's cap, ties included).
@@ -324,5 +384,12 @@ class CounsellorRecognitionService extends Service
     private function ensureCanManage(CounsellorRecognitionDTO $dto): void
     {
         EnsureIsSuperAdminAction::new()->execute($dto, self::NOT_ALLOWED, 403);
+    }
+
+    private function ensureCanView(CounsellorRecognitionDTO $dto): void
+    {
+        if (! $dto->user?->isAdmin()) {
+            throw new CounsellorRecognitionException(self::NOT_ALLOWED_TO_VIEW, 403);
+        }
     }
 }

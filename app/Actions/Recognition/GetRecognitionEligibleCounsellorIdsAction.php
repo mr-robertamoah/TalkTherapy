@@ -24,13 +24,9 @@ class GetRecognitionEligibleCounsellorIdsAction extends Action
 
         $reportedIds ??= GetCounsellorIdsWithOpenReportsAction::new()->execute($ids)['counsellorIds'];
 
-        // Soft-deleted counsellors are left out by the default scope; the user relation is withTrashed, so a deleted
-        // account is excluded here.
         return Counsellor::query()
             ->whereIn('id', $ids)
-            ->whereCurrentlyVerified()
-            ->whereNotSuspended()
-            ->whereHas('user', fn ($query) => $query->whereNull('users.deleted_at'))
+            ->whereRecognisableNow()
             ->when($reportedIds !== [], fn ($query) => $query->whereNotIn('id', $reportedIds))
             ->pluck('id')
             ->map(fn ($id) => (int) $id)

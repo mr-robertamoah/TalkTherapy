@@ -764,8 +764,10 @@ share rank 3).
 `sarah_johnson` (`password`) is already recognised for that month by the super admin (`mr_robertamoah`), so her
 featuring consent request is pending under "Needs your action" on `/counsellor/dashboard`, and she has a
 "You've been recognised as a Counsellor of the month for <Month Year>" notification. Skipped if that month already has
-a decision. There is no admin page yet (SCRUM-474): as the super admin, `GET /administrator/recognition/suggestions`
-(optionally `?month=YYYY-MM`) returns the suggestions as JSON. Add it to an existing local database with
+a decision. SCRUM-474: see it at `/administrator/recognition` -- the super admin (`mr_robertamoah`) approves, skips
+or adds (`james_wilson`, rank 6, isn't suggested, so he can be added) and sets the daily star limits; the normal admin
+`suspension_demo_normal_admin` sees the same page read-only. See `documentation/features/counsellor-recognition.md`.
+Add it to an existing local database with
 `docker compose exec -u www-data php php artisan db:seed --class=RecognitionSeeder`.
 
 ### Her own commission-free period (SCRUM-475)

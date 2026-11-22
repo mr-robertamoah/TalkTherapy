@@ -174,11 +174,16 @@ test('only counsellors eligible now are suggested', function () {
     $result = rbkSuggest();
 
     expect(rbkIds($result))->toEqualCanonicalizing([$eligible->id, $ambiguous->id, $resolved->id, $dismissed->id])
-        ->and($result['unattributedOpenReports'])->toBe(1)
+        // The ambiguous report, and (SCRUM-474, security review M1) the help request's, whose requester stays private.
+        ->and($result['unattributedOpenReports'])->toBe(2)
         ->and($result['unattributedOpenReportsNote'])->toBe(GetCounsellorIdsWithOpenReportsAction::UNATTRIBUTED_NOTE);
 
     expect(GetCounsellorIdsWithOpenReportsAction::new()->execute([$reportedByData->id, $reportedByHelp->id, $ambiguous->id, $resolved->id]))
-        ->toBe(['counsellorIds' => [$reportedByData->id, $reportedByHelp->id], 'unattributed' => 1]);
+        ->toBe([
+            'counsellorIds' => [$reportedByData->id, $reportedByHelp->id],
+            'flaggableCounsellorIds' => [$reportedByData->id],
+            'unattributed' => 2,
+        ]);
 });
 
 test('the ranking is stars, then the earliest first star, then id, with shared ranks for ties', function () {
@@ -471,7 +476,10 @@ test('an ordinary admin gets a 403 with no field errors, and nothing changes', f
         // Refused before validation: an invalid body is still a 403.
         $this->actingAs($admin)->postJson(route("admin.recognition.{$action}"), ['month' => 'nope'])->assertForbidden()->assertJsonMissingPath('errors');
     }
-    $this->actingAs($admin)->getJson(route('admin.recognition.suggestions', ['month' => 'nope']))->assertForbidden()->assertJsonMissingPath('errors');
+    // SCRUM-474: viewing is open to any administrator (CounsellorRecognitionAdminPageTest), so an ordinary admin's bad
+    // month is a field error now; anyone who isn't an admin is still refused.
+    $this->actingAs($admin)->getJson(route('admin.recognition.suggestions', ['month' => 'nope']))->assertUnprocessable()->assertJsonValidationErrors('month');
+    $this->actingAs(User::factory()->adult()->create())->getJson(route('admin.recognition.suggestions'))->assertForbidden();
 
     expect(CounsellorRecognition::count())->toBe(0);
 });
