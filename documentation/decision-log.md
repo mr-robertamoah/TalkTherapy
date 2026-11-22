@@ -13667,7 +13667,7 @@ it is outside the caller's transaction and row locks and a failure never blocks 
   `getInSession` refuse a HELD session for a non-administrator (`HELD_IS_FINAL`, 422). `failSession` already refused a
   held session for everyone (`CANNOT_FAIL`); unchanged. An administrator can still reopen or abandon one; abandoning
   revokes its star. Discussions: `endDiscussion`, `abandonDiscussion` and `failDiscussion` refuse a discussion that is
-  already held, abandoned or failed, and `getInDiscussion` refuses a held one, for non-administrators
+  already held, abandoned or failed, and `getInDiscussion` refuses any of the three (security re-check L-2), for non-administrators
   (`DiscussionService::ALREADY_ENDED`); the check and the change run under the discussion's row lock.
 - **Held sessions:** `AwardSessionHeldStarAction`, from `ChangeSessionStatusAction` on the same first-time-held gate as
   billing. A 1:1 session stars its therapy's counsellor; a group session every counsellor whose group pivot is ACTIVE.
@@ -13743,3 +13743,27 @@ it is outside the caller's transaction and row locks and a failure never blocks 
 - **Closed months don't move:** a later revoke (a refund, an administrator abandoning) changes the live counts only.
   Monthly recognition is snapshotted when approved (`stars_count`, `rank`, SCRUM-473), so it never changes a closed
   decision.
+- **Security re-check fixes:**
+  - **M-a, per-group cap:** group sessions had no per-client cap (no single client), so one puppet member could farm
+    a group's sessions up to the session cap. Now at most `session_per_group` (default 1; setting
+    `RECOGNITION_CAP_SESSION_PER_GROUP`, config `recognition.cap.session_per_group`) group-session stars per counsellor
+    per group per UTC day, in `StarCapPolicy` under the same counsellor lock (it now receives the starreable).
+  - **Verified clients only (decided without asking, from the coordinator -- it hardens against cheap sock-puppet
+    accounts):** the client side counts as proof only if the client user has `email_verified_at` set -- chat, video
+    and attendance proof, a group's members, a help chat's person, and the client recorded for the per-client cap
+    (`SessionParticipation`). An unverified client's session or help chat earns nothing.
+  - **L-2:** abandoned and failed discussions are final too -- a non-administrator can't reopen any ended
+    discussion; code, comment and `ALREADY_ENDED` agree.
+  - **L-3:** the `held_at` migration backfills `held_at = updated_at` for discussions already HELD, so an
+    administrator reopening and re-ending one of them doesn't count as its first time.
+  - **L-5:** abandoning or failing a held session revokes `help_chat_held` as well as `session_held` (an
+    administrator can abandon a help chat's session).
+  - **L-6:** `CreateDiscussionRequest` and `CreateSessionRequest` parse times with `App\Support\RequestTime`
+    (`rescue()`), so a malformed or non-string time is refused by the `date` rule (422) rather than throwing (500).
+  - **L-1 (no code):** sock-puppet farming is capped, not prevented -- verified email, proof of participation and the
+    daily, per-client and per-group caps bound what a farm can earn, but a determined counsellor with several verified
+    accounts can still earn a few stars a day. The backstop is the super administrator approving each month's
+    recognitions (SCRUM-473/474), not the star count alone.
+  - **L-4 (no code):** after-commit awards and revokes are best effort and aren't retried; a failure is reported and
+    that star stays missed (or stays given). A nightly reconcile (re-derive the day's session/discussion stars and
+    refunded sessions' revokes) would be the follow-up if reports show it happening.
