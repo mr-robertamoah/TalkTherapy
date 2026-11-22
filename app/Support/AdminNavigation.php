@@ -48,6 +48,9 @@ class AdminNavigation
             ]))],
             ['key' => 'money', 'label' => 'Money', 'items' => [
                 self::item('payouts', 'Payouts', 'administrator.payouts', 'failedPayouts'),
+                // TT-7.11d2/SCRUM-474: next to Payouts -- a recognition is where SCRUM-475's per-counsellor fee waiver
+                // is given.
+                self::item('recognition', 'Counsellor recognition', 'administrator.recognition'),
                 // Pending refund requests and failed refunds: the page lists both.
                 self::item('refund-requests', 'Refund requests', 'administrator.refund_requests', 'refunds'),
                 self::item('organization-billing', 'Organisation billing', 'administrator.organization_billing', 'organizationBilling'),

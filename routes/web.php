@@ -225,8 +225,12 @@ Route::middleware('auth')->group(function () {
     Route::post('/administrator/settings/platform-fee-waivers', [AdminPlatformFeeWaiverController::class, 'store'])->name('admin.settings.platform-fee-waivers.store')->middleware(['admin', 'throttle:10,1,admin.settings.platform-fee-waivers.store']);
     Route::post('/administrator/settings/platform-fee-waivers/{waiver}/end', [AdminPlatformFeeWaiverController::class, 'end'])->name('admin.settings.platform-fee-waivers.end')->whereNumber('waiver')->middleware(['admin', 'throttle:10,1,admin.settings.platform-fee-waivers.end']);
     Route::post('/administrator/settings/platform-fee-waivers/{waiver}/delete', [AdminPlatformFeeWaiverController::class, 'destroy'])->name('admin.settings.platform-fee-waivers.delete')->whereNumber('waiver')->middleware(['admin', 'throttle:10,1,admin.settings.platform-fee-waivers.delete']);
-    // TT-7.11d1/SCRUM-473: counsellor recognition -- a super administrator only (the FormRequests answer 403 first). The
-    // suggestions are JSON for the SCRUM-474 page; every decision is throttled.
+    // TT-7.11d1/SCRUM-473: counsellor recognition -- decisions by a super administrator only (the FormRequests answer
+    // 403 first); every decision is throttled. TT-7.11d2/SCRUM-474: the page and the suggestions JSON are for any
+    // administrator; the "add a counsellor" search and the daily star caps are super-admin only.
+    Route::get('/administrator/recognition', [AdminCounsellorRecognitionController::class, 'index'])->name('administrator.recognition')->middleware('admin');
+    Route::get('/administrator/recognition/counsellors', [AdminCounsellorRecognitionController::class, 'counsellors'])->name('admin.recognition.counsellors')->middleware(['admin', 'throttle:60,1,admin.recognition.counsellors']);
+    Route::post('/administrator/settings/recognition-caps', [AdminCounsellorRecognitionController::class, 'updateCaps'])->name('admin.settings.recognition-caps.update')->middleware(['admin', 'throttle:10,1,admin.settings.recognition-caps.update']);
     Route::get('/administrator/recognition/suggestions', [AdminCounsellorRecognitionController::class, 'suggestions'])->name('admin.recognition.suggestions')->middleware(['admin', 'throttle:60,1,admin.recognition.suggestions']);
     Route::post('/administrator/recognition/approve', [AdminCounsellorRecognitionController::class, 'approve'])->name('admin.recognition.approve')->middleware(['admin', 'throttle:30,1,admin.recognition.approve']);
     Route::post('/administrator/recognition/skip', [AdminCounsellorRecognitionController::class, 'skip'])->name('admin.recognition.skip')->middleware(['admin', 'throttle:30,1,admin.recognition.skip']);

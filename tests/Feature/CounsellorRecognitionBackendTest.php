@@ -471,7 +471,7 @@ test('an ordinary admin gets a 403 with no field errors, and nothing changes', f
         // Refused before validation: an invalid body is still a 403.
         $this->actingAs($admin)->postJson(route("admin.recognition.{$action}"), ['month' => 'nope'])->assertForbidden()->assertJsonMissingPath('errors');
     }
-    $this->actingAs($admin)->getJson(route('admin.recognition.suggestions', ['month' => 'nope']))->assertForbidden()->assertJsonMissingPath('errors');
+    // SCRUM-474: viewing is open to any administrator (CounsellorRecognitionAdminPageTest); deciding is not.
 
     expect(CounsellorRecognition::count())->toBe(0);
 });

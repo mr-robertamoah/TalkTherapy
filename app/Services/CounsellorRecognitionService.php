@@ -4,8 +4,10 @@ namespace App\Services;
 
 use App\Actions\EnsureIsSuperAdminAction;
 use App\Actions\Recognition\GetRecognitionEligibleCounsellorIdsAction;
+use App\Actions\Recognition\GetRecognitionEventsAction;
 use App\Actions\Recognition\GetRecognitionSuggestionsAction;
 use App\Actions\Recognition\RecordCounsellorRecognitionEventAction;
+use App\Actions\Recognition\SearchRecognitionCounsellorsAction;
 use App\Actions\Request\CreateRequestAction;
 use App\DTOs\CounsellorRecognitionDTO;
 use App\DTOs\CreateRequestDTO;
@@ -35,6 +37,8 @@ class CounsellorRecognitionService extends Service
 {
     public const NOT_ALLOWED = 'Only a super administrator can recognise counsellors.';
 
+    public const NOT_ALLOWED_TO_VIEW = 'Only an administrator can see counsellor recognitions.';
+
     public const NOT_FOUND = 'That recognition could not be found.';
 
     public const NOT_YOURS_TO_DECIDE = 'You can\'t decide your own recognition.';
@@ -45,11 +49,28 @@ class CounsellorRecognitionService extends Service
 
     public const RESTORE = 'restore';
 
+    // TT-7.11d2/SCRUM-474: any administrator may view the suggestions and the month's events; only a super
+    // administrator decides.
     public function getSuggestions(CounsellorRecognitionDTO $dto): array
+    {
+        $this->ensureCanView($dto);
+
+        return GetRecognitionSuggestionsAction::new()->execute($this->month($dto));
+    }
+
+    public function getEvents(CounsellorRecognitionDTO $dto): array
+    {
+        $this->ensureCanView($dto);
+
+        return GetRecognitionEventsAction::new()->execute($this->month($dto));
+    }
+
+    // TT-7.11d2/SCRUM-474: counsellors who could be added now, for the super administrator's "add a counsellor".
+    public function searchCounsellors(CounsellorRecognitionDTO $dto): array
     {
         $this->ensureCanManage($dto);
 
-        return GetRecognitionSuggestionsAction::new()->execute($this->month($dto));
+        return SearchRecognitionCounsellorsAction::new()->execute($dto->user, (string) $dto->search);
     }
 
     // A suggested counsellor (ranked within the month's cap, ties included).
@@ -324,5 +345,12 @@ class CounsellorRecognitionService extends Service
     private function ensureCanManage(CounsellorRecognitionDTO $dto): void
     {
         EnsureIsSuperAdminAction::new()->execute($dto, self::NOT_ALLOWED, 403);
+    }
+
+    private function ensureCanView(CounsellorRecognitionDTO $dto): void
+    {
+        if (! $dto->user?->isAdmin()) {
+            throw new CounsellorRecognitionException(self::NOT_ALLOWED_TO_VIEW, 403);
+        }
     }
 }

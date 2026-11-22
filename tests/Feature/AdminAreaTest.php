@@ -31,6 +31,7 @@ const AAR_PAGES = [
     'administrator.testimonials' => 'Admin/Content/Testimonials',
     'administrator.how_tos' => 'Admin/Content/HowTos',
     'administrator.payouts' => 'Admin/Payouts',
+    'administrator.recognition' => 'Admin/Recognition',
     'administrator.organization_billing' => 'Admin/OrganizationBilling',
     'administrator.refund_requests' => 'Admin/RefundRequests',
     'administrator.reports' => 'Admin/Reports',
@@ -96,7 +97,7 @@ test('the sidebar is grouped in order and the read log is for super admins only'
     expect($keys($admin))->toBe([
         'overview', 'users', 'counsellors', 'counsellor-verification', 'requests',
         'help-requests', 'reports', 'suspensions', 'safeguarding-exceptions', 'emergency-numbers',
-        'payouts', 'refund-requests', 'organization-billing', 'testimonials', 'how-tos',
+        'payouts', 'recognition', 'refund-requests', 'organization-billing', 'testimonials', 'how-tos',
     ]);
     expect($keys($super))->toContain('read-log');
     expect(AdminNavigation::for(User::factory()->create()))->toBe([]);

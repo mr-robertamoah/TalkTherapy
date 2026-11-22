@@ -4,8 +4,10 @@ namespace App\Services;
 
 use App\Actions\Setting\UpdateSettingAction;
 use App\DTOs\SettingDTO;
+use App\DTOs\UpdateRecognitionCapsDTO;
 use App\Enums\SettingsEnum;
 use App\Models\PlatformSetting;
+use Illuminate\Support\Facades\DB;
 
 // TT-7.6b/SCRUM-226: the platform's one generic settings mechanism -- deliberately not
 // payout-specific, since the platform fee and the minimum-payout-threshold are required to
@@ -14,6 +16,16 @@ use App\Models\PlatformSetting;
 // super admin's change always takes precedence over the deploy-time default.
 class SettingsService extends Service
 {
+    // SCRUM-471: each daily star cap's name (as config('recognition.cap') keys it) => its setting.
+    public const RECOGNITION_CAP_KEYS = [
+        'session' => SettingsEnum::recognitionCapSession,
+        'help_chat' => SettingsEnum::recognitionCapHelpChat,
+        'discussion' => SettingsEnum::recognitionCapDiscussion,
+        'post' => SettingsEnum::recognitionCapPost,
+        'session_per_client' => SettingsEnum::recognitionCapSessionPerClient,
+        'session_per_group' => SettingsEnum::recognitionCapSessionPerGroup,
+    ];
+
     public function get(SettingsEnum $key, mixed $default = null): mixed
     {
         $value = PlatformSetting::query()->where('key', $key->value)->value('value');
@@ -54,14 +66,7 @@ class SettingsService extends Service
     // a whole number of 0 or more, otherwise the config default. One query for all of them.
     public function getRecognitionCaps(): array
     {
-        $keys = [
-            'session' => SettingsEnum::recognitionCapSession,
-            'help_chat' => SettingsEnum::recognitionCapHelpChat,
-            'discussion' => SettingsEnum::recognitionCapDiscussion,
-            'post' => SettingsEnum::recognitionCapPost,
-            'session_per_client' => SettingsEnum::recognitionCapSessionPerClient,
-            'session_per_group' => SettingsEnum::recognitionCapSessionPerGroup,
-        ];
+        $keys = self::RECOGNITION_CAP_KEYS;
 
         $stored = PlatformSetting::query()
             ->whereIn('key', array_map(fn (SettingsEnum $key) => $key->value, $keys))
@@ -81,6 +86,25 @@ class SettingsService extends Service
     public function update(SettingDTO $dto): PlatformSetting
     {
         return UpdateSettingAction::new()->execute($dto);
+    }
+
+    // TT-7.11d2/SCRUM-474: every daily star cap at once ($caps: name => whole number, validated by
+    // UpdateRecognitionCapsRequest), through UpdateSettingAction (super admin only) -- all or none.
+    public function updateRecognitionCaps(UpdateRecognitionCapsDTO $dto): array
+    {
+        DB::transaction(function () use ($dto) {
+            foreach (self::RECOGNITION_CAP_KEYS as $name => $key) {
+                if (array_key_exists($name, $dto->caps)) {
+                    $this->update(SettingDTO::new()->fromArray([
+                        'user' => $dto->user,
+                        'key' => $key,
+                        'value' => (string) (int) $dto->caps[$name],
+                    ]));
+                }
+            }
+        });
+
+        return $this->getRecognitionCaps();
     }
 
     // TT-7.3b-i/SCRUM-240: lets the org-admin payment-instrument onboarding UI preview the nominal
