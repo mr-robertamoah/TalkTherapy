@@ -11,6 +11,7 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 // TT-7.11a/SCRUM-470: the star foundation -- awarding, revoking and counting counsellor stars.
@@ -40,17 +41,17 @@ function sfdAward(Counsellor $counsellor, string $key, string $at = 'now', ?Mode
     return $star;
 }
 
-function sfdCount(?array $ids, ?string $from = null, ?string $to = null, bool $legacy = false)
+function sfdCount(?array $ids, ?string $from = null, ?string $to = null)
 {
     return CountCounsellorStarsAction::new()->execute(
-        $ids, $from ? Carbon::parse($from) : null, $to ? Carbon::parse($to) : null, $legacy,
+        $ids, $from ? Carbon::parse($from) : null, $to ? Carbon::parse($to) : null,
     );
 }
 
-arch('only the award action and the legacy call sites create stars')
+// New-rule stars are written directly by AwardCounsellorStarAction.
+arch('only the legacy call sites create stars through CreateStarAction')
     ->expect('App\Actions\Star\CreateStarAction')
     ->toOnlyBeUsedIn([
-        'App\Actions\Star\AwardCounsellorStarAction',
         // Legacy award points, removed in SCRUM-471.
         'App\Actions\Session\AfterSessionCreatedAction',
         'App\Services\TherapyTopicService',
@@ -78,7 +79,10 @@ test('an award stars the counsellor morph with its source, key and type', functi
         ->starred_id->toBe($counsellor->id)
         ->source->toBe(StarSourceEnum::postPublished)
         ->award_key->toBe('post_published:1')
-        ->type->toBe(StarTypeEnum::contribution->value);
+        ->type->toBe(StarTypeEnum::contribution->value)
+        // No super administrator exists here, so nobody is recorded as giving it.
+        ->starredby_type->toBeNull()
+        ->starredby_id->toBeNull();
     expect(StarSourceEnum::sessionHeld->starType())->toBe(StarTypeEnum::participation)
         ->and(StarSourceEnum::discussionHeld->starType())->toBe(StarTypeEnum::participation)
         ->and(StarSourceEnum::postInteraction->starType())->toBe(StarTypeEnum::contribution);
@@ -92,11 +96,26 @@ test('awarding the same key twice keeps one star', function () {
         ->and(Star::where('award_key', 'session_held:7')->count())->toBe(1);
 });
 
+test('each counsellor of the same event holds one star for its key', function () {
+    $a = sfdCounsellor();
+    $b = sfdCounsellor();
+
+    expect(sfdAward($a, 'session_held:9'))->toBeInstanceOf(Star::class)
+        ->and(sfdAward($b, 'session_held:9'))->toBeInstanceOf(Star::class)
+        ->and(sfdAward($a, 'session_held:9'))->toBeNull()
+        ->and(sfdAward($b, 'session_held:9'))->toBeNull()
+        ->and(Star::where('award_key', 'session_held:9')->pluck('starred_id')->sort()->values()->all())
+        ->toBe([$a->id, $b->id]);
+
+    expect(RevokeCounsellorStarsAction::new()->forCounsellorAndKey($a, 'session_held:9'))->toBe(1)
+        ->and(Star::where('award_key', 'session_held:9')->pluck('starred_id')->all())->toBe([$b->id]);
+});
+
 test('a revoked star can be awarded again, but never twice at once', function () {
     $counsellor = sfdCounsellor();
     sfdAward($counsellor, 'session_held:8');
 
-    expect(RevokeCounsellorStarsAction::new()->byAwardKey('session_held:8'))->toBe(1)
+    expect(RevokeCounsellorStarsAction::new()->forCounsellorAndKey($counsellor, 'session_held:8'))->toBe(1)
         ->and(Star::where('award_key', 'session_held:8')->exists())->toBeFalse();
 
     expect(sfdAward($counsellor, 'session_held:8'))->toBeInstanceOf(Star::class)
@@ -106,15 +125,20 @@ test('a revoked star can be awarded again, but never twice at once', function ()
 
 test('a bulk revoke removes the rule\'s stars for that thing and nothing else', function () {
     $counsellor = sfdCounsellor();
+    $other = sfdCounsellor();
     $thing = User::factory()->create();
-    $other = User::factory()->create();
+    $elsewhere = User::factory()->create();
     sfdAward($counsellor, 'session_held:a', starreable: $thing);
-    sfdAward($counsellor, 'session_held:b', starreable: $thing);
-    sfdAward($counsellor, 'session_held:c', starreable: $other);
+    sfdAward($other, 'session_held:a', starreable: $thing);
+    sfdAward($counsellor, 'session_held:c', starreable: $elsewhere);
     AwardCounsellorStarAction::new()->execute($counsellor, StarSourceEnum::postInteraction, $thing, 'post_interaction:a');
+    $legacy = sfdLegacyStar($counsellor);
+    $legacy->starreable()->associate($thing)->save();
 
     expect(RevokeCounsellorStarsAction::new()->forStarreable(StarSourceEnum::sessionHeld, $thing))->toBe(2)
-        ->and(Star::pluck('award_key')->sort()->values()->all())->toBe(['post_interaction:a', 'session_held:c']);
+        ->and(Star::whereNotNull('award_key')->pluck('award_key')->sort()->values()->all())
+        ->toBe(['post_interaction:a', 'session_held:c'])
+        ->and($legacy->fresh())->not->toBeNull();
 });
 
 test('the new rules count only sourced counsellor-morph stars, per counsellor, in one query', function () {
@@ -161,36 +185,28 @@ test('the window includes its start and excludes its end', function () {
         ->and(sfdCount([$c->id], '2027-01-01')->get($c->id)['stars'])->toBe(1);
 });
 
-test('stars_count_from is a floor under the new rules only', function () {
+test('stars_count_from is a floor on the window', function () {
     config(['recognition.stars_count_from' => '2026-12-01']);
     $c = sfdCounsellor();
-    sfdAward($c, 'early', '2026-11-20');
-    sfdAward($c, 'late', '2026-12-02');
+    sfdAward($c, 'early', '2026-11-30 23:59:59');
+    sfdAward($c, 'late', '2026-12-01 00:00:00');
 
     expect(sfdCount([$c->id])->get($c->id)['stars'])->toBe(1)
         ->and(sfdCount([$c->id], '2026-11-01')->get($c->id)['stars'])->toBe(1)
-        ->and(sfdCount([$c->id], '2026-12-05')->get($c->id))->toBeNull()
-        ->and(sfdCount([$c->id], legacy: true)->get($c->id)['stars'])->toBe(2);
+        ->and(sfdCount([$c->id], '2026-12-05')->get($c->id))->toBeNull();
 });
 
-test('the legacy-included count is every counsellor-morph and user-morph star', function () {
-    $a = sfdCounsellor();
-    $b = sfdCounsellor();
-    sfdLegacyStar($a, '2026-12-02');
-    sfdLegacyStar($a->user, '2026-12-01 08:00');
-    sfdAward($a, 'a1', '2026-12-09');
-    sfdLegacyStar($a->user, '2026-10-01');   // outside the window
-    sfdLegacyStar($b->user, '2026-12-03');
-    sfdLegacyStar(User::factory()->create(), '2026-12-03'); // not a counsellor
+test('a stars_count_from that is not Y-m-d is ignored with one warning', function (mixed $value) {
+    Log::spy();
+    config(['recognition.stars_count_from' => $value]);
+    $c = sfdCounsellor();
+    sfdAward($c, 'early', '2020-01-01');
 
-    $counts = sfdCount(null, '2026-12-01', '2027-01-01', legacy: true);
+    expect(sfdCount([$c->id])->get($c->id)['stars'])->toBe(1)
+        ->and(sfdCount([$c->id])->get($c->id)['stars'])->toBe(1);
 
-    expect($counts->keys()->sort()->values()->all())->toBe([$a->id, $b->id])
-        ->and($counts[$a->id]['stars'])->toBe(3)
-        ->and($counts[$a->id]['first_star_at']->toDateTimeString())->toBe('2026-12-01 08:00:00')
-        ->and($counts[$b->id]['stars'])->toBe(1)
-        ->and(sfdCount([$a->id], legacy: true)[$a->id]['stars'])->toBe(4);
-});
+    Log::shouldHaveReceived('warning')->once();
+})->with(['not a date', '2026-13-01', '2026-02-30', '2026-12-01 10:00', '01/12/2026', 5]);
 
 test('the profile star counts are what they were before', function () {
     Carbon::setTestNow('2026-12-15 12:00');
@@ -224,9 +240,11 @@ test('the migration rolls back and runs again', function () {
 
     $migration->down();
     expect(Schema::hasColumns('stars', ['source', 'award_key']))->toBeFalse()
-        ->and(Schema::hasIndex('stars', 'stars_period_count_index'))->toBeFalse();
+        ->and(Schema::hasIndex('stars', 'stars_period_count_index'))->toBeFalse()
+        ->and(Schema::hasIndex('stars', 'stars_award_key_unique'))->toBeFalse();
 
     $migration->up();
     expect(Schema::hasColumns('stars', ['source', 'award_key']))->toBeTrue()
-        ->and(Schema::hasIndex('stars', 'stars_period_count_index'))->toBeTrue();
+        ->and(Schema::hasIndex('stars', 'stars_period_count_index'))->toBeTrue()
+        ->and(Schema::hasIndex('stars', ['starred_type', 'starred_id', 'award_key'], 'unique'))->toBeTrue();
 });
