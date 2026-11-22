@@ -17,7 +17,9 @@ use Illuminate\Support\Collection;
 
 // TT-7.11b/SCRUM-471: proof that both sides took part in a held session (the user's decision) -- a session marked held
 // is not enough for a star. The counsellor side is the therapy's counsellor (a group's counsellors), as their profile
-// or their user; the client side is the therapy's client (a group's members, current or former). Any one of:
+// or their user; the client side is the therapy's client (a group's members, current or former) -- only those with a
+// verified email (SCRUM-471 security re-check: a fresh unverified account is a free sock puppet), here and for a help
+// chat's person. Any one of:
 //  - messages in the session's chat from both sides, sent between its start and its end;
 //  - both sides joined its video call (a video_session_participants row with joined_at for each);
 //  - an in-person attendance register with a client or member marked present (the counsellor marks it).
@@ -68,23 +70,30 @@ final class SessionParticipation
             return false;
         }
 
+        $personIds = self::verified([(int) $request->user_id]);
+        if ($personIds === []) {
+            return false;
+        }
+
         $counsellorUserId = Counsellor::withTrashed()->whereKey($request->counsellor_id)->value('user_id');
 
         return self::messagedOnBothSides(
-            $session, [$request->counsellor_id], array_filter([$counsellorUserId]), [$request->user_id],
+            $session, [$request->counsellor_id], array_filter([$counsellorUserId]), $personIds,
             // No lower bound: the chat's messages only exist from the moment it was answered (the person's opening note
             // is written then).
             null, $request->ended_at,
         );
     }
 
-    // The client a held 1:1 session (or help chat) was with -- what the per-client daily cap counts on. A group has
-    // none.
+    // The client a held 1:1 session was with -- what the per-client daily cap counts on -- if their email is verified.
+    // A group has none (StarCapPolicy caps it per group instead).
     public static function clientOf(Session $session): ?User
     {
         $for = $session->for;
 
-        return $for instanceof Therapy && $for->addedby instanceof User ? $for->addedby : null;
+        return $for instanceof Therapy && $for->addedby instanceof User && $for->addedby->email_verified_at
+            ? $for->addedby
+            : null;
     }
 
     private static function counsellorIds(Therapy|GroupTherapy $for): array
@@ -98,13 +107,19 @@ final class SessionParticipation
             ->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
     }
 
+    // Only clients with a verified email count (see the class comment).
     private static function clientUserIds(Therapy|GroupTherapy $for): array
     {
         if ($for instanceof Therapy) {
-            return $for->addedby_type === User::class ? [(int) $for->addedby_id] : [];
+            return $for->addedby_type === User::class ? self::verified([(int) $for->addedby_id]) : [];
         }
 
-        return $for->allMemberships()->pluck('users.id')->map(fn ($id) => (int) $id)->all();
+        return $for->allMemberships()->whereNotNull('users.email_verified_at')->pluck('users.id')->map(fn ($id) => (int) $id)->all();
+    }
+
+    private static function verified(array $userIds): array
+    {
+        return User::query()->whereKey($userIds)->whereNotNull('email_verified_at')->pluck('id')->map(fn ($id) => (int) $id)->all();
     }
 
     private static function messagedOnBothSides(
