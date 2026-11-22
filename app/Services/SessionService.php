@@ -52,6 +52,9 @@ class SessionService extends Service
 {
     public const CANNOT_FAIL = 'Only a session that never started can be marked as failed.';
 
+    // SCRUM-471 (the user's decision): a held session is final -- only an administrator can reopen or abandon it.
+    public const HELD_IS_FINAL = 'This session has been held, so it can no longer be changed.';
+
     public function getSessions(GetSessionsDTO $getSessionsDTO)
     {
         $user = $getSessionsDTO->user;
@@ -193,6 +196,8 @@ class SessionService extends Service
         EnsureTherapyCanProceedAction::new()->execute($createSessionDTO->user, $createSessionDTO->session->for);
 
         $session = $this->underSessionLock($createSessionDTO, function () use ($createSessionDTO) {
+            $this->ensureNotHeldUnlessAdmin($createSessionDTO);
+
             EnsureConfirmedByAnotherPersonAction::new()->execute($createSessionDTO, SessionStatusEnum::in_session->value);
 
             // SCRUM-443: an in-person session doesn't start while someone under 18 is taking part (one booked before the rule).
@@ -219,7 +224,12 @@ class SessionService extends Service
 
         EnsureCanUpdateSessionStatusAction::new()->execute($createSessionDTO);
 
-        $session = ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::abandoned->value);
+        // SCRUM-471: under the session lock, as the other status changes, so the held check reads the status as it is.
+        $session = $this->underSessionLock($createSessionDTO, function () use ($createSessionDTO) {
+            $this->ensureNotHeldUnlessAdmin($createSessionDTO);
+
+            return ChangeSessionStatusAction::new()->execute($createSessionDTO, SessionStatusEnum::abandoned->value);
+        });
 
         broadcast(new SessionUpdatedEvent($session))->toOthers();
 
@@ -314,6 +324,15 @@ class SessionService extends Service
     // SCRUM-445: a status change runs on the session as it is now, under its row lock -- so starting, ending or failing
     // it can't interleave with closing it as a no-show (CloseSessionAsNoShowAction takes the same lock). The checks that
     // read its status run inside $change too. Billing stays where it is (ChangeSessionStatusAction, after the write).
+    // SCRUM-471: a held session is final (its star and its billing stand on it) -- reopening or abandoning one is for an
+    // administrator only. Failing one is refused for everyone (CANNOT_FAIL). Run under the session lock.
+    private function ensureNotHeldUnlessAdmin(CreateSessionDTO $createSessionDTO): void
+    {
+        if ($createSessionDTO->session->status === SessionStatusEnum::held->value && ! $createSessionDTO->user->isAdmin()) {
+            throw new SessionException(self::HELD_IS_FINAL, 422);
+        }
+    }
+
     private function underSessionLock(CreateSessionDTO $createSessionDTO, callable $change)
     {
         return DB::transaction(function () use ($createSessionDTO, $change) {
