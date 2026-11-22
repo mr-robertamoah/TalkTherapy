@@ -508,6 +508,7 @@ test('the notice shows a running period or one starting within 30 days, with its
         expect($notice)->toBe([
             'startsAt' => Carbon::parse($startsAt, 'UTC')->toIso8601ZuluString(),
             'endsAt' => $endsAt ? Carbon::parse($endsAt, 'UTC')->toIso8601ZuluString() : null,
+            'scope' => 'platform',
         ]);
     } else {
         expect($notice)->toBeNull();
@@ -545,7 +546,7 @@ test('the counsellor earnings area carries the notice while a period is upcoming
     pfwaWaiver('2026-12-01 00:00', '2026-12-08 00:00', ['reason' => 'Secret reason']);
 
     $overview = GetCounsellorPayoutOverviewAction::new()->execute($counsellor);
-    expect($overview['commissionFreeNotice'])->toBe(['startsAt' => '2026-12-01T00:00:00Z', 'endsAt' => '2026-12-08T00:00:00Z']);
+    expect($overview['commissionFreeNotice'])->toBe(['startsAt' => '2026-12-01T00:00:00Z', 'endsAt' => '2026-12-08T00:00:00Z', 'scope' => 'platform']);
 
     $this->actingAs($counsellor->user)->get(route('counsellor.dashboard'))
         ->assertInertia(fn ($page) => $page->where('dashboard.earnings.commissionFreeNotice.startsAt', '2026-12-01T00:00:00Z'));
@@ -565,7 +566,7 @@ test('the organisation reconciliation page carries the notice while a period is 
 
     $this->actingAs($owner)->get(route('organizations.reconciliation', ['organizationId' => $organization->id]))
         ->assertInertia(fn ($page) => $page
-            ->where('commissionFreeNotice', ['startsAt' => '2026-11-19T00:00:00Z', 'endsAt' => '2026-11-25T00:00:00Z'])
+            ->where('commissionFreeNotice', ['startsAt' => '2026-11-19T00:00:00Z', 'endsAt' => '2026-11-25T00:00:00Z', 'scope' => 'platform'])
         )
         ->assertDontSee('Secret reason');
 });

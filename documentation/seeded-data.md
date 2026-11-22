@@ -767,3 +767,18 @@ featuring consent request is pending under "Needs your action" on `/counsellor/d
 a decision. There is no admin page yet (SCRUM-474): as the super admin, `GET /administrator/recognition/suggestions`
 (optionally `?month=YYYY-MM`) returns the suggestions as JSON. Add it to an existing local database with
 `docker compose exec -u www-data php php artisan db:seed --class=RecognitionSeeder`.
+
+### Her own commission-free period (SCRUM-475)
+
+The same seeder also gives `sarah_johnson` her own commission-free period, linked to that recognition: **the whole of
+next month (UTC, relative to the run)**, `[1st of next month 00:00, 1st of the month after 00:00)`, reason "Counsellor
+of the month for <Month Year>", created by `mr_robertamoah` through `PlatformFeeWaiverService::createForCounsellor`
+(so it has its `created` event, and she has the "No platform commission on your payments for a while" notification).
+Skipped once she has any period of her own.
+
+- As `sarah_johnson`: her profile's "Payouts" section and the dashboard's Earnings card show "No platform commission on
+  your payments between … and …" once the start is within the 30-day notice horizon (almost always: only on the 1st
+  of a 31-day month is next month's start further out). Other counsellors and organisations don't see it.
+- As the super admin: `GET /administrator/counsellors/{her counsellor id}/fee-waivers` lists it (upcoming, with
+  `recognitionId` and `needsReview: false`) and its history; `POST .../fee-waivers/{id}/delete` deletes it (it is
+  upcoming), and the seeder makes it again on the next run.
