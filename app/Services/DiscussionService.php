@@ -196,8 +196,8 @@ class DiscussionService extends Service
         return $discussion;
     }
 
-    // SCRUM-471 (the user's decision): an ended discussion -- held, abandoned or failed -- is final, and a held one can't
-    // be reopened either; only an administrator can change them. Checked and changed under the discussion's row lock.
+    // SCRUM-471 (the user's decision): an ended discussion -- held, abandoned or failed -- is final: it can't be ended,
+    // abandoned, failed or reopened again; only an administrator can change it. Checked and changed under its row lock.
     // The first time it is held (held_at, set once and never cleared) earns its stars; a held one later abandoned or
     // failed (by an administrator) loses them. Both after commit, never blocking the change.
     private function changeStatus(CreateDiscussionDTO $createDiscussionDTO, DiscussionStatusEnum $status): Discussion
@@ -207,8 +207,7 @@ class DiscussionService extends Service
         $discussion = DB::transaction(function () use ($createDiscussionDTO, $status, &$firstHeld) {
             $locked = Discussion::query()->whereKey($createDiscussionDTO->discussion->id)->lockForUpdate()->firstOrFail();
 
-            $final = $status === DiscussionStatusEnum::in_session ? [DiscussionStatusEnum::held->value] : self::ENDED;
-            if (in_array($locked->status, $final, true) && ! $createDiscussionDTO->user->isAdmin()) {
+            if (in_array($locked->status, self::ENDED, true) && ! $createDiscussionDTO->user->isAdmin()) {
                 throw new DiscussionException(self::ALREADY_ENDED, 422);
             }
 

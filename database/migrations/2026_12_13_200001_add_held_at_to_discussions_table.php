@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -13,6 +14,10 @@ return new class extends Migration
         Schema::table('discussions', function (Blueprint $table) {
             $table->timestamp('held_at')->nullable()->after('status');
         });
+
+        // Discussions already held: their last change is when they were held, near enough -- so an administrator
+        // reopening and ending one again doesn't count as its first time.
+        DB::table('discussions')->where('status', 'HELD')->update(['held_at' => DB::raw('updated_at')]);
     }
 
     public function down(): void
