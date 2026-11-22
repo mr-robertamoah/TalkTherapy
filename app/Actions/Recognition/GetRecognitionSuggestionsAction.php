@@ -49,7 +49,8 @@ class GetRecognitionSuggestionsAction extends Action
 
             return $this->row($counsellors->get($id), $id, $ranked, $decisions->get($id), [
                 'tiedAtCutoff' => $cutoffRank !== null && ($ranked['rank'] ?? null) === $cutoffRank,
-                'openReport' => in_array($id, $ranking['reportedIds'], true),
+                // Not for a report that hides who asked for help (security review M1): those are in the unattributed count.
+                'openReport' => in_array($id, $ranking['flaggableReportedIds'], true),
             ]);
         };
 
@@ -66,6 +67,8 @@ class GetRecognitionSuggestionsAction extends Action
 
     // Every eligible counsellor with a star that month, ranked, keyed by counsellor id: ['stars', 'firstStarAt',
     // 'rank']. $alsoCheckIds: counsellors whose open-report flag is also wanted (one pass over the reports).
+    // `reportedIds` is every open-report party (for eligibility); `flaggableReportedIds` leaves out those named only by
+    // a report that hides who asked for help (for what the page shows).
     public function ranking(CarbonInterface $month, array $alsoCheckIds = []): array
     {
         $from = self::monthStart($month);
@@ -79,6 +82,7 @@ class GetRecognitionSuggestionsAction extends Action
         return [
             'ranked' => self::rank($counts->only($eligible)),
             'reportedIds' => $reports['counsellorIds'],
+            'flaggableReportedIds' => $reports['flaggableCounsellorIds'],
             'unattributed' => $reports['unattributed'],
         ];
     }
