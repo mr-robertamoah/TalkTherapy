@@ -105,7 +105,11 @@ class ChangeSessionStatusAction extends Action
         // TT-7.11b/SCRUM-471: a held session later ending failed or abandoned (only an administrator can do that to
         // one -- SessionService) loses its star. Nothing to delete for a session that was never held.
         if (in_array($status, [SessionStatusEnum::failed->value, SessionStatusEnum::abandoned->value], true)) {
-            BestEffortAfterCommit::run(fn () => RevokeCounsellorStarsAction::new()->forStarreable(StarSourceEnum::sessionHeld, $session));
+            // A help chat's star too (help_chat_held, on the same session).
+            BestEffortAfterCommit::run(function () use ($session) {
+                RevokeCounsellorStarsAction::new()->forStarreable(StarSourceEnum::sessionHeld, $session);
+                RevokeCounsellorStarsAction::new()->forStarreable(StarSourceEnum::helpChatHeld, $session);
+            });
         }
 
         return $session;
