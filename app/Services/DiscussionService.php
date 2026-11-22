@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use App\Actions\CounsellorVerification\EnsureCounsellorMayTakeOnClientsAction;
-use App\Actions\Discussion\AfterDiscussionHeldAction;
+use App\Actions\Discussion\AwardDiscussionHeldStarAction;
 use App\Actions\Discussion\ChangeDiscussionStatusAction;
 use App\Actions\Discussion\CreateDiscussionAction;
 use App\Actions\Discussion\CreateDiscussionRequestAction;
@@ -35,6 +35,7 @@ use App\Enums\DiscussionStatusEnum;
 use App\Enums\PaginationEnum;
 use App\Enums\StarSourceEnum;
 use App\Events\DiscussionUpdatedEvent;
+use App\Exceptions\DiscussionException;
 use App\Http\Resources\CounsellorMiniResource;
 use App\Http\Resources\DiscussionMiniResource;
 use App\Models\Counsellor;
@@ -42,12 +43,16 @@ use App\Models\Discussion;
 use App\Notifications\DiscussionDeletedNotification;
 use App\Notifications\DiscussionStatusChangedNotification;
 use App\Notifications\DiscussionUpdatedNotification;
-use Illuminate\Support\Facades\Log;
+use App\Support\BestEffortAfterCommit;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
-use Throwable;
 
 class DiscussionService extends Service
 {
+    public const ALREADY_ENDED = 'This discussion has already ended, so it can no longer be changed.';
+
+    private const ENDED = [DiscussionStatusEnum::held->value, DiscussionStatusEnum::abandoned->value, DiscussionStatusEnum::failed->value];
+
     public function removeCounsellor(GetDiscussionsDTO $getDiscussionsDTO)
     {
         EnsureUserExistsAction::new()->execute($getDiscussionsDTO->user);
@@ -125,17 +130,7 @@ class DiscussionService extends Service
 
         EnsureCanEndDiscussionAction::new()->execute($createDiscussionDTO);
 
-        $discussion = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, DiscussionStatusEnum::held->value);
-
-        // TT-7.11b/SCRUM-471: the star(s) for running it, if it really took place. Never blocks ending it.
-        try {
-            AfterDiscussionHeldAction::new()->execute($discussion);
-        } catch (Throwable $exception) {
-            Log::warning('Unable to award the star for a held discussion.', [
-                'discussion_id' => $discussion->id,
-                'exception' => $exception->getMessage(),
-            ]);
-        }
+        $discussion = $this->changeStatus($createDiscussionDTO, DiscussionStatusEnum::held);
 
         broadcast(new DiscussionUpdatedEvent($discussion))->toOthers();
 
@@ -155,7 +150,7 @@ class DiscussionService extends Service
 
         EnsureCanActAsCounsellorAction::new()->execute($createDiscussionDTO->user?->counsellor);
 
-        $discussion = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, DiscussionStatusEnum::in_session->value);
+        $discussion = $this->changeStatus($createDiscussionDTO, DiscussionStatusEnum::in_session);
 
         broadcast(new DiscussionUpdatedEvent($discussion))->toOthers();
 
@@ -173,9 +168,7 @@ class DiscussionService extends Service
 
         EnsureCanUpdateDiscussionStatusAction::new()->execute($createDiscussionDTO);
 
-        $discussion = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, DiscussionStatusEnum::abandoned->value);
-
-        $this->revokeHeldStars($discussion);
+        $discussion = $this->changeStatus($createDiscussionDTO, DiscussionStatusEnum::abandoned);
 
         broadcast(new DiscussionUpdatedEvent($discussion))->toOthers();
 
@@ -193,9 +186,7 @@ class DiscussionService extends Service
 
         EnsureCanFailDiscussionAction::new()->execute($createDiscussionDTO);
 
-        $discussion = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, DiscussionStatusEnum::failed->value);
-
-        $this->revokeHeldStars($discussion);
+        $discussion = $this->changeStatus($createDiscussionDTO, DiscussionStatusEnum::failed);
 
         Notification::send(
             $createDiscussionDTO->discussion->getOtherUsers($createDiscussionDTO->user),
@@ -205,17 +196,42 @@ class DiscussionService extends Service
         return $discussion;
     }
 
-    // TT-7.11b/SCRUM-471: a discussion that was held and later ends abandoned or failed loses its stars.
-    private function revokeHeldStars(Discussion $discussion): void
+    // SCRUM-471 (the user's decision): an ended discussion -- held, abandoned or failed -- is final, and a held one can't
+    // be reopened either; only an administrator can change them. Checked and changed under the discussion's row lock.
+    // The first time it is held (held_at, set once and never cleared) earns its stars; a held one later abandoned or
+    // failed (by an administrator) loses them. Both after commit, never blocking the change.
+    private function changeStatus(CreateDiscussionDTO $createDiscussionDTO, DiscussionStatusEnum $status): Discussion
     {
-        try {
-            RevokeCounsellorStarsAction::new()->forStarreable(StarSourceEnum::discussionHeld, $discussion);
-        } catch (Throwable $exception) {
-            Log::warning('Unable to revoke the stars of a discussion that ended abandoned or failed.', [
-                'discussion_id' => $discussion->id,
-                'exception' => $exception->getMessage(),
-            ]);
+        $firstHeld = false;
+
+        $discussion = DB::transaction(function () use ($createDiscussionDTO, $status, &$firstHeld) {
+            $locked = Discussion::query()->whereKey($createDiscussionDTO->discussion->id)->lockForUpdate()->firstOrFail();
+
+            $final = $status === DiscussionStatusEnum::in_session ? [DiscussionStatusEnum::held->value] : self::ENDED;
+            if (in_array($locked->status, $final, true) && ! $createDiscussionDTO->user->isAdmin()) {
+                throw new DiscussionException(self::ALREADY_ENDED, 422);
+            }
+
+            $createDiscussionDTO->discussion->setRawAttributes($locked->getAttributes(), true);
+            $firstHeld = $status === DiscussionStatusEnum::held && ! $locked->held_at;
+
+            $discussion = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, $status->value);
+            if ($firstHeld) {
+                $discussion->forceFill(['held_at' => now()])->save();
+            }
+
+            return $discussion;
+        });
+
+        if ($firstHeld) {
+            BestEffortAfterCommit::run(fn () => AwardDiscussionHeldStarAction::new()->execute($discussion));
         }
+
+        if (in_array($status, [DiscussionStatusEnum::abandoned, DiscussionStatusEnum::failed], true)) {
+            BestEffortAfterCommit::run(fn () => RevokeCounsellorStarsAction::new()->forStarreable(StarSourceEnum::discussionHeld, $discussion));
+        }
+
+        return $discussion;
     }
 
     public function deleteDiscussion(CreateDiscussionDTO $createDiscussionDTO)
