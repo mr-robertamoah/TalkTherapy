@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Enums\SessionTypeEnum;
 use App\Enums\TherapyPaymentTypeEnum;
+use App\Support\RequestTime;
 use Carbon\Carbon;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -26,8 +27,9 @@ class CreateSessionRequest extends FormRequest
      */
     public function rules(): array
     {
-        $startTime = Carbon::parse($this->get('startTime'))->setTimezone(config('app.timezone'));
-        $endTime = Carbon::parse($this->get('endTime'))->setTimezone(config('app.timezone'));
+        // SCRUM-471: null when not a time -- the `date` rule then refuses it (422) rather than this throwing (500).
+        $startTime = RequestTime::parse($this->get('startTime'));
+        $endTime = RequestTime::parse($this->get('endTime'));
         $now = Carbon::now(config('app.timezone'));
 
         return [
@@ -40,10 +42,10 @@ class CreateSessionRequest extends FormRequest
             'lat' => ['nullable', Rule::requiredIf($this->get('type') == SessionTypeEnum::in_person->value), 'numeric', 'between:-90,90'],
             'lng' => ['nullable', Rule::requiredIf($this->get('type') == SessionTypeEnum::in_person->value), 'numeric', 'between:-180,180'],
             'startTime' => ['required', 'date', Rule::prohibitedIf(
-                ! ($now->copy()->addMinutes(30)->lessThanOrEqualTo($startTime))
+                $startTime && ! ($now->copy()->addMinutes(30)->lessThanOrEqualTo($startTime))
             )],
             'endTime' => ['required', 'date', Rule::prohibitedIf(
-                ! ($startTime->copy()->addMinutes(30)->lessThanOrEqualTo($endTime))
+                $startTime && $endTime && ! ($startTime->copy()->addMinutes(30)->lessThanOrEqualTo($endTime))
             )],
             'cases' => ['nullable', 'array'],
             'topics' => ['nullable', 'array'],

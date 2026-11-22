@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Support\RequestTime;
 use Carbon\Carbon;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -18,8 +19,9 @@ class CreateDiscussionRequest extends FormRequest
     {
         // SCRUM-471: as CreateSessionRequest -- a discussion starts at least 30 minutes from now and ends at least 30
         // minutes after it starts, so one can't be created already over (and ended at once, for its stars).
-        $startTime = Carbon::parse($this->get('startTime'))->setTimezone(config('app.timezone'));
-        $endTime = Carbon::parse($this->get('endTime'))->setTimezone(config('app.timezone'));
+        // Null when not a time -- the `date` rule then refuses it (422) rather than this throwing (500).
+        $startTime = RequestTime::parse($this->get('startTime'));
+        $endTime = RequestTime::parse($this->get('endTime'));
         $now = Carbon::now(config('app.timezone'));
 
         return [
@@ -27,10 +29,10 @@ class CreateDiscussionRequest extends FormRequest
             'description' => ['required', 'string'],
             'maxCounsellors' => ['nullable', 'integer', 'min:1'],
             'startTime' => ['required', 'date', Rule::prohibitedIf(
-                ! ($now->copy()->addMinutes(30)->lessThanOrEqualTo($startTime))
+                $startTime && ! ($now->copy()->addMinutes(30)->lessThanOrEqualTo($startTime))
             )],
             'endTime' => ['required', 'date', Rule::prohibitedIf(
-                ! ($startTime->copy()->addMinutes(30)->lessThanOrEqualTo($endTime))
+                $startTime && $endTime && ! ($startTime->copy()->addMinutes(30)->lessThanOrEqualTo($endTime))
             )],
         ];
     }
