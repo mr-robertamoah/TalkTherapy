@@ -7,6 +7,7 @@ use App\Enums\ReportStatusEnum;
 use App\Models\Counsellor;
 use App\Models\Report;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 // TT-7.11d1/SCRUM-473: which of $ids are the reported party of an open or under-review report -- such a counsellor
 // isn't suggested or recognised (the user's decision). Who a report is about is Report::reportedParty(), the one
@@ -37,8 +38,12 @@ class GetCounsellorIdsWithOpenReportsAction extends Action
 
         Report::query()
             ->whereIn('status', [ReportStatusEnum::open->value, ReportStatusEnum::under_review->value])
-            ->with(['addedby', 'reportable'])
+            // What reportedParty() reads: the reportable (a help request), and the reporter with a reporting
+            // counsellor's user (isReportedBy()); the people named are read per chunk by preloadReportedParties().
+            ->with(['reportable', 'addedby' => fn (MorphTo $morph) => $morph->morphWith([Counsellor::class => ['user']])])
             ->chunkById(self::CHUNK, function ($reports) use (&$counsellorIds, &$userIds, &$unattributed) {
+                Report::preloadReportedParties($reports);
+
                 foreach ($reports as $report) {
                     $party = $report->reportedParty();
 
