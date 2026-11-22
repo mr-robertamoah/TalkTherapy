@@ -15,8 +15,7 @@ use App\Actions\Suspension\EnsureCanActAsCounsellorAction;
 use App\DTOs\CreatePostDTO;
 use App\Enums\PaginationEnum;
 use App\Models\Post;
-use Illuminate\Support\Facades\Log;
-use Throwable;
+use App\Support\BestEffortAfterCommit;
 
 class PostService extends Service
 {
@@ -37,14 +36,7 @@ class PostService extends Service
         $post = CreatePostAction::new()->execute($createPostDTO);
 
         // TT-7.11b/SCRUM-471: a counsellor's post earns a star, a few a day. Never blocks publishing it.
-        try {
-            AwardPostPublishedStarAction::new()->execute($post);
-        } catch (Throwable $exception) {
-            Log::warning('Unable to award the star for a published post.', [
-                'post_id' => $post->id,
-                'exception' => $exception->getMessage(),
-            ]);
-        }
+        BestEffortAfterCommit::run(fn () => AwardPostPublishedStarAction::new()->execute($post));
 
         return $post;
     }
