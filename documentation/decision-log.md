@@ -13854,49 +13854,83 @@ it is outside the caller's transaction and row locks and a failure never blocks 
 
 ## SCRUM-474 — recognition admin page (TT-7.11d2, 2026-11-22)
 
-TT-7.11d2, part 5 of SCRUM-464: `/administrator/recognition` (`Admin/Recognition.vue`).
+TT-7.11d2, part 5 of SCRUM-464: `/administrator/recognition` (`Admin/Recognition.vue`). Revised after the review,
+the security review and browser QA.
 
 - **Any admin views; only a super admin changes anything:**
-  - `ViewCounsellorRecognitionRequest::authorize()` and the service's `getSuggestions()` now allow any administrator.
-    The ticket says "any admin can view", and the page loads the same data as Inertia props. The JSON suggestions
-    route follows the same rule, so the two can't disagree.
+  - `ViewCounsellorRecognitionRequest::authorize()` and the service's `getSuggestions()`/`getEvents()`
+    (`ensureCanView`, 403) now allow any administrator. The ticket says "any admin can view", and the page loads the
+    same data as Inertia props. The JSON suggestions route follows the same rule, so the two can't disagree. A
+    non-admin still gets a 403 there; an ordinary admin's bad `?month=` is now a 422.
   - `DecideCounsellorRecognitionRequest` has its own super-admin `authorize()`, so approve, skip and add still answer
     a 403 before validation, and the service still checks again.
-  - The new counsellor search and the caps update also answer a 403 before validation. The caps FormRequest refuses
-    by role rather than staying thin like `UpdatePlatformFeeRequest`, because the ticket asks for a 403 and
+  - The counsellor search and the caps update also answer a 403 before validation. The caps FormRequest refuses by
+    role rather than staying thin like `UpdatePlatformFeeRequest`, because the ticket asks for a 403 and
     `UpdateSettingAction`'s own refusal is a 422. That action still checks again.
-- **Star counts and ranks are shown to every admin:** the page is for deciding on a ranking, and SCRUM-464's "no
-  public star counts" is about the public, not administrators. `CounsellorRecognitionResource` now shows
-  `starsCount`/`rank` to any admin (it was super admin only), so the page and the resource agree. Side effect,
-  accepted: an ordinary admin who is also a counsellor sees their own snapshot in their consent-change response.
-  Counsellors who aren't admins still never see stars or ranks.
-- **Month on the page:**
-  - The switch offers last month (the default) and this month, as the backend allows.
-  - An invalid `?month=` is validated by `ShowCounsellorRecognitionPageRequest`, whose `$redirectRoute` sends the
-    visit to the page's default month with the error. It doesn't redirect "back", because for a typed URL that is
-    the same bad URL and would loop.
+- **Help-request reports never mark a counsellor (security review M1):**
+  - A report about an urgent help request hides who asked for help; it is revealed only through the logged
+    `RevealReportedHelpRequesterAction`. Before this fix, the "open report" pill on an "others" row could show that a
+    counsellor had asked for urgent help.
+  - `GetCounsellorIdsWithOpenReportsAction` now also returns `flaggableCounsellorIds`, which leaves out parties named
+    only by such reports. The page's `openReport` flag reads that list, so no admin sees it, super admins included.
+    A super admin who needs to know goes through the logged reveal path.
+  - Those reports are added to the `unattributed` count instead, whether or not the person who asked is a
+    counsellor, so the count doesn't say that either. The note says so.
+  - They still count in `counsellorIds`, so the person stays out of the ranking and stays ineligible.
+  - Residual, accepted: a counsellor with stars who drops out of the suggestions with no visible reason may have
+    something private against them. Telling admins why would be the leak itself.
+- **Star counts and ranks (security review L1):**
+  - Every admin sees the month's stars and ranks on the page. SCRUM-464's "no public star counts" is about the public,
+    not administrators.
+  - `CounsellorRecognitionResource` is unchanged: `starsCount`/`rank` stay super-admin only. The page doesn't use the
+    resource. An earlier version widened it to any admin "so the page and the resource agree"; that was wrong,
+    because they never shared data, and it was reverted.
+  - The viewer's own counsellor row is redacted, in the service, for every admin including a super admin. Stars,
+    first star and rank become null, there is no cutoff tie, and the open-report flag is off. The audit's actor name
+    is null on their own recognition's events. This applies to the page and the JSON.
+  - Residual, accepted: the order of the rows, and the other rows' ranks, still hint where their own row sits.
+- **Months:** `CounsellorRecognition::decidableMonths()` (last month, then this month, in UTC) is the one source for
+  three things:
+  - `parseMonth()`;
+  - the requests' default month (`ViewCounsellorRecognitionRequest::defaultMonth()`, now private);
+  - the page's month switch.
+
+  An invalid `?month=` on the page goes through `ShowCounsellorRecognitionPageRequest`, whose `$redirectRoute` sends
+  the visit to the default month with the error. It doesn't redirect "back", because for a typed URL that is the
+  same bad URL and would loop.
 - **Nav placement:** "Counsellor recognition" sits in the Money group directly after Payouts. The ticket said "next
   to Payouts and Reports", which are in different groups. Money fits because a recognition is where SCRUM-475's fee
   waiver is given.
-- **Search returns eligible counsellors only, with no eligibility field (deviation from the ticket):**
-  - The ticket asked for "id, name, username and eligibility" but also "returns only eligible counsellors". Every
-    row is eligible, so the flag would always be true and is left out.
-  - Eligibility is `GetRecognitionEligibleCounsellorIdsAction`, the same rule `add()` enforces. The cheap filters run
-    in SQL first, then the open-report pass runs on at most 50 name matches; at most 10 are returned.
-  - The search never returns the viewer's own counsellor profile.
-  - It doesn't hide counsellors already suggested. `add()` refuses those with "Approve them instead", and the page
-    shows that error.
+- **Search (deviation: no eligibility field):**
+  - The search runs for the page's month. It returns only counsellors who could be added: recognisable now, not
+    suggested, and not already decided that month. Those already listed have their own controls.
+  - The ticket asked for "id, name, username and eligibility". Every row is eligible, so the flag would always be
+    true and is left out.
+  - Eligibility is one scope, `Counsellor::whereRecognisableNow()` (verified now, not suspended, profile and account
+    not deleted). It is shared with `GetRecognitionEligibleCounsellorIdsAction`. The open reports and the suggested
+    rows come from one `ranking()` pass, which includes the candidates.
+  - At most 50 name matches are read and at most 10 returned. This bounds the work per keystroke: a broad search that
+    loses most matches to the checks can show fewer than 10.
+  - It never returns the viewer's own profile (`whereNotUser`).
+  - The page cancels a pending debounced search, and ignores a late answer, once the text drops below 2 characters or
+    the page unmounts. The input has a 100-character limit.
 - **Others rows:** an approved row can be skipped. A skipped row with no alerts can be approved again through `add`,
-  because it isn't suggested and `approve` would refuse it. A row whose counsellor is the viewer gets no controls.
-- **Caps:**
-  - `SettingsService::updateRecognitionCaps()` writes all six through `UpdateSettingAction` in one transaction, so a
-    save changes all of them or none. The name-to-setting map is now one constant, `RECOGNITION_CAP_KEYS`, shared
-    with `getRecognitionCaps()`.
-  - Values must be integers from 0 to 100, and all six are required.
+  because it isn't suggested and `approve` would refuse it. The page checks for alerts with `recognitionAlerts()`, the
+  same list the pills show. The viewer's own row gets no controls.
+- **Caps (security review L2, L3):**
+  - `SettingsService::updateRecognitionCaps()` writes all six through `UpdateSettingAction` in one transaction. A
+    failure partway through saves none (tested). The name-to-setting map is one constant, `RECOGNITION_CAP_KEYS`,
+    shared with `getRecognitionCaps()`.
+  - Every change is logged: `Log::info('Daily star caps changed.')` with the actor's id and each changed cap's
+    `from`/`to`. A save that changes nothing logs nothing.
+  - All six are required, as integers. The limits are 0–100, but the per-client and per-group caps are 0–10
+    (`UpdateRecognitionCapsRequest::maxima()`, also sent to the page). Those two are what stop one client or group
+    farming stars.
+  - The per-client hint says that 0 stops every session and help-chat star that has a client.
   - The interaction caps (`recognition.interaction_*`, SCRUM-472) aren't settings yet and aren't on the card.
 - **Audit:** `GetRecognitionEventsAction` returns the month's events, newest first, capped at 200. Each has the event,
-  the counsellor's id and name, the actor's name (null when nobody in particular acted), `from` and the time. The
-  actor's name is shown to admins only. The counsellor's consent request still comes from "TalkTherapy".
-- **SCRUM-475 slots:**
-  - each row has an empty "Fee waiver" column (`AdminRecognitionRow.vue`);
-  - `decide()` in `Recognition.vue` marks where the waiver fields join the approve request and its confirm step.
+  the counsellor's id and name, the actor's name (null when nobody in particular acted, and on the viewer's own
+  recognition), `from` and the time. The counsellor's consent request still comes from "TalkTherapy".
+- **SCRUM-475:** the empty "Fee waiver" column was removed. SCRUM-475 is in PR #377, and the waiver UI comes in a
+  follow-up once both have merged. `decide()` in `Recognition.vue` still marks where the waiver fields will join the
+  approve request and its confirm step.
