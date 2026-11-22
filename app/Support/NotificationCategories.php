@@ -56,6 +56,8 @@ class NotificationCategories
 
         // TT-7.11d1/SCRUM-473.
         Notifications\CounsellorRecognisedNotification::class => Category::recognition,
+        // TT-7.11e/SCRUM-475: given their own commission-free period.
+        Notifications\CounsellorFeeWaiverGrantedNotification::class => Category::recognition,
     ];
 
     // These pop up on the page when they arrive (AuthenticatedLayout): switching off "in the app" stops that live

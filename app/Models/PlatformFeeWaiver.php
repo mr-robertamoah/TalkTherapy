@@ -29,8 +29,7 @@ class PlatformFeeWaiver extends Model
     public const NOTICE_HORIZON_DAYS = 30;
 
     // Who created or ended a period is set from the acting user (forceFill), never mass-assigned. counsellor_id isn't
-    // fillable either until SCRUM-464 decides how a counsellor's own waiver is made (a row without one is
-    // platform-wide).
+    // fillable either: TT-7.11e/SCRUM-475 sets it only from the route's counsellor (a row without one is platform-wide).
     protected $fillable = [
         'starts_at', 'ends_at', 'reason',
     ];
@@ -53,6 +52,17 @@ class PlatformFeeWaiver extends Model
     public function endedBy()
     {
         return $this->belongsTo(User::class, 'ended_by_id');
+    }
+
+    // TT-7.11e/SCRUM-475: the approved recognition a counsellor's period was given for, if any.
+    public function recognition()
+    {
+        return $this->hasOne(CounsellorRecognition::class);
+    }
+
+    public function events()
+    {
+        return $this->hasMany(PlatformFeeWaiverEvent::class)->orderBy('id');
     }
 
     public function isPlatformWide(): bool
