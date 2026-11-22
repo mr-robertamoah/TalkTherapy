@@ -3,12 +3,16 @@
 use App\DTOs\PlatformFeeWaiverDTO;
 use App\Enums\AdministratorTypeEnum;
 use App\Enums\CounsellorRecognitionDecisionEnum;
+use App\Enums\HelpRequestStatusEnum;
+use App\Enums\StarSourceEnum;
 use App\Exceptions\PlatformFeeWaiverException;
 use App\Models\Administrator;
 use App\Models\Counsellor;
 use App\Models\CounsellorRecognition;
+use App\Models\HelpRequest;
 use App\Models\PlatformFeeWaiver;
 use App\Models\Report;
+use App\Models\Star;
 use App\Models\Therapy;
 use App\Models\User;
 use App\Services\PlatformFeeWaiverService;
@@ -75,6 +79,36 @@ function rwcOpenReport(Counsellor $counsellor): void
     $report->reportable()->associate($therapy);
     $report->save();
     $report->forceFill(['status' => 'open'])->save();
+}
+
+// The counsellor's own account asked for urgent help, and that help chat is reported (open): it keeps them from a new
+// period, but who asked stays private (security review M1).
+function rwcHelpRequestReport(Counsellor $counsellor): void
+{
+    $help = HelpRequest::create(['user_id' => $counsellor->user_id, 'status' => HelpRequestStatusEnum::ended->value]);
+    $report = new Report(['description' => 'Something happened', 'data' => []]);
+    $report->addedby()->associate(User::factory()->adult()->create());
+    $report->reportable()->associate($help);
+    $report->save();
+    $report->forceFill(['status' => 'open'])->save();
+}
+
+// $count new-rule stars in October 2026, written directly (as the SCRUM-474 test does).
+function rwcStars(Counsellor $counsellor, int $count): void
+{
+    static $key = 0;
+
+    for ($i = 0; $i < $count; $i++) {
+        $star = (new Star)->forceFill([
+            'type' => StarSourceEnum::sessionHeld->starType()->value,
+            'source' => StarSourceEnum::sessionHeld,
+            'award_key' => 'session_held:rwc'.(++$key),
+        ]);
+        $star->starred()->associate($counsellor);
+        $star->starreable()->associate($counsellor->user);
+        $star->save();
+        $star->forceFill(['created_at' => Carbon::parse('2026-10-10 10:00:00', 'UTC')])->save();
+    }
 }
 
 test('a super admin gets the month\'s linked periods with everything, and nothing else', function () {
@@ -209,4 +243,97 @@ test('the per-counsellor JSON list stays super-admin only', function () {
 
     $this->actingAs(rwcAdmin(super: false))->getJson(route('admin.counsellors.fee-waivers.index', ['counsellor' => $counsellor->id]))
         ->assertForbidden();
+});
+
+test('a help-request report never shows as needsReview, on the page or the JSON route, though it still blocks a new period', function (bool $super) {
+    $counsellor = rwcCounsellor();
+    $period = rwcLinked($counsellor, '2026-11-01 00:00', '2026-12-01 00:00');
+    rwcHelpRequestReport($counsellor);
+    $admin = rwcAdmin($super);
+
+    $this->actingAs($admin)->get(route('administrator.recognition', ['month' => '2026-10']))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('feeWaivers.0.id', $period->id)
+            ->where('feeWaivers.0.needsReview', false));
+
+    if (! $super) {
+        return;
+    }
+
+    $this->actingAs($admin)->getJson(route('admin.counsellors.fee-waivers.index', ['counsellor' => $counsellor->id]))
+        ->assertOk()
+        ->assertJsonPath('counsellor.eligible', true)
+        ->assertJsonPath('waivers.0.needsReview', false);
+
+    // Creating is still gated on every open report.
+    $this->actingAs($admin)->postJson(route('admin.counsellors.fee-waivers.store', ['counsellor' => $counsellor->id]), [
+        'starts_at' => '2027-01-01T00:00', 'ends_at' => '2027-02-01T00:00', 'reason' => 'Counsellor of the month',
+    ])->assertJsonValidationErrors('counsellor');
+
+    // ...and so is the response's flag after an end (the same display rule).
+    $this->actingAs($admin)->postJson(route('admin.counsellors.fee-waivers.end', ['counsellor' => $counsellor->id, 'waiver' => $period->id]))
+        ->assertOk()
+        ->assertJsonPath('waiver.status', PlatformFeeWaiver::CANCELLED);
+})->with(['super admin' => true, 'ordinary admin' => false]);
+
+test('an open report that names the counsellor still shows as needsReview on the JSON route', function () {
+    $counsellor = rwcCounsellor();
+    rwcLinked($counsellor, '2026-11-01 00:00', '2026-12-01 00:00');
+    rwcOpenReport($counsellor);
+
+    $this->actingAs(rwcAdmin())->getJson(route('admin.counsellors.fee-waivers.index', ['counsellor' => $counsellor->id]))
+        ->assertJsonPath('counsellor.eligible', false)
+        ->assertJsonPath('waivers.0.needsReview', true);
+});
+
+test('the page after approving or adding has the new recognition\'s id on its row, for the waiver to link to', function (string $action) {
+    $counsellor = rwcCounsellor();
+    if ($action === 'approve') {
+        rwcStars($counsellor, 3);
+    }
+    $admin = rwcAdmin();
+    $page = route('administrator.recognition', ['month' => '2026-10']);
+
+    $this->actingAs($admin)->from($page)
+        ->followingRedirects()
+        ->post(route("admin.recognition.{$action}"), ['month' => '2026-10', 'counsellor_id' => $counsellor->id])
+        ->assertOk()
+        ->assertInertia(function ($inertia) use ($action, $counsellor) {
+            $list = $action === 'approve' ? 'suggestions' : 'others';
+            $inertia->component('Admin/Recognition')
+                ->where("recognition.{$list}.0.counsellorId", $counsellor->id)
+                ->where("recognition.{$list}.0.decision", 'approved')
+                ->where("recognition.{$list}.0.recognitionId", CounsellorRecognition::query()->where('counsellor_id', $counsellor->id)->value('id'));
+        });
+})->with(['approve', 'add']);
+
+test('end now and delete from the page go back to it, and the column follows', function () {
+    $admin = rwcAdmin();
+    $page = route('administrator.recognition', ['month' => '2026-10']);
+    $running = rwcLinked($first = rwcCounsellor(), '2026-11-01 00:00', '2026-12-01 00:00');
+    $upcoming = rwcLinked($second = rwcCounsellor(), '2026-12-01 00:00', '2027-01-01 00:00');
+
+    $this->actingAs($admin)->from($page)
+        ->post(route('admin.counsellors.fee-waivers.end', ['counsellor' => $first->id, 'waiver' => $running->id]))
+        ->assertRedirect($page)
+        ->assertSessionHasNoErrors();
+
+    $this->actingAs($admin)->from($page)
+        ->post(route('admin.counsellors.fee-waivers.delete', ['counsellor' => $second->id, 'waiver' => $upcoming->id]))
+        ->assertRedirect($page)
+        ->assertSessionHasNoErrors();
+
+    // A refusal (already ended) comes back as a field error on the page.
+    $this->actingAs($admin)->from($page)
+        ->post(route('admin.counsellors.fee-waivers.end', ['counsellor' => $first->id, 'waiver' => $running->id]))
+        ->assertRedirect($page)
+        ->assertSessionHasErrors('waiver');
+
+    $this->actingAs($admin)->get($page)
+        ->assertInertia(fn ($inertia) => $inertia
+            ->has('feeWaivers', 1)
+            ->where('feeWaivers.0.id', $running->id)
+            ->where('feeWaivers.0.status', PlatformFeeWaiver::CANCELLED)
+            ->where('feeWaivers.0.canEnd', false));
 });

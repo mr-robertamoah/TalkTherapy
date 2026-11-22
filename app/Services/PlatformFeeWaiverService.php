@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Actions\EnsureIsSuperAdminAction;
+use App\Actions\Recognition\GetCounsellorIdsWithOpenReportsAction;
 use App\Actions\Recognition\GetRecognitionEligibleCounsellorIdsAction;
 use App\DTOs\PlatformFeeWaiverDTO;
 use App\Enums\PlatformFeeWaiverEventEnum as Event;
@@ -93,7 +94,8 @@ class PlatformFeeWaiverService extends Service
 
         return [
             'counsellor' => $counsellor,
-            'eligible' => $this->isEligible($counsellor),
+            // For display only (security review M1): a help-request report doesn't show (isEligible() gates creating).
+            'eligible' => $this->looksEligible($counsellor),
             'waivers' => $this->list($counsellor->id),
             'events' => $this->events($counsellor->id),
         ];
@@ -102,7 +104,8 @@ class PlatformFeeWaiverService extends Service
     /**
      * TT-7.11e2/SCRUM-477: the periods linked to a month's recognitions, for the admin recognition page -- any
      * administrator (the page shapes what each one sees, AdminRecognitionFeeWaiverResource), and which of their
-     * counsellors could be given a new period now (for `needsReview`). A fixed number of queries, however many rows.
+     * counsellors look eligible now (for `needsReview`; displayEligibleIds()). A fixed number of queries, however
+     * many rows.
      *
      * @return array{waivers: Collection<int, PlatformFeeWaiver>, eligibleCounsellorIds: array<int, int>}
      */
@@ -120,7 +123,7 @@ class PlatformFeeWaiverService extends Service
 
         return [
             'waivers' => $waivers,
-            'eligibleCounsellorIds' => GetRecognitionEligibleCounsellorIdsAction::new()->execute(
+            'eligibleCounsellorIds' => $this->displayEligibleIds(
                 $waivers->pluck('counsellor_id')->map(fn ($id) => (int) $id)->unique()->values()->all()
             ),
         ];
@@ -275,6 +278,33 @@ class PlatformFeeWaiverService extends Service
     public function isEligible(Counsellor $counsellor): bool
     {
         return GetRecognitionEligibleCounsellorIdsAction::new()->execute([$counsellor->id]) === [$counsellor->id];
+    }
+
+    // One counsellor, for display (displayEligibleIds()): the `needsReview` on every SCRUM-475 response.
+    public function looksEligible(Counsellor $counsellor): bool
+    {
+        return $this->displayEligibleIds([$counsellor->id]) === [$counsellor->id];
+    }
+
+    /**
+     * Which of $ids look eligible to an administrator, for `eligible` / `needsReview` only -- never to decide whether
+     * a period may be created (isEligible() does, on every open report). Security review M1 (SCRUM-474's rule): a
+     * report about an urgent help request hides who asked for help, so it doesn't count here; otherwise a period
+     * flagged for review with no visible reason would say they are under one.
+     *
+     * @param  array<int, int>  $ids
+     * @return array<int, int>
+     */
+    private function displayEligibleIds(array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        return GetRecognitionEligibleCounsellorIdsAction::new()->execute(
+            $ids,
+            GetCounsellorIdsWithOpenReportsAction::new()->execute($ids)['flaggableCounsellorIds'],
+        );
     }
 
     /**
