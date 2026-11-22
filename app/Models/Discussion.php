@@ -24,6 +24,8 @@ class Discussion extends Model
     protected $casts = [
         'start_time' => 'datetime',
         'end_time' => 'datetime',
+        // SCRUM-471: when it was first held (DiscussionService) -- set once, never cleared.
+        'held_at' => 'datetime',
     ];
 
     public function addedby()

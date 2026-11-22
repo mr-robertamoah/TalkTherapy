@@ -6,14 +6,10 @@ use App\Actions\EnsureAddedbyIsValidAction;
 use App\Actions\Religion\CreateReligionAction;
 use App\Actions\Religion\EnsureReligionNameIsUniqueAction;
 use App\Actions\Religion\EnsureUserCanCreateReligionAction;
-use App\Actions\Star\CreateStarAction;
 use App\DTOs\CreateReligionDTO;
-use App\DTOs\CreateStarDTO;
 use App\Enums\PaginationEnum;
-use App\Enums\StarTypeEnum;
 use App\Http\Resources\ReligionResource;
 use App\Models\Religion;
-use App\Models\User;
 
 class ReligionService extends Service
 {
@@ -39,21 +35,6 @@ class ReligionService extends Service
         EnsureReligionNameIsUniqueAction::new()->execute($createReligionDTO->name);
 
         $religion = CreateReligionAction::new()->execute($createReligionDTO);
-
-        CreateStarAction::new()->execute(
-            CreateStarDTO::fromArray([
-                'starredby' => null,
-                'starred' => $createReligionDTO->addedby
-                    ? (
-                        $createReligionDTO->addedby::class == User::class
-                            ? $createReligionDTO->addedby
-                            : $createReligionDTO->addedby->user
-                    )
-                    : $createReligionDTO->user,
-                'starreable' => $religion,
-                'type' => StarTypeEnum::contribution->value,
-            ])
-        );
 
         return $religion;
     }

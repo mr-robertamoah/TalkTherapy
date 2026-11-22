@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Notifications\RefundExecutionFailedNotification;
 use App\Notifications\RefundFailedNotification;
 use App\Notifications\RefundSucceededNotification;
+use App\Support\BestEffortAfterCommit;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
@@ -88,6 +89,10 @@ class RecordRefundStatusAction extends Action
                 if ($transaction->organization_id) {
                     ReconcileOrgFinancedRefundAction::new()->execute($transaction);
                 }
+
+                // TT-7.11b/SCRUM-471: the refunded sessions' stars -- once the refund's status is committed, outside
+                // this lock; a failure is reported and never undoes the refund (it succeeded at Paystack).
+                BestEffortAfterCommit::run(fn () => RevokeStarsForRefundAction::new()->execute($refund));
 
                 // TT-7.7e/SCRUM-253: safe to call from inside this transaction despite being
                 // queued -- see the identical comment on notifyAdminsOfFailure() below.

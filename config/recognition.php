@@ -5,8 +5,20 @@ return [
     // How many counsellors may be recognised in a month.
     'per_month' => (int) env('RECOGNITION_PER_MONTH', 5),
 
-    // Stars a counsellor can earn a day for publishing posts.
-    'posts_per_day' => 3,
+    // SCRUM-471: the most stars a counsellor can earn from each rule in a UTC day, and from held sessions (help chats
+    // included) with the same client. Defaults -- a super admin's platform setting (SettingsEnum) overrides each.
+    'cap' => [
+        'session' => 8,
+        'help_chat' => 5,
+        'discussion' => 2,
+        'post' => 3,
+        'session_per_client' => 1,
+        // SCRUM-471 (security re-check): a group has no single client, so group-session stars are capped per group.
+        'session_per_group' => 1,
+    ],
+
+    // SCRUM-471: a help chat earns a star only if it lasted at least this long.
+    'help_chat_min_minutes' => 5,
 
     // Interaction stars (from verified-email clients): at most this many per post, and per counsellor per day...
     'interaction_per_post' => 10,

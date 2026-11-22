@@ -13733,3 +13733,121 @@ Split into SCRUM-470–476 (TT-7.11a–f); the first, SCRUM-470, is the star fou
 - **Seed data:** `RecognitionSeeder` gives the six demo counsellors last month's new-rule stars (with a tie between
   `emma_williams` and `david_brown`) and approves `sarah_johnson` through the service, so her consent request is
   pending on her dashboard.
+
+## SCRUM-471 — new star rules (2026-11-22)
+
+TT-7.11b, part 2 of SCRUM-464. Every new star goes through `AwardCounsellorStarAction`. Every award and revoke runs
+after commit through `BestEffortAfterCommit` (`DB::afterCommit` + `rescue(report: true)`, as `BestEffortBroadcast`), so
+it is outside the caller's transaction and row locks and a failure never blocks or undoes the change it follows.
+
+- **User decisions (2026-11-22, after review):**
+  1. Held sessions and held discussions are final: after held, only an administrator can abandon, fail or reopen one.
+  2. Stars need proof both sides took part. Help chats also need a minimum length, and are never starred if they ended
+     by the counsellor's suspension or revoked verification.
+  3. Daily caps per counsellor per UTC day: sessions 8, help chats 5, discussions 2, posts 3, plus at most 1 session
+     star a day from the same client. Defaults; an administrator overrides them (the UI comes in SCRUM-474).
+  4. Free sessions earn stars the same as paid ones.
+- **Held is final:** `SessionService::abandonSession` (now under the session lock, like the other status changes) and
+  `getInSession` refuse a HELD session for a non-administrator (`HELD_IS_FINAL`, 422). `failSession` already refused a
+  held session for everyone (`CANNOT_FAIL`); unchanged. An administrator can still reopen or abandon one; abandoning
+  revokes its star. Discussions: `endDiscussion`, `abandonDiscussion` and `failDiscussion` refuse a discussion that is
+  already held, abandoned or failed, and `getInDiscussion` refuses any of the three (security re-check L-2), for non-administrators
+  (`DiscussionService::ALREADY_ENDED`); the check and the change run under the discussion's row lock.
+- **Held sessions:** `AwardSessionHeldStarAction`, from `ChangeSessionStatusAction` on the same first-time-held gate as
+  billing. A 1:1 session stars its therapy's counsellor; a group session every counsellor whose group pivot is ACTIVE.
+  Key `session_held:{session}`. Because the award sits behind the first-time gate, a session held, reopened and held
+  again by an administrator does not earn again.
+- **Proof of participation** (`App\Support\SessionParticipation`). Counsellor side: the therapy's counsellor (a group's
+  counsellors, any state, plus a counsellor creator), as profile or user. Client side: the therapy's client (a group's
+  members, current or former). Any one of: messages in the session's chat (`messages.for` = the session) from both
+  sides with `created_at` between `start_time` and `ended_at`; both sides joined its video call
+  (`video_session_participants` rows with `joined_at`); an in-person attendance register with a client or member
+  PRESENT (`session_attendances` -- the counsellor marks it, so it proves their side too). **Judgment call:** proof is
+  per session, not per counsellor -- in a group, every active counsellor is starred once the session is proven, even
+  one who didn't write. **Judgment call:** a session whose chat started before `start_time` only counts messages from
+  `start_time` on (the window is literal).
+- **Help chats:** their own source, `help_chat_held` (PARTICIPATION type, key `help_chat_held:{session}`), so they have
+  their own cap. `AwardHelpChatStarAction` from `CloseHelpRequestAction` after commit, when a connected chat ends. It
+  needs messages from both the person and the counsellor, at least `recognition.help_chat_min_minutes` (5) between
+  `accepted_at` and `ended_at`, and an `ended_by` other than `suspension`/`revoked` (`EndCounsellorHelpChatsAction`'s
+  reasons). A chat the time sweep ended with no counsellor reply fails the both-sides rule.
+- **Daily caps** (`App\Support\StarCapPolicy`), checked by `AwardCounsellorStarAction` inside a transaction holding the
+  counsellor's row lock, so concurrent awards can't both pass. Counted on the stars' `created_at` in the current UTC day.
+  The per-client cap counts `session_held` and `help_chat_held` stars together whose `starredby` is the client --
+  **judgment call:** the brief said "session star", and help chats are held sessions with a person, so one person can't
+  give a counsellor a session star and a help-chat star the same day. `starredby` is now the client for those two
+  sources (the therapy's client; the help request's person); a group session has no single client, so no per-client
+  cap applies there (the session cap still does), and its starredby stays the platform. Caps come from
+  `SettingsService::getRecognitionCaps()` -- new `SettingsEnum` keys `RECOGNITION_CAP_SESSION`, `_HELP_CHAT`,
+  `_DISCUSSION`, `_POST`, `_SESSION_PER_CLIENT` (one query), each falling back to `config('recognition.cap.*')` unless
+  set to a whole number of 0 or more -- and are exposed as `recognitionCaps` in `getSettingsForAdmin()` for SCRUM-474.
+  `recognition.posts_per_day` was replaced by `recognition.cap.post`. Post-interaction stars have no cap here
+  (SCRUM-472 brings its own).
+- **Eligibility:** `AwardCounsellorStarAction` gives nothing to a counsellor who is soft-deleted, suspended (either
+  scope) or not currently verified, read on the locked row.
+- **Refunds:** `RevokeStarsForRefundAction` (renamed), after commit from `RecordRefundStatusAction` on the move to
+  SUCCESS only (personal and org-financed go through the same branch). A webhook retry hits the existing early return;
+  the delete is idempotent anyway. Mapping by `transactions.for_type`: a Session -> that session; a Therapy or
+  GroupTherapy -> every session of it; an OrganizationInvoice (retainer settlement) -> every session on its lines;
+  anything else -> none. One `whereIn` DELETE (`RevokeCounsellorStarsAction::forStarreables`). **Groups:** a payment
+  `for` a GroupTherapy or a group's Session revokes only when no other successful payment for the same `for` is still
+  standing (no successful full refund); otherwise the stars stay. When the last standing payer refunds, the stars go
+  even if other members were covered without paying (free places, an organisation's retainer) -- accepted and logged.
+  1:1 and retainer-invoice refunds revoke as before.
+- **Refunded before held:** a session is not starred when it is held if it had a covering successful payment (for the
+  session, or for its therapy/group) and none is left standing (`App\Support\SessionPayments`). A session nobody paid
+  for -- free, or covered by a retainer -- is starred (decision 4).
+- **Partial refunds:** refunds are full-only today (`EnsureTransactionIsRefundEligibleAction`). Defensively, a refund
+  below the transaction's amount keeps the stars (logged at info) -- which sessions a part covers would be a guess.
+- **Held discussions:** `AwardDiscussionHeldStarAction` (renamed), after commit, only the first time a discussion is
+  held -- new `discussions.held_at`, set once and never cleared, so an administrator's abandon (revoke) followed by
+  ending it again can't re-award or re-date the stars. Stars every participant counsellor (creator and added ones) with
+  key `discussion_held:{id}`, if messages sent between its `start_time` and `end_time` came from at least 2 distinct
+  people (a person writing as user and as counsellor profile is one; the counsellor-to-user lookup is one query).
+  Abandon/fail revoke.
+- **Discussion times:** `CreateDiscussionRequest` now requires `startTime` at least 30 minutes from now and `endTime` 30
+  minutes after it, as `CreateSessionRequest`. `EnsureDiscussionDataIsValidAction` (create and update) requires both
+  times and the 30-minute lead; on update only when the start moves (an update resending its own start is left alone;
+  only pending discussions can be updated anyway).
+- **Schedule proposals:** `AcceptSessionScheduleProposalAction` re-checks the start is still in the future; a proposal
+  accepted after its start goes stale (`START_PASSED`) like any other no-longer-valid time.
+- **Posts:** `AwardPostPublishedStarAction` from `PostService::createPost` (after commit); only a post whose `addedby`
+  is a Counsellor; key `post_published:{post}`; the cap is now the shared `StarCapPolicy`. The security review's "post
+  delete doesn't revoke" did not hold: the only delete path is `DELETE api/posts/{postId}` -> `PostService::deletePost`
+  -> `DeletePostAction`, which deletes every star on the post (`starreable()->delete()`); now tested through the route.
+- **Index:** new migration `stars_source_starreable_index` on `(source, starreable_type, starreable_id)`, so the revoke
+  DELETE locks only the rows it removes. Reversible; the SCRUM-470 migration test rolls both back in order.
+- **Removed:** the `CreateStarAction` calls at AfterSessionCreatedAction, TherapyTopicService, TherapyService,
+  DiscussionService (on create), GroupTherapyService, PostService (replaced), LanguageService, ProfessionService,
+  ReligionService, LicensingAuthorityService and TherapyCaseService. Deleted as dead code: `CreateStarAction`,
+  `StarController` (unrouted), `StarService`, `EnsureStarTypeIsValidAction`, `EnsureMinimumModelsForStarExistsAction`,
+  `CreateStarDTO`, `StarTypeIsInvalidException`, `MinimumModelsForStarDoesNotExistException`. The SCRUM-470 arch test
+  became a test that `CreateStarAction` is gone and that no file under `app/` but `AwardCounsellorStarAction` creates a
+  star. Legacy stars already written stay as they are.
+- **Closed months don't move:** a later revoke (a refund, an administrator abandoning) changes the live counts only.
+  Monthly recognition is snapshotted when approved (`stars_count`, `rank`, SCRUM-473), so it never changes a closed
+  decision.
+- **Security re-check fixes:**
+  - **M-a, per-group cap:** group sessions had no per-client cap (no single client), so one puppet member could farm
+    a group's sessions up to the session cap. Now at most `session_per_group` (default 1; setting
+    `RECOGNITION_CAP_SESSION_PER_GROUP`, config `recognition.cap.session_per_group`) group-session stars per counsellor
+    per group per UTC day, in `StarCapPolicy` under the same counsellor lock (it now receives the starreable).
+  - **Verified clients only (decided without asking, from the coordinator -- it hardens against cheap sock-puppet
+    accounts):** the client side counts as proof only if the client user has `email_verified_at` set -- chat, video
+    and attendance proof, a group's members, a help chat's person, and the client recorded for the per-client cap
+    (`SessionParticipation`). An unverified client's session or help chat earns nothing.
+  - **L-2:** abandoned and failed discussions are final too -- a non-administrator can't reopen any ended
+    discussion; code, comment and `ALREADY_ENDED` agree.
+  - **L-3:** the `held_at` migration backfills `held_at = updated_at` for discussions already HELD, so an
+    administrator reopening and re-ending one of them doesn't count as its first time.
+  - **L-5:** abandoning or failing a held session revokes `help_chat_held` as well as `session_held` (an
+    administrator can abandon a help chat's session).
+  - **L-6:** `CreateDiscussionRequest` and `CreateSessionRequest` parse times with `App\Support\RequestTime`
+    (`rescue()`), so a malformed or non-string time is refused by the `date` rule (422) rather than throwing (500).
+  - **L-1 (no code):** sock-puppet farming is capped, not prevented -- verified email, proof of participation and the
+    daily, per-client and per-group caps bound what a farm can earn, but a determined counsellor with several verified
+    accounts can still earn a few stars a day. The backstop is the super administrator approving each month's
+    recognitions (SCRUM-473/474), not the star count alone.
+  - **L-4 (no code):** after-commit awards and revokes are best effort and aren't retried; a failure is reported and
+    that star stays missed (or stays given). A nightly reconcile (re-derive the day's session/discussion stars and
+    refunded sessions' revokes) would be the follow-up if reports show it happening.

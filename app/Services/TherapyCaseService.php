@@ -3,17 +3,13 @@
 namespace App\Services;
 
 use App\Actions\EnsureAddedbyIsValidAction;
-use App\Actions\Star\CreateStarAction;
 use App\Actions\TherapyCase\CreateCaseAction;
 use App\Actions\TherapyCase\EnsureCaseNameIsUniqueAction;
 use App\Actions\TherapyCase\EnsureUserCanCreateCaseAction;
 use App\DTOs\CreateCaseDTO;
-use App\DTOs\CreateStarDTO;
 use App\Enums\PaginationEnum;
-use App\Enums\StarTypeEnum;
 use App\Http\Resources\TherapyCaseResource;
 use App\Models\TherapyCase;
-use App\Models\User;
 
 class TherapyCaseService extends Service
 {
@@ -39,21 +35,6 @@ class TherapyCaseService extends Service
         EnsureCaseNameIsUniqueAction::new()->execute($createCaseDTO->name);
 
         $therapyCase = CreateCaseAction::new()->execute($createCaseDTO);
-
-        CreateStarAction::new()->execute(
-            CreateStarDTO::fromArray([
-                'starredby' => null,
-                'starred' => $createCaseDTO->addedby
-                    ? (
-                        $createCaseDTO->addedby::class == User::class
-                            ? $createCaseDTO->addedby
-                            : $createCaseDTO->addedby->user
-                    )
-                    : $createCaseDTO->user,
-                'starreable' => $therapyCase,
-                'type' => StarTypeEnum::contribution->value,
-            ])
-        );
 
         return $therapyCase;
     }

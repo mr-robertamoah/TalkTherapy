@@ -10,6 +10,8 @@ enum StarSourceEnum: string
     use EnumTrait;
 
     case sessionHeld = 'session_held';
+    // SCRUM-471: a help chat is a held session, under its own daily cap.
+    case helpChatHeld = 'help_chat_held';
     case discussionHeld = 'discussion_held';
     case postPublished = 'post_published';
     case postInteraction = 'post_interaction';
@@ -18,7 +20,7 @@ enum StarSourceEnum: string
     public function starType(): StarTypeEnum
     {
         return match ($this) {
-            self::sessionHeld, self::discussionHeld => StarTypeEnum::participation,
+            self::sessionHeld, self::helpChatHeld, self::discussionHeld => StarTypeEnum::participation,
             self::postPublished, self::postInteraction => StarTypeEnum::contribution,
         };
     }
