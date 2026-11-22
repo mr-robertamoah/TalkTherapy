@@ -30,4 +30,5 @@ enum SettingsEnum: string
     case recognitionCapDiscussion = 'RECOGNITION_CAP_DISCUSSION';
     case recognitionCapPost = 'RECOGNITION_CAP_POST';
     case recognitionCapSessionPerClient = 'RECOGNITION_CAP_SESSION_PER_CLIENT';
+    case recognitionCapSessionPerGroup = 'RECOGNITION_CAP_SESSION_PER_GROUP';
 }

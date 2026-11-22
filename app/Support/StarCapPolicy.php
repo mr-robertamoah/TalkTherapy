@@ -4,14 +4,17 @@ namespace App\Support;
 
 use App\Enums\StarSourceEnum;
 use App\Models\Counsellor;
+use App\Models\GroupTherapy;
+use App\Models\Session;
 use App\Models\Star;
 use App\Models\User;
 use App\Services\SettingsService;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 
 // TT-7.11b/SCRUM-471: the daily star caps (the user's decision). Per counsellor per UTC day: at most N stars from
-// each rule (held sessions, help chats, held discussions, posts), and at most N session stars -- held sessions and
-// help chats together -- with the same client (the star's starredby). The numbers are SettingsService's
+// each rule (held sessions, help chats, held discussions, posts), at most N session stars -- held sessions and
+// help chats together -- with the same client (the star's starredby), and at most N session stars per group. The numbers are SettingsService's
 // (config('recognition.cap') unless a super admin set them). Post-interaction stars have their own limits (SCRUM-472).
 // Called by AwardCounsellorStarAction with the counsellor's row locked, so two awards can't both slip under a cap.
 final class StarCapPolicy
@@ -25,7 +28,7 @@ final class StarCapPolicy
 
     private const PER_CLIENT_SOURCES = [StarSourceEnum::sessionHeld, StarSourceEnum::helpChatHeld];
 
-    public static function allows(Counsellor $counsellor, StarSourceEnum $source, ?User $client): bool
+    public static function allows(Counsellor $counsellor, StarSourceEnum $source, ?User $client, ?Model $starreable = null): bool
     {
         $capKey = self::CAP_KEYS[$source->value] ?? null;
 
@@ -37,6 +40,19 @@ final class StarCapPolicy
 
         if (self::today($counsellor)->where('source', $source->value)->count() >= $caps[$capKey]) {
             return false;
+        }
+
+        // SCRUM-471 (security re-check): a group session has no single client, so its stand-in is the group -- at most
+        // N group-session stars per counsellor per group a day, so one puppet member can't farm a group's sessions.
+        if ($source === StarSourceEnum::sessionHeld && $starreable instanceof Session && $starreable->for_type === (new GroupTherapy)->getMorphClass()) {
+            return self::today($counsellor)
+                ->where('source', $source->value)
+                ->where('starreable_type', $starreable->getMorphClass())
+                ->whereIn('starreable_id', Session::query()
+                    ->select('id')
+                    ->where('for_type', $starreable->for_type)
+                    ->where('for_id', $starreable->for_id))
+                ->count() < $caps['session_per_group'];
         }
 
         if (! $client || ! in_array($source, self::PER_CLIENT_SOURCES, true)) {

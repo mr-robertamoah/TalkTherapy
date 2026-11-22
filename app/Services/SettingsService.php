@@ -60,6 +60,7 @@ class SettingsService extends Service
             'discussion' => SettingsEnum::recognitionCapDiscussion,
             'post' => SettingsEnum::recognitionCapPost,
             'session_per_client' => SettingsEnum::recognitionCapSessionPerClient,
+            'session_per_group' => SettingsEnum::recognitionCapSessionPerGroup,
         ];
 
         $stored = PlatformSetting::query()

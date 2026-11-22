@@ -13,6 +13,8 @@ return [
         'discussion' => 2,
         'post' => 3,
         'session_per_client' => 1,
+        // SCRUM-471 (security re-check): a group has no single client, so group-session stars are capped per group.
+        'session_per_group' => 1,
     ],
 
     // SCRUM-471: a help chat earns a star only if it lasted at least this long.

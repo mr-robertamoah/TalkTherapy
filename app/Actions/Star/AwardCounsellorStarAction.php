@@ -38,7 +38,7 @@ class AwardCounsellorStarAction extends Action
                 return null;
             }
 
-            if (! StarCapPolicy::allows($locked, $source, $by)) {
+            if (! StarCapPolicy::allows($locked, $source, $by, $starreable)) {
                 return null;
             }
 
