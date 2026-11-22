@@ -13524,3 +13524,45 @@ Planned with the product-owner, architect and project-manager; split into SCRUM-
   without manual setup, without changing any other demo account's charges or balance. All dated inside/after the
   ended period; each part is skipped once it exists, so the seeder can be run on its own. A waived *invoice line* is not seeded (a line
   needs its own held session and a non-clashing invoice month); it is covered by tests.
+
+## SCRUM-466 — deployment options plan (2026-11-22)
+
+- **The plan:** `documentation/operations/deployment-options.md`. It covers candidates and prices (checked
+  2026-11-22, with each unverified figure marked), mixing providers, the deploy approach, environments and
+  secrets, data and compliance, monitoring, the cost model, the EC2 migration path, risks and 15 proposed
+  tickets. It is a plan only: no infrastructure, code or config changed.
+- **Recommendation:**
+  - **Production:** DigitalOcean in London (LON1; Frankfurt if the Accra latency test favours it). One
+    Droplet running the containers (web, Reverb, queue workers, the one scheduler) and DO Managed MySQL
+    (single node, daily backups and 7-day PITR).
+  - **Staging:** the same provider and region at the smallest size, deployed from `testing`.
+  - **Edges:** Cloudflare in front; encrypted off-provider backups in Cloudflare R2 (EU jurisdiction).
+  - **Deploys:** Kamal 2 from GitHub Actions over Tailscale with OIDC, so CI holds no long-lived cloud keys.
+  - **Cost:** about $59/month at launch and $225/month at 10×.
+  - **Runners-up:** Hetzner with MySQL we run ourselves (about €38 / €186: cheapest, but we would own
+    database operations). AWS London with RDS (about $58 + unverified lines at launch, $401 at 10×: native
+    OIDC, Multi-AZ, and triggers via a parameter group). AWS London is also the fallback if the DO spike
+    fails.
+- **Why the app and the database stay at one provider:** Laravel's sequential queries multiply any
+  cross-provider round trip, and the availability of two providers multiplies too. Mixing pays only at
+  the edges: CDN, backup storage and monitoring SaaS.
+- **Ruled out:**
+  - PlanetScale (Vitess): no triggers ("any form of stored routines"), and the SCRUM-362 append-only tables
+    depend on them.
+  - Render and Fly.io: no managed MySQL.
+  - Redis: isn't needed at launch. The app uses none today, and one Reverb process with `ext-uv` covers the
+    assumed 2,000 connections at 10×.
+- **Gates before committing:**
+  - T1: latency measured from Accra. None was published, and every latency figure in the plan is
+    unverified.
+  - T2: a migration run against DO Managed MySQL. It must create the triggers
+    (`log_bin_trust_function_creators`, not documented by DO) and pass `sql_require_primary_key`.
+  - From 30 Nov 2026, new DO Standard clusters can't add standby nodes. HA would need Advanced Edition
+    (price not published).
+- **Marked for legal confirmation:**
+  - Hosting outside Ghana: Act 843 has no explicit transfer rule according to DLA Piper, but section 18
+    covers foreign data subjects, and a draft 2025 Bill adds a cross-border section.
+  - DPC registration and its two-year renewal.
+  - Backup retention against the privacy page's deletion promises.
+  - Naming the host, region and transfers on the privacy page. Fold this into the open SCRUM-364 lawyer
+    review.
