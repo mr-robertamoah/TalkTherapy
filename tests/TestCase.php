@@ -15,6 +15,12 @@ abstract class TestCase extends BaseTestCase
     {
         parent::setUp();
 
+        // Some controllers call set_time_limit() for a slow export (JournalController: 30 seconds). In a --parallel
+        // worker that limit outlives the request and the test, so whichever slow test file the worker runs next is
+        // killed with "Maximum execution time exceeded" -- a flake that grows with machine load. Each test starts
+        // without one.
+        set_time_limit(0);
+
         $this->ensureIsolatedTestDatabase();
 
         // SCRUM-35: no test ever reaches Have I Been Pwned -- every password counts as not breached unless a test binds
