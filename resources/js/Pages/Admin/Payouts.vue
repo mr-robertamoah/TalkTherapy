@@ -16,7 +16,7 @@ import TextInput from '@/Components/TextInput.vue';
 import useAlert from '@/Composables/useAlert';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
-import { formatUtc } from '@/Support/commissionFree.js';
+import { formatUtc, waiverStatusPill } from '@/Support/commissionFree.js';
 import { computed, reactive, ref, watch } from 'vue';
 import { default as _ } from 'lodash';
 
@@ -113,9 +113,6 @@ const waiverColumns = [
     { label: 'Actions' },
 ]
 
-function waiverTone(status) {
-    return { upcoming: 'blue', active: 'green', ended: 'gray', cancelled: 'amber' }[status] ?? 'gray'
-}
 
 // ---- Trigger payout on a counsellor's behalf ----
 
@@ -381,7 +378,7 @@ function statusTone(status) {
                             <AdminCell label="Starts" half><span class="whitespace-nowrap">{{ formatUtc(waiver.startsAt) }}</span></AdminCell>
                             <AdminCell label="Ends" half><span class="whitespace-nowrap">{{ waiver.endsAt ? formatUtc(waiver.endsAt) : 'no end set' }}</span></AdminCell>
                             <AdminCell label="Status" half>
-                                <AdminStatusPill :label="waiver.status" :tone="waiverTone(waiver.status)" />
+                                <AdminStatusPill :label="waiverStatusPill(waiver.status).label" :tone="waiverStatusPill(waiver.status).tone" />
                                 <div v-if="waiver.endedBy" class="mt-1 text-xs text-gray-500">ended by {{ waiver.endedBy }}</div>
                             </AdminCell>
                             <AdminCell label="Reason"><span class="whitespace-pre-line break-words">{{ waiver.reason }}</span></AdminCell>

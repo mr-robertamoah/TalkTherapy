@@ -1,5 +1,6 @@
 // TT-7.11d2/SCRUM-474: labels and pill tones for the admin recognition page (Admin/Recognition.vue). The rows come
 // from GetRecognitionSuggestionsAction, the events from GetRecognitionEventsAction.
+import { utcInputValue } from './commissionFree.js'
 
 // Why a row may not (or no longer) be eligible -- shown as red/amber pills. A suggested row never has one; an
 // "others" row (decided earlier) may.
@@ -76,19 +77,38 @@ export function waiverPrefill(recognitionMonthLabel, now = new Date()) {
     }
 }
 
-// 'YYYY-MM-DDTHH:mm' in UTC, for a datetime-local input labelled GMT.
-function utcInputValue(date) {
-    const pad = (value) => String(value).padStart(2, '0')
+// A datetime-local value read as UTC (as the server does); null when empty or malformed.
+function parseUtcInput(value) {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(value)) return null
+    const date = new Date(`${value}Z`)
 
-    return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}T${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`
+    return Number.isNaN(date.getTime()) ? null : date
 }
 
-// A commission-free period's status (PlatformFeeWaiver::status()) as a pill. Cancelled: ended early with "End now".
-export function waiverStatusPill(status) {
-    return {
-        upcoming: { label: 'upcoming', tone: 'blue' },
-        active: { label: 'active', tone: 'green' },
-        ended: { label: 'ended', tone: 'gray' },
-        cancelled: { label: 'cancelled', tone: 'amber' },
-    }[status] ?? { label: status ?? 'unknown', tone: 'gray' }
+// The server allows a start up to a minute back (PlatformFeeWaiver::BACKDATE_LEEWAY_SECONDS).
+const BACKDATE_LEEWAY_MS = 60 * 1000
+
+// TT-7.11e2/SCRUM-477: the waiver option checked before the approval is posted, so an approval isn't saved with a
+// period that can only be refused: both dates and a reason, the end after the start, the start not in the past (the
+// server checks all of it again, and the overlap and eligibility only it knows). Field => message; {} when it may go,
+// or when the option is off.
+export function waiverOptionErrors(option, reasonMax, now = new Date()) {
+    if (!option?.enabled) return {}
+
+    const errors = {}
+    const startsAt = parseUtcInput(option.starts_at)
+    const endsAt = parseUtcInput(option.ends_at)
+    const reason = (option.reason ?? '').trim()
+
+    if (!startsAt) errors.starts_at = 'Enter a start date and time.'
+    else if (startsAt.getTime() < now.getTime() - BACKDATE_LEEWAY_MS) errors.starts_at = 'The start cannot be in the past.'
+
+    if (!endsAt) errors.ends_at = 'Enter an end date and time.'
+    else if (startsAt && endsAt.getTime() <= startsAt.getTime()) errors.ends_at = 'The end must be after the start.'
+    else if (endsAt.getTime() <= now.getTime()) errors.ends_at = 'The end must be in the future.'
+
+    if (!reason) errors.reason = 'Enter a reason.'
+    else if (reason.length > reasonMax) errors.reason = `The reason can be up to ${reasonMax} characters.`
+
+    return errors
 }
