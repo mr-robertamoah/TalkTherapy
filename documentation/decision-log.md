@@ -13851,3 +13851,52 @@ it is outside the caller's transaction and row locks and a failure never blocks 
   - **L-4 (no code):** after-commit awards and revokes are best effort and aren't retried; a failure is reported and
     that star stays missed (or stays given). A nightly reconcile (re-derive the day's session/discussion stars and
     refunded sessions' revokes) would be the follow-up if reports show it happening.
+
+## SCRUM-474 — recognition admin page (TT-7.11d2, 2026-11-22)
+
+TT-7.11d2, part 5 of SCRUM-464: `/administrator/recognition` (`Admin/Recognition.vue`).
+
+- **Any admin views; only a super admin changes anything:**
+  - `ViewCounsellorRecognitionRequest::authorize()` and the service's `getSuggestions()` now allow any administrator.
+    The ticket says "any admin can view", and the page loads the same data as Inertia props. The JSON suggestions
+    route follows the same rule, so the two can't disagree.
+  - `DecideCounsellorRecognitionRequest` has its own super-admin `authorize()`, so approve, skip and add still answer
+    a 403 before validation, and the service still checks again.
+  - The new counsellor search and the caps update also answer a 403 before validation. The caps FormRequest refuses
+    by role rather than staying thin like `UpdatePlatformFeeRequest`, because the ticket asks for a 403 and
+    `UpdateSettingAction`'s own refusal is a 422. That action still checks again.
+- **Star counts and ranks are shown to every admin:** the page is for deciding on a ranking, and SCRUM-464's "no
+  public star counts" is about the public, not administrators. `CounsellorRecognitionResource` now shows
+  `starsCount`/`rank` to any admin (it was super admin only), so the page and the resource agree. Side effect,
+  accepted: an ordinary admin who is also a counsellor sees their own snapshot in their consent-change response.
+  Counsellors who aren't admins still never see stars or ranks.
+- **Month on the page:**
+  - The switch offers last month (the default) and this month, as the backend allows.
+  - An invalid `?month=` is validated by `ShowCounsellorRecognitionPageRequest`, whose `$redirectRoute` sends the
+    visit to the page's default month with the error. It doesn't redirect "back", because for a typed URL that is
+    the same bad URL and would loop.
+- **Nav placement:** "Counsellor recognition" sits in the Money group directly after Payouts. The ticket said "next
+  to Payouts and Reports", which are in different groups. Money fits because a recognition is where SCRUM-475's fee
+  waiver is given.
+- **Search returns eligible counsellors only, with no eligibility field (deviation from the ticket):**
+  - The ticket asked for "id, name, username and eligibility" but also "returns only eligible counsellors". Every
+    row is eligible, so the flag would always be true and is left out.
+  - Eligibility is `GetRecognitionEligibleCounsellorIdsAction`, the same rule `add()` enforces. The cheap filters run
+    in SQL first, then the open-report pass runs on at most 50 name matches; at most 10 are returned.
+  - The search never returns the viewer's own counsellor profile.
+  - It doesn't hide counsellors already suggested. `add()` refuses those with "Approve them instead", and the page
+    shows that error.
+- **Others rows:** an approved row can be skipped. A skipped row with no alerts can be approved again through `add`,
+  because it isn't suggested and `approve` would refuse it. A row whose counsellor is the viewer gets no controls.
+- **Caps:**
+  - `SettingsService::updateRecognitionCaps()` writes all six through `UpdateSettingAction` in one transaction, so a
+    save changes all of them or none. The name-to-setting map is now one constant, `RECOGNITION_CAP_KEYS`, shared
+    with `getRecognitionCaps()`.
+  - Values must be integers from 0 to 100, and all six are required.
+  - The interaction caps (`recognition.interaction_*`, SCRUM-472) aren't settings yet and aren't on the card.
+- **Audit:** `GetRecognitionEventsAction` returns the month's events, newest first, capped at 200. Each has the event,
+  the counsellor's id and name, the actor's name (null when nobody in particular acted), `from` and the time. The
+  actor's name is shown to admins only. The counsellor's consent request still comes from "TalkTherapy".
+- **SCRUM-475 slots:**
+  - each row has an empty "Fee waiver" column (`AdminRecognitionRow.vue`);
+  - `decide()` in `Recognition.vue` marks where the waiver fields join the approve request and its confirm step.
