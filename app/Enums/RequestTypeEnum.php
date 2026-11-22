@@ -66,6 +66,11 @@ enum RequestTypeEnum: string
     // (EnsureUserCanRespondToRequestAction); `for` is the Therapy or GroupTherapy. `data` carries
     // `reason`, `proposedEndsAt` and `wardId` (server-side only: never sent to the counsellor).
     case safeguardingException = 'SAFEGUARDING_EXCEPTION_REQUEST';
+    // TT-7.11d1/SCRUM-473: a counsellor's featuring consent for a recognition (CounsellorRecognitionService::approve).
+    // `from` is the super administrator who approved it; `to` is the Counsellor, the only one who may answer; `for` is
+    // the CounsellorRecognition. `data` carries `month` (YYYY-MM) only. Deliberately not a counsellingType: a
+    // suspension leaves it pending (the user's decision).
+    case counsellorRecognition = 'COUNSELLOR_RECOGNITION_REQUEST';
 
     // SCRUM-359: requests that ask a counsellor to work with someone (or offer to). A suspended
     // counsellor can't send, receive or accept these, and pending ones are declined when they are
