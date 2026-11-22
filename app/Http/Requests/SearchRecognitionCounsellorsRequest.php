@@ -3,11 +3,11 @@
 namespace App\Http\Requests;
 
 use App\Support\AdminSearch;
-use Illuminate\Foundation\Http\FormRequest;
 
-// TT-7.11d2/SCRUM-474: the recognition page's "add a counsellor" search -- super administrators only (a 403 before
-// validation, as DecideCounsellorRecognitionRequest); CounsellorRecognitionService checks again.
-class SearchRecognitionCounsellorsRequest extends FormRequest
+// TT-7.11d2/SCRUM-474: the recognition page's "add a counsellor" search, for a month (as the page; last month without
+// one) -- super administrators only (a 403 before validation, as DecideCounsellorRecognitionRequest);
+// CounsellorRecognitionService checks again.
+class SearchRecognitionCounsellorsRequest extends ViewCounsellorRecognitionRequest
 {
     public function authorize(): bool
     {
@@ -17,6 +17,7 @@ class SearchRecognitionCounsellorsRequest extends FormRequest
     public function rules(): array
     {
         return [
+            ...parent::rules(),
             'search' => ['required', 'string', 'min:'.AdminSearch::MIN, 'max:'.AdminSearch::MAX],
         ];
     }

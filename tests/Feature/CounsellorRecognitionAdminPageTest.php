@@ -1,24 +1,30 @@
 <?php
 
 use App\Actions\Suspension\ApplySuspensionAction;
+use App\DTOs\CounsellorRecognitionDTO;
 use App\Enums\AdministratorTypeEnum;
 use App\Enums\CounsellorRecognitionEventEnum;
+use App\Enums\HelpRequestStatusEnum;
 use App\Enums\SettingsEnum;
 use App\Enums\StarSourceEnum;
 use App\Enums\SuspensionScopeEnum;
+use App\Exceptions\CounsellorRecognitionException;
 use App\Models\Administrator;
 use App\Models\Counsellor;
 use App\Models\CounsellorRecognition;
+use App\Models\HelpRequest;
 use App\Models\PlatformSetting;
 use App\Models\Report;
 use App\Models\Star;
 use App\Models\Therapy;
 use App\Models\User;
+use App\Services\CounsellorRecognitionService;
 use App\Services\SettingsService;
 use App\Support\AdminNavigation;
 use App\Support\StarCapPolicy;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 
 // TT-7.11d2/SCRUM-474: the admin recognition page -- any administrator views it, a super administrator decides, adds
@@ -116,7 +122,7 @@ test('any admin opens the page for last month by default, with the suggestions, 
             ->has('recognition.unattributedOpenReportsNote')
             ->where('events', [])
             ->where('caps', rapCaps())
-            ->where('capsMax', 100)
+            ->where('capsMax', rapCaps(['session' => 100, 'help_chat' => 100, 'discussion' => 100, 'post' => 100, 'session_per_client' => 10, 'session_per_group' => 10]))
             ->has('adminNavigation'));
 
     $super = rapAdmin();
@@ -241,12 +247,12 @@ test('a super admin saves the daily star caps, and StarCapPolicy uses them', fun
 
     expect(StarCapPolicy::allows($counsellor, StarSourceEnum::postPublished, null))->toBeTrue();
 
-    $this->actingAs($super)->postJson(route('admin.settings.recognition-caps.update'), ['caps' => rapCaps(['post' => 0, 'session' => 12, 'session_per_group' => 100])])
+    $this->actingAs($super)->postJson(route('admin.settings.recognition-caps.update'), ['caps' => rapCaps(['post' => 0, 'session' => 12, 'session_per_group' => 10])])
         ->assertOk()
         ->assertJsonPath('caps.post', 0)
         ->assertJsonPath('caps.session', 12);
 
-    expect(SettingsService::new()->getRecognitionCaps())->toBe(rapCaps(['post' => 0, 'session' => 12, 'session_per_group' => 100]))
+    expect(SettingsService::new()->getRecognitionCaps())->toBe(rapCaps(['post' => 0, 'session' => 12, 'session_per_group' => 10]))
         ->and(PlatformSetting::query()->where('key', SettingsEnum::recognitionCapPost->value)->value('value'))->toBe('0')
         ->and(PlatformSetting::query()->where('key', SettingsEnum::recognitionCapPost->value)->value('updated_by_id'))->toBe($super->id)
         ->and(StarCapPolicy::allows($counsellor, StarSourceEnum::postPublished, null))->toBeFalse();
@@ -261,7 +267,7 @@ test('a super admin saves the daily star caps, and StarCapPolicy uses them', fun
         ->assertInertia(fn ($page) => $page->where('caps.post', 4));
 });
 
-test('every cap must be a whole number from 0 to 100, all six at once, and a refusal saves none', function (array $caps, string $error) {
+test('every cap must be a whole number from 0 to its maximum, all six at once, and an invalid form saves none', function (array $caps, string $error) {
     $this->actingAs(rapAdmin())->postJson(route('admin.settings.recognition-caps.update'), ['caps' => $caps])
         ->assertUnprocessable()
         ->assertJsonValidationErrors($error);
@@ -269,6 +275,8 @@ test('every cap must be a whole number from 0 to 100, all six at once, and a ref
     expect(PlatformSetting::count())->toBe(0);
 })->with([
     'over 100' => [rapCaps(['session' => 101]), 'caps.session'],
+    'per client over 10' => [rapCaps(['session_per_client' => 11]), 'caps.session_per_client'],
+    'per group over 10' => [rapCaps(['session_per_group' => 11]), 'caps.session_per_group'],
     'negative' => [rapCaps(['post' => -1]), 'caps.post'],
     'a fraction' => [rapCaps(['discussion' => 1.5]), 'caps.discussion'],
     'text' => [rapCaps(['help_chat' => 'five']), 'caps.help_chat'],
@@ -311,4 +319,155 @@ test('the page lists the month\'s recognition events, most recent first, with wh
             ->where('events.2.at', '2026-11-20T12:00:00Z')
             ->where('recognition.approvedCount', 0)
             ->has('recognition.suggestions', 2));
+});
+
+// ---- Review fixes ----
+
+test('a report about an urgent help request never marks the counsellor who asked, for any admin; it is counted as unattributed', function () {
+    $super = rapAdmin();
+    rapStars($asked = rapCounsellor(), 3);
+    rapStars($reportedOpenly = rapCounsellor(), 2);
+    // Approved while eligible, so both stay listed (under "others") once reported.
+    foreach ([$asked, $reportedOpenly] as $counsellor) {
+        $this->actingAs($super)->postJson(route('admin.recognition.approve'), ['month' => '2026-10', 'counsellor_id' => $counsellor->id])->assertOk();
+    }
+
+    // The counsellor's own account asked for urgent help, and that help chat was reported.
+    $help = HelpRequest::create(['user_id' => $asked->user_id, 'status' => HelpRequestStatusEnum::ended->value]);
+    rapReport($help, rapCounsellor(), []);
+    rapReport($reportedOpenly->user, rapCounsellor(), ['counsellorId' => $reportedOpenly->id]);
+
+    $check = function (array $recognition) use ($asked, $reportedOpenly) {
+        $others = collect($recognition['others'])->keyBy('counsellorId');
+
+        expect($recognition['suggestions'])->toBe([])
+            ->and($others[$asked->id]['flags']['openReport'])->toBeFalse()
+            ->and($others[$reportedOpenly->id]['flags']['openReport'])->toBeTrue()
+            ->and($recognition['unattributedOpenReports'])->toBe(1);
+    };
+
+    foreach ([rapAdmin(super: false), $super] as $viewer) {
+        $check($this->actingAs($viewer)->getJson(route('admin.recognition.suggestions'))->assertOk()->json());
+        $this->actingAs($viewer)->get(route('administrator.recognition'))
+            ->assertInertia(fn ($page) => $page->where('recognition', fn ($recognition) => $check($recognition->toArray()) || true));
+    }
+});
+
+test('an admin who is also a counsellor sees no stars, rank, report flag or actor on their own row', function () {
+    $super = rapAdmin();
+    $admin = rapAdmin(super: false);
+    rapStars($own = rapCounsellor(['user_id' => $admin->id]), 4, '2026-10-02 10:00:00');
+    rapStars($other = rapCounsellor(), 3, '2026-10-02 10:00:00');
+    $this->actingAs($super)->postJson(route('admin.recognition.approve'), ['month' => '2026-10', 'counsellor_id' => $own->id])->assertOk();
+    $this->actingAs($super)->postJson(route('admin.recognition.approve'), ['month' => '2026-10', 'counsellor_id' => $other->id])->assertOk();
+
+    // Suggested: their own stars, first star and rank are hidden from them; the other row isn't.
+    $this->actingAs($admin)->get(route('administrator.recognition'))
+        ->assertInertia(fn ($page) => $page
+            ->where('ownCounsellorId', $own->id)
+            ->where('recognition.suggestions.0.counsellorId', $own->id)
+            ->where('recognition.suggestions.0.stars', null)
+            ->where('recognition.suggestions.0.rank', null)
+            ->where('recognition.suggestions.0.firstStarAt', null)
+            ->where('recognition.suggestions.0.decision', 'approved')
+            ->where('recognition.suggestions.1.stars', 3)
+            ->where('recognition.suggestions.1.rank', 2)
+            ->where('events.0.counsellorId', $other->id)
+            ->where('events.0.actorName', $super->name)
+            ->where('events.1.counsellorId', $own->id)
+            ->where('events.1.actorName', null));
+    $this->actingAs(rapAdmin(super: false))->getJson(route('admin.recognition.suggestions'))
+        ->assertJsonPath('suggestions.0.stars', 4)
+        ->assertJsonPath('suggestions.0.rank', 1);
+
+    // Reported since: listed under "others", without the report flag for them.
+    rapReport($admin, rapCounsellor(), ['counsellorId' => $own->id]);
+
+    $this->actingAs($admin)->getJson(route('admin.recognition.suggestions'))
+        ->assertJsonPath('others.0.counsellorId', $own->id)
+        ->assertJsonPath('others.0.flags.openReport', false);
+    $this->actingAs(rapAdmin(super: false))->getJson(route('admin.recognition.suggestions'))
+        ->assertJsonPath('others.0.flags.openReport', true);
+});
+
+test('the service refuses the suggestions and events to anyone who isn\'t an admin', function (?bool $signedIn) {
+    $dto = CounsellorRecognitionDTO::new()->fromArray(['user' => $signedIn ? User::factory()->adult()->create() : null, 'month' => '2026-10']);
+
+    foreach (['getSuggestions', 'getEvents'] as $method) {
+        expect(fn () => CounsellorRecognitionService::new()->{$method}($dto))
+            ->toThrow(fn (CounsellorRecognitionException $e) => expect($e->getCode())->toBe(403)
+                ->and($e->getMessage())->toBe(CounsellorRecognitionService::NOT_ALLOWED_TO_VIEW));
+    }
+})->with(['a user' => true, 'nobody' => false]);
+
+test('the search leaves out counsellors already suggested or decided for the month it is asked for', function () {
+    $super = rapAdmin();
+    rapStars($suggested = rapCounsellor(['name' => 'Wren Suggested']), 3);
+    rapStars($ranked = rapCounsellor(['name' => 'Wren Ranked']), 1);
+    $free = rapCounsellor(['name' => 'Wren Free']);
+    config(['recognition.per_month' => 1]);
+    $this->actingAs($super)->postJson(route('admin.recognition.skip'), ['month' => '2026-10', 'counsellor_id' => $suggested->id])->assertOk();
+    // $suggested is still suggested (skipping doesn't change the ranking) and now decided too; $ranked (rank 2, past the
+    // cap of 1) is neither.
+    $search = fn (array $query) => array_column($this->actingAs($super)->getJson(route('admin.recognition.counsellors', $query))->assertOk()->json('counsellors'), 'id');
+
+    expect($search(['search' => 'wren']))->toBe([$ranked->id, $free->id])
+        ->and($search(['search' => 'wren', 'month' => '2026-10']))->toBe([$ranked->id, $free->id])
+        // November: nobody is suggested or decided yet.
+        ->and($search(['search' => 'wren', 'month' => '2026-11']))->toBe([$suggested->id, $ranked->id, $free->id]);
+
+    $this->actingAs($super)->getJson(route('admin.recognition.counsellors', ['search' => 'wren', 'month' => '2026-09']))
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('month');
+});
+
+test('a decision sent from the page goes back to it, and a refusal comes back as a field error', function () {
+    $super = rapAdmin();
+    rapStars($suggested = rapCounsellor(), 3);
+    $page = route('administrator.recognition', ['month' => '2026-10']);
+
+    $this->actingAs($super)->from($page)
+        ->post(route('admin.recognition.approve'), ['month' => '2026-10', 'counsellor_id' => $suggested->id])
+        ->assertRedirect($page)
+        ->assertSessionHasNoErrors();
+    expect(CounsellorRecognition::sole()->decision->value)->toBe('approved');
+
+    // Already suggested: add refuses it.
+    rapStars($another = rapCounsellor(), 2);
+    $this->actingAs($super)->from($page)
+        ->post(route('admin.recognition.add'), ['month' => '2026-10', 'counsellor_id' => $another->id])
+        ->assertRedirect($page)
+        ->assertSessionHasErrors('counsellor_id');
+    expect(CounsellorRecognition::count())->toBe(1);
+});
+
+test('every cap change is logged with who made it and the old and new values', function () {
+    Log::spy();
+    $super = rapAdmin();
+
+    $this->actingAs($super)->postJson(route('admin.settings.recognition-caps.update'), ['caps' => rapCaps(['post' => 0, 'session' => 9])])->assertOk();
+
+    Log::shouldHaveReceived('info')->once()->with('Daily star caps changed.', [
+        'user_id' => $super->id,
+        'changes' => ['session' => ['from' => 8, 'to' => 9], 'post' => ['from' => 3, 'to' => 0]],
+    ]);
+
+    // Saving the same values again changes (and logs) nothing.
+    $this->actingAs($super)->postJson(route('admin.settings.recognition-caps.update'), ['caps' => rapCaps(['post' => 0, 'session' => 9])])->assertOk();
+    Log::shouldHaveReceived('info')->once();
+});
+
+test('a failure partway through saving the caps saves none of them', function () {
+    $super = rapAdmin();
+    PlatformSetting::saving(function (PlatformSetting $setting) {
+        if ($setting->key === SettingsEnum::recognitionCapPost->value) {
+            throw new RuntimeException('Disk full.');
+        }
+    });
+
+    $this->actingAs($super)->postJson(route('admin.settings.recognition-caps.update'), ['caps' => rapCaps(['session' => 9, 'post' => 0])])
+        ->assertStatus(500);
+
+    expect(PlatformSetting::count())->toBe(0)
+        ->and(SettingsService::new()->getRecognitionCaps())->toBe(rapCaps());
 });

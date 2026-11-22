@@ -579,6 +579,17 @@ class Counsellor extends Model
         return (bool) $this->user?->isSuspendedAsCounsellor();
     }
 
+    // TT-7.11d2/SCRUM-474: could be recognised now, open reports aside (those need a pass over the reports --
+    // GetCounsellorIdsWithOpenReportsAction): currently verified, not suspended, and neither the profile (the default
+    // scope) nor its account deleted. Shared by GetRecognitionEligibleCounsellorIdsAction and the admin search.
+    public function scopeWhereRecognisableNow($query)
+    {
+        return $query
+            ->whereCurrentlyVerified()
+            ->whereNotSuspended()
+            ->whereHas('user', fn ($query) => $query->whereNull('users.deleted_at'));
+    }
+
     public function scopeWhereNotUser($query, $user)
     {
         return $query->where(function ($query) use ($user) {

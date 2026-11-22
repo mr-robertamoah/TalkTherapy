@@ -10,6 +10,7 @@ use App\Http\Requests\ShowCounsellorRecognitionPageRequest;
 use App\Http\Requests\UpdateRecognitionCapsRequest;
 use App\Http\Requests\ViewCounsellorRecognitionRequest;
 use App\Http\Resources\CounsellorRecognitionResource;
+use App\Models\CounsellorRecognition;
 use App\Services\CounsellorRecognitionService;
 use App\Services\SettingsService;
 use Carbon\CarbonImmutable;
@@ -33,21 +34,21 @@ class AdminCounsellorRecognitionController extends Controller
         $month = $request->month();
         $dto = CounsellorRecognitionDTO::new()->fromArray(['user' => $user, 'month' => $month]);
         $service = CounsellorRecognitionService::new();
-        $current = CarbonImmutable::now('UTC')->startOfMonth();
 
         return Inertia::render('Admin/Recognition', [
             'month' => $month,
             // The two months a recognition can be decided for, last month first (the default).
-            'months' => collect([$current->subMonth(), $current])
+            'months' => collect(CounsellorRecognition::decidableMonths())
                 ->map(fn (CarbonImmutable $value) => ['value' => $value->format('Y-m'), 'label' => $value->format('F Y')])
                 ->all(),
             'recognition' => $service->getSuggestions($dto),
             'events' => $service->getEvents($dto),
             'caps' => SettingsService::new()->getRecognitionCaps(),
-            'capsMax' => UpdateRecognitionCapsRequest::MAX,
+            // Each cap's name => the most it may be set to.
+            'capsMax' => UpdateRecognitionCapsRequest::maxima(),
             'canManage' => $user->isSuperAdmin(),
             // Nobody decides their own recognition (the service refuses it): the page offers no controls on that row.
-            'ownCounsellorId' => $user->counsellor?->id,
+            'ownCounsellorId' => $service->ownCounsellorId($dto),
         ]);
     }
 
@@ -55,7 +56,11 @@ class AdminCounsellorRecognitionController extends Controller
     {
         try {
             return response()->json(['counsellors' => CounsellorRecognitionService::new()->searchCounsellors(
-                CounsellorRecognitionDTO::new()->fromArray(['user' => $request->user(), 'search' => $request->search()])
+                CounsellorRecognitionDTO::new()->fromArray([
+                    'user' => $request->user(),
+                    'month' => $request->month(),
+                    'search' => $request->search(),
+                ])
             )]);
         } catch (Throwable $th) {
             return $this->failureResponse($request, $th);

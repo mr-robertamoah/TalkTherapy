@@ -8,6 +8,7 @@ use App\DTOs\UpdateRecognitionCapsDTO;
 use App\Enums\SettingsEnum;
 use App\Models\PlatformSetting;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 // TT-7.6b/SCRUM-226: the platform's one generic settings mechanism -- deliberately not
 // payout-specific, since the platform fee and the minimum-payout-threshold are required to
@@ -90,8 +91,11 @@ class SettingsService extends Service
 
     // TT-7.11d2/SCRUM-474: every daily star cap at once ($caps: name => whole number, validated by
     // UpdateRecognitionCapsRequest), through UpdateSettingAction (super admin only) -- all or none.
+    // Security review L2: every change is logged with who made it and the old and new values.
     public function updateRecognitionCaps(UpdateRecognitionCapsDTO $dto): array
     {
+        $before = $this->getRecognitionCaps();
+
         DB::transaction(function () use ($dto) {
             foreach (self::RECOGNITION_CAP_KEYS as $name => $key) {
                 if (array_key_exists($name, $dto->caps)) {
@@ -104,7 +108,17 @@ class SettingsService extends Service
             }
         });
 
-        return $this->getRecognitionCaps();
+        $after = $this->getRecognitionCaps();
+        $changes = collect($after)
+            ->filter(fn (int $value, string $name) => $before[$name] !== $value)
+            ->map(fn (int $value, string $name) => ['from' => $before[$name], 'to' => $value])
+            ->all();
+
+        if ($changes !== []) {
+            Log::info('Daily star caps changed.', ['user_id' => $dto->user?->id, 'changes' => $changes]);
+        }
+
+        return $after;
     }
 
     // TT-7.3b-i/SCRUM-240: lets the org-admin payment-instrument onboarding UI preview the nominal

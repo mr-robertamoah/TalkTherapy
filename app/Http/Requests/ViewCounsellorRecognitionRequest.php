@@ -30,9 +30,9 @@ class ViewCounsellorRecognitionRequest extends FormRequest
         return $this->validated('month') ?? self::defaultMonth();
     }
 
-    public static function defaultMonth(): string
+    private static function defaultMonth(): string
     {
-        return now('UTC')->startOfMonth()->subMonth()->format('Y-m');
+        return CounsellorRecognition::decidableMonths()[0]->format('Y-m');
     }
 
     public static function monthRule(): Closure

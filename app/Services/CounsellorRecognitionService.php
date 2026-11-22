@@ -51,18 +51,57 @@ class CounsellorRecognitionService extends Service
 
     // TT-7.11d2/SCRUM-474: any administrator may view the suggestions and the month's events; only a super
     // administrator decides.
+    //
+    // Security review L1: the viewer's own counsellor row (an administrator who is also a counsellor) is redacted --
+    // no stars, first star, rank, cutoff tie or open-report flag -- and so is who acted on their own recognition in the
+    // events. Counsellors never see their star counts or ranks, nor who reported them, wherever they look.
     public function getSuggestions(CounsellorRecognitionDTO $dto): array
     {
         $this->ensureCanView($dto);
 
-        return GetRecognitionSuggestionsAction::new()->execute($this->month($dto));
+        $result = GetRecognitionSuggestionsAction::new()->execute($this->month($dto));
+        $ownId = $this->ownCounsellorId($dto);
+
+        if ($ownId !== null) {
+            foreach (['suggestions', 'others'] as $list) {
+                $result[$list] = array_map(fn (array $row) => $row['counsellorId'] === $ownId ? $this->redactOwnRow($row) : $row, $result[$list]);
+            }
+        }
+
+        return $result;
     }
 
     public function getEvents(CounsellorRecognitionDTO $dto): array
     {
         $this->ensureCanView($dto);
 
-        return GetRecognitionEventsAction::new()->execute($this->month($dto));
+        $events = GetRecognitionEventsAction::new()->execute($this->month($dto));
+        $ownId = $this->ownCounsellorId($dto);
+
+        return $ownId === null ? $events : array_map(
+            fn (array $event) => $event['counsellorId'] === $ownId ? [...$event, 'actorName' => null] : $event,
+            $events,
+        );
+    }
+
+    // The viewer's own counsellor profile, deleted or not; null when they have none.
+    public function ownCounsellorId(CounsellorRecognitionDTO $dto): ?int
+    {
+        $id = Counsellor::withTrashed()->where('user_id', $dto->user?->id)->value('id');
+
+        return $id === null ? null : (int) $id;
+    }
+
+    private function redactOwnRow(array $row): array
+    {
+        return [
+            ...$row,
+            'stars' => null,
+            'firstStarAt' => null,
+            'rank' => null,
+            'tiedAtCutoff' => false,
+            'flags' => [...$row['flags'], 'openReport' => false],
+        ];
     }
 
     // TT-7.11d2/SCRUM-474: counsellors who could be added now, for the super administrator's "add a counsellor".
@@ -70,7 +109,7 @@ class CounsellorRecognitionService extends Service
     {
         $this->ensureCanManage($dto);
 
-        return SearchRecognitionCounsellorsAction::new()->execute($dto->user, (string) $dto->search);
+        return SearchRecognitionCounsellorsAction::new()->execute($dto->user, (string) $dto->search, $this->month($dto));
     }
 
     // A suggested counsellor (ranked within the month's cap, ties included).

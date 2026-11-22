@@ -43,9 +43,25 @@ class CounsellorRecognition extends Model
         }
 
         $month = CarbonImmutable::create((int) $parts[1], (int) $parts[2], 1, 0, 0, 0, 'UTC');
+
+        foreach (self::decidableMonths() as $decidable) {
+            if ($month->equalTo($decidable)) {
+                return $month;
+            }
+        }
+
+        return null;
+    }
+
+    // TT-7.11d2/SCRUM-474: THE months a recognition can be decided for, each its first moment in UTC -- last month (the
+    // default, the one usually decided) first, then this month. parseMonth(), the requests' default and the admin
+    // page's month switch all read this.
+    /** @return array<int, CarbonImmutable> */
+    public static function decidableMonths(): array
+    {
         $current = CarbonImmutable::now('UTC')->startOfMonth();
 
-        return $month->equalTo($current) || $month->equalTo($current->subMonth()) ? $month : null;
+        return [$current->subMonth(), $current];
     }
 
     // The stored value for a month: its 1st, as 'Y-m-d'.
