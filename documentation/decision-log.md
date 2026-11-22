@@ -13733,3 +13733,58 @@ Split into SCRUM-470–476 (TT-7.11a–f); the first, SCRUM-470, is the star fou
 - **Seed data:** `RecognitionSeeder` gives the six demo counsellors last month's new-rule stars (with a tie between
   `emma_williams` and `david_brown`) and approves `sarah_johnson` through the service, so her consent request is
   pending on her dashboard.
+
+## SCRUM-475 — per-counsellor waivers (TT-7.11e, 2026-11-22)
+
+Backend only; the optional waiver on the approval form is SCRUM-474's (the recognition page isn't built yet).
+
+- **One service, two scopes:** `PlatformFeeWaiverService` gains `createForCounsellor`, `endNowForCounsellor` and
+  `deleteForCounsellor`, sharing the platform-wide rules (no backdating with a minute's leeway, clamped to now; end
+  after the start and after now; both within 2 years; reason required, max 500, plain text; "end now" only while
+  active; delete only while upcoming and more than 60 s before the start; a used period can't be deleted). The period
+  lookup is one scoped lock, `lockWaiver(?int $counsellorId, ?int $id)`: a platform-wide id is a 404 on a counsellor's
+  routes, a counsellor's on the platform-wide routes or another counsellor's. The field rules moved into a shared
+  trait, `ValidatesFeeWaiverPeriod`, used by both FormRequests; `counsellor_id` stays prohibited in the body and
+  unfillable on the model -- it is set with `forceFill` from the route's counsellor only.
+- **Locking:** the counsellor's row (`lockForUpdate`, soft-deleted included) is the mutex for their periods -- create,
+  end and delete all take it -- so the per-counsellor overlap check doesn't depend on gap locks. Lock order: counsellor,
+  then the recognition (the recognition service never locks counsellors, so no cycle). Overlap with a platform-wide
+  period is allowed (half-open intervals, as before); when both apply the platform-wide id is recorded (unchanged
+  `PlatformFeePolicy`).
+- **Eligibility (create only):** currently verified, not suspended, not soft-deleted, account not deleted -- read under
+  the lock through `GetRecognitionEligibleCounsellorIdsAction` with no report filter. **Judgment call:** an open
+  report does not block a plain waiver (the ticket's list doesn't include it), but it does block a waiver linked to a
+  recognition, since SCRUM-473 says a waiver for a recognition must re-check its eligibility live, open reports
+  included. End and delete need no eligibility, so an admin can always stop a period.
+- **No auto-end when a counsellor later becomes ineligible (the user's earlier decision):** suspension, lapsed or
+  revoked verification, or deletion leaves the counsellor's periods running. Instead `GET .../fee-waivers` returns
+  `counsellor.eligible` (with `verificationState`, `suspended`, `deleted`) and a per-period `needsReview` (ineligible
+  and the period is active or upcoming), for SCRUM-474 to alert on.
+- **Self-dealing:** a super admin can't create a period for their own counsellor profile (403, as SCRUM-473's guard).
+  Ending or deleting one stays allowed (it only removes a benefit).
+- **Recognition link:** optional `counsellor_recognition_id`; must be that counsellor's and `decision = approved`, and
+  **one period per recognition** (judgment call: a recognition already linked is refused, so the link stays
+  unambiguous). Sets `recognition.platform_fee_waiver_id`; deleting the period nulls it (existing FK) and the
+  `deleted` event keeps the recognition id. Not tied to featuring consent (SCRUM-464).
+- **Audit:** new `platform_fee_waiver_events` (no FK on `platform_fee_waiver_id` or `counsellor_id`, so history
+  outlives a deleted period; `user_id` nulls on delete; append-only model). Written by the service in the same
+  transaction for both scopes: `created` (dates, plus the recognition id when linked), `ended` (dates plus the
+  `scheduled_ends_at` it replaced), `deleted` (dates, **the reason** and the recognition id). Storing the reason is
+  fine: it is admin-only data already, and these events are read by super admins only. Covers SCRUM-469's audit item.
+  Cheap enough to include: `GET /administrator/settings/platform-fee-waivers/events` (super admin, JSON, newest 100).
+- **Notice:** `getCommissionFreeNotice(?Counsellor)` adds `scope` (`platform`|`personal`). With a counsellor (their
+  payouts and dashboard, via `GetCounsellorPayoutOverviewAction`) their own periods count too; the organisation
+  reconciliation stays platform-only. **Judgment call on order:** a period in force now beats one coming up, and the
+  platform-wide one wins when both are in force (or start together) -- rather than "any platform-wide period first",
+  which would hide a running personal waiver behind a platform period weeks away. The admin payout overview (same
+  action) carries the personal scope too; that is admin-only data. Worded "No platform commission on your payments
+  between … and …" (`commissionFree.js`).
+- **Notification:** `CounsellorFeeWaiverGrantedNotification` under the counsellors' "Recognition" kind (its
+  description now mentions commission-free periods), after commit, database + mail when the email is verified. Stores
+  and shows the dates only -- never the reason or the admin.
+- **Routes (super admin only, a 403 before validation, rechecked in the service; throttled like the platform-wide
+  ones):** `GET|POST /administrator/counsellors/{counsellor}/fee-waivers`, `POST .../{waiver}/end`,
+  `POST .../{waiver}/delete` (`admin.counsellors.fee-waivers.index|store|end|delete`). JSON for a script, back for an
+  Inertia visit.
+- **Seed data:** `RecognitionSeeder` gives `sarah_johnson` next month's period for her seeded recognition, through the
+  service; skipped once she has any period of her own.
