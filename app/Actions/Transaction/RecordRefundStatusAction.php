@@ -9,10 +9,10 @@ use App\Models\User;
 use App\Notifications\RefundExecutionFailedNotification;
 use App\Notifications\RefundFailedNotification;
 use App\Notifications\RefundSucceededNotification;
+use App\Support\BestEffortAfterCommit;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
-use Throwable;
 
 // TT-7.7d/SCRUM-252: mirrors RecordCounsellorPayoutStatusAction's role exactly -- the single
 // choke point both ProcessRefundJob (the initial Paystack call's own synchronous response, if
@@ -90,16 +90,9 @@ class RecordRefundStatusAction extends Action
                     ReconcileOrgFinancedRefundAction::new()->execute($transaction);
                 }
 
-                // TT-7.11b/SCRUM-471: the refunded sessions' stars. A failure here must not undo the refund's own
-                // status (it succeeded at Paystack), so it is logged rather than thrown.
-                try {
-                    RevokeStarsForRefundedTransactionAction::new()->execute($refund);
-                } catch (Throwable $exception) {
-                    Log::warning('Unable to revoke the stars of a refunded transaction\'s sessions.', [
-                        'refund_id' => $refund->id,
-                        'exception' => $exception->getMessage(),
-                    ]);
-                }
+                // TT-7.11b/SCRUM-471: the refunded sessions' stars -- once the refund's status is committed, outside
+                // this lock; a failure is reported and never undoes the refund (it succeeded at Paystack).
+                BestEffortAfterCommit::run(fn () => RevokeStarsForRefundAction::new()->execute($refund));
 
                 // TT-7.7e/SCRUM-253: safe to call from inside this transaction despite being
                 // queued -- see the identical comment on notifyAdminsOfFailure() below.
