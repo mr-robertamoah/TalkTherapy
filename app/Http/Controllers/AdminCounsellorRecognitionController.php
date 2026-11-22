@@ -57,6 +57,8 @@ class AdminCounsellorRecognitionController extends Controller
             // TT-7.11e2/SCRUM-477: the periods linked to this month's recognitions, for the "Fee waiver" column -- in
             // the page props (one query for the month), not a JSON call per row.
             'feeWaivers' => $this->feeWaivers($request, $month, $ownCounsellorId),
+            // The waiver option's reason limit (the server checks it again).
+            'waiverReasonMax' => PlatformFeeWaiver::REASON_MAX,
         ]);
     }
 

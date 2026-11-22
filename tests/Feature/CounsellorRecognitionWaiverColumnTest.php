@@ -123,6 +123,7 @@ test('a super admin gets the month\'s linked periods with everything, and nothin
     $this->actingAs(rwcAdmin())->get(route('administrator.recognition', ['month' => '2026-10']))
         ->assertOk()
         ->assertInertia(fn ($page) => $page->component('Admin/Recognition')
+            ->where('waiverReasonMax', PlatformFeeWaiver::REASON_MAX)
             ->has('feeWaivers', 2)
             ->where('feeWaivers.0.id', $upcoming->id)
             ->where('feeWaivers.0.counsellorId', $counsellor->id)
