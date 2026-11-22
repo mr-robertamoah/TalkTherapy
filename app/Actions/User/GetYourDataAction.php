@@ -6,6 +6,7 @@ use App\Actions\Action;
 use App\Actions\Notification\PruneNotificationsAction;
 use App\Actions\Request\DeleteExpiredIdentityDocumentsAction;
 use App\Enums\CounsellorPayoutStatusEnum;
+use App\Enums\CounsellorRecognitionDecisionEnum;
 use App\Enums\NotificationCategoryEnum;
 use App\Enums\RequestTypeEnum;
 use App\Enums\TherapyStatusEnum;
@@ -13,6 +14,7 @@ use App\Enums\TransactionStatusEnum;
 use App\Models\AdminContentAccess;
 use App\Models\Counsellor;
 use App\Models\CounsellorPayout;
+use App\Models\CounsellorRecognition;
 use App\Models\License;
 use App\Models\OrganizationMember;
 use App\Models\OutcomeCheckIn;
@@ -309,6 +311,19 @@ class GetYourDataAction extends Action
                 ->where('addedby_type', (new User)->getMorphClass())
                 ->distinct()
                 ->count('addedby_id'),
+            // TT-7.11f/SCRUM-476: their recognitions as Counsellor of the month -- the month and their featuring
+            // consent. Approved ones only (a month an administrator skipped them is the team's deliberation, as the
+            // stars and rank behind any recognition are). One query.
+            'recognitions' => $counsellor->recognitions()
+                ->where('decision', CounsellorRecognitionDecisionEnum::approved->value)
+                ->orderByDesc('month')
+                ->limit(self::LIST_LIMIT)
+                ->get(['id', 'month', 'consent'])
+                ->map(fn (CounsellorRecognition $recognition) => [
+                    'month' => $recognition->monthStart()->format('Y-m'),
+                    'consent' => $recognition->consent?->value,
+                ])
+                ->all(),
         ];
     }
 

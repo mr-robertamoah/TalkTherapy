@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Actions\Counsellor\GetCounsellorAccountForProfileViewAction;
+use App\Actions\Recognition\GetVisibleRecognitionsAction;
 use App\Actions\User\GetCounsellorCreationStepOfUserAction;
 use App\DTOs\CreateCounsellorDTO;
 use App\DTOs\DeleteCounsellorDTO;
@@ -11,10 +12,11 @@ use App\DTOs\VerifyCounsellorDTO;
 use App\Http\Requests\UpdateCounsellorRequest;
 use App\Http\Requests\VerifyCounsellorRequest;
 use App\Http\Resources\AssistanceRequestCounsellorResource;
+use App\Http\Resources\CounsellorCardResource;
 use App\Http\Resources\CounsellorMiniResource;
 use App\Http\Resources\CounsellorResource;
-use App\Http\Resources\StarredCounsellorResource;
 use App\Models\Counsellor;
+use App\Models\CounsellorRecognition;
 use App\Services\CounsellorService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
@@ -51,7 +53,7 @@ class CounsellorController extends Controller
         try {
             $counsellors = CounsellorService::new()->getRandomCounsellors($request->user(), $request->query('seed'));
 
-            return StarredCounsellorResource::collection($counsellors);
+            return CounsellorCardResource::collection($counsellors);
         } catch (Throwable $th) {
             $status = $this->statusFor($th);
             $message = $this->messageFor($th, $status);
@@ -130,6 +132,11 @@ class CounsellorController extends Controller
                 'counsellorUnavailable' => $counsellor->isSuspended(),
                 // SCRUM-51: the profile is offered for sharing only while it's one to recommend.
                 'shareable' => $counsellor->isVerified() && ! $counsellor->isSuspended(),
+                // TT-7.11f/SCRUM-476: "Counsellor of the month, <Month Year>" for each recognition this viewer may see.
+                'recognitionBadges' => GetVisibleRecognitionsAction::new()->execute($request->user(), $counsellor)
+                    ->map(fn (CounsellorRecognition $recognition) => $recognition->monthLabel())
+                    ->values()
+                    ->all(),
             ];
 
             if ($counsellor->user->is($request->user())) {
