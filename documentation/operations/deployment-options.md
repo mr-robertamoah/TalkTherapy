@@ -55,7 +55,7 @@ providers only at the edges.**
     (section 6.4).
 - **Don't:**
   - Put the app and the database at different providers (section 4).
-  - Use **PlanetScale (Vitess)**. It doesn't support triggers, and 13 triggers on 7 tables keep the audit
+  - Use **PlanetScale (Vitess)**. It doesn't support triggers, and 17 triggers on 9 tables keep the audit
     and safety tables append-only (section 3.2).
 
 **Urgent decision (by 30 Nov 2026): high availability (HA) on DO.**
@@ -69,7 +69,7 @@ providers only at the edges.**
 
 **Gating checks before committing:**
 
-1. **Database compatibility spike (T2).** The migrations create 13 triggers, so they need
+1. **Database compatibility spike (T2).** The migrations create 17 triggers, so they need
    `log_bin_trust_function_creators=1` or an equivalent privilege, which DO doesn't document. The spike
    also checks:
    - `sql_require_primary_key`;
@@ -100,7 +100,7 @@ From `docker-compose.yml`, `docker/`, `scripts/deploy.sh`, `.env.docker.example`
 |---|---|---|
 | Web | nginx and php-fpm in **separate** containers (`web`, `php`), sharing a bind-mounted checkout | kamal-proxy forwards HTTP to **one** container. nginx + php-fpm under supervisord on :80 in the same image (or FrankenPHP). TLS terminates at Cloudflare → origin certificate. |
 | Frontend | `vite` dev server; `npm run build` on the box during deploy | Assets built in CI. `VITE_*` values are **baked in at build time**: `VITE_REVERB_APP_KEY/HOST/PORT/SCHEME`, `VITE_APP_URL`, `VITE_GOOGLE_API_KEY`, `VITE_APP_NAME`. Staging and production **can't share one image** unless config is injected at runtime (section 7). `VITE_REVERB_PORT` currently reuses the internal `REVERB_PORT` and must be decoupled (public 443 vs internal 8080). |
-| Database | MySQL 8.0, `--log-bin-trust-function-creators=1` | MySQL 8 with the flag or an equivalent. **13 triggers on 7 tables** (`cma_*`, `aca_*`, `cve_*`, `ene_*`, `sfe_*`, `sf_no_delete`, `sfn_*`). TLS to DO (port **25060**, DO's CA certificate via `MYSQL_ATTR_SSL_CA`). REPEATABLE READ assumed (SCRUM-467). |
+| Database | MySQL 8.0, `--log-bin-trust-function-creators=1` | MySQL 8 with the flag or an equivalent. **17 triggers on 9 tables** (`cma_*`, `aca_*`, `cve_*`, `ene_*`, `sfe_*`, `sf_no_delete`, `sfn_*`, `pfwe_*`, `cre_*`). TLS to DO (port **25060**, DO's CA certificate via `MYSQL_ATTR_SSL_CA`). REPEATABLE READ assumed (SCRUM-467). |
 | Queue | `QUEUE_CONNECTION=database`; `queue:work --queue=urgent,default` + an `urgent`-only worker, `--timeout=60` | Same command lines in the `worker` role. Container stop timeout **≥ 70 s** (longer than the 60 s job timeout). Alert on restart loops: an urgent ring's time-to-live is 120 s. |
 | Scheduler | `schedule:work` in the `queue` container | **Exactly one** `scheduler` role container. The old one is stopped before the new one starts. |
 | Websockets | Reverb, one process, port 8081, reached via the same host | Its own Kamal role on **`ws.<domain>`** (a DO load balancer can't route by path). The app broadcasts to Reverb over the internal Docker network, not through Cloudflare. `ext-uv` is optional until about 800 connections (stream_select is limited to 1,024 open files). |
@@ -175,7 +175,7 @@ Notes:
 | **PlanetScale (Vitess)** | PS-10, 3-node only | $39 | Billed separately | **No** ("any form of stored routines" unsupported) | planetscale.com/pricing; compatibility doc |
 | Hetzner | No managed MySQL found | — | — | — | hetzner.com/cloud |
 
-**The 13 triggers**, on 7 tables, from the migrations:
+**The 17 triggers**, on 9 tables, from the migrations:
 
 | Prefix | Triggers |
 |---|---|
@@ -186,11 +186,13 @@ Notes:
 | `sfe` | `sfe_no_update`, `sfe_no_delete` |
 | `sf` | `sf_no_delete` |
 | `sfn` (safety-flag notes) | `sfn_no_delete`, `sfn_only_clear` |
+| `pfwe` (commission-free period history, SCRUM-475) | `pfwe_no_update`, `pfwe_no_delete` |
+| `cre` (recognition history, SCRUM-475) | `cre_no_update`, `cre_no_delete` |
 
 Vitess runs none of them, so **PlanetScale is ruled out**.
 
-The README's trigger-recovery list (`cma_no_*`, `aca_no_*`, `cve_no_*`, `ene_no_*`, `sfn_*`) also misses
-`sfe_*` and `sf_no_delete`. Fix it in T2's follow-up.
+The README's trigger-recovery list now names all of them (SCRUM-475 added `sfe_*` and `sf_no_delete`, which it
+had missed, along with the two new prefixes).
 
 **Database users (T17):**
 
@@ -546,7 +548,7 @@ staging; a merge into `main` deploys production.
   - **Retention vs the privacy page (legal):** deleted data survives in backups until they expire. The page
     must say "backups are kept up to N days", with N matching.
   - **Restore drill (quarterly, scratch environment, never staging's database)** must check:
-    - all 13 triggers exist (`SHOW TRIGGERS`);
+    - all 17 triggers exist (`SHOW TRIGGERS`);
     - `APP_KEY`-encrypted data decrypts (a journal entry, a note, a 2FA secret);
     - restored files are readable by `www-data` and stream through the app.
   - **PITR fork drill:** fork to a time, then point the app at the fork's **new hostname** (redeploy with a
@@ -688,7 +690,7 @@ long-lived IAM keys.
      - `mysqldump --single-transaction --triggers --set-gtid-purged=OFF` (no `--routines`: the app has no
        stored routines);
      - restore as the migrator user (strip or rewrite `DEFINER` clauses if T2 shows a non-SUPER restore
-       needs it), then check all 13 triggers;
+       needs it), then check all 17 triggers;
      - `rsync -a` of `storage/app` (public and private) to the Volume, then fix ownership and modes;
      - copy `APP_KEY`, `APP_PREVIOUS_KEYS` and the VAPID keys **unchanged**;
      - run the checklist's smoke test.
@@ -749,7 +751,7 @@ long-lived IAM keys.
 |---|---|---|
 | T15 | Legal review: hosting location, transfers, DPC registration, retention | Counsel's answers to section 8, then `Privacy.vue` (SCRUM-364) updated with provider, region, transfers and backup retention. |
 | T1 | Measure latency from Accra to candidate regions | p50/p95 from Accra (fixed and mobile) to LON1, FRA1, AMS3, NBG1/FSN1, eu-west-2, af-south-1, africa-south1. |
-| T2 | Spike: DO Managed MySQL compatibility | All 13 triggers, `sql_require_primary_key`, full `migrate` + tests, a trigger dump restored as a non-SUPER user (DEFINER), `--set-gtid-purged=OFF`, PITR fork keeps the triggers, migrator/runtime grants; fix the README trigger list. |
+| T2 | Spike: DO Managed MySQL compatibility | All 17 triggers, `sql_require_primary_key`, full `migrate` + tests, a trigger dump restored as a non-SUPER user (DEFINER), `--set-gtid-purged=OFF`, PITR fork keeps the triggers, migrator/runtime grants; fix the README trigger list. |
 | — | HA decision (before 30 Nov 2026) | Create the production cluster on Standard Edition now if a standby may ever be wanted; otherwise record the Advanced Edition / RDS path. |
 | T3 | Infrastructure as code | OpenTofu: DO project, VPC, Droplets, Volume, Cloud Firewall, MySQL (maintenance window), Cloudflare DNS and settings, R2 buckets and locks; state off CI. |
 | T10 | Shared database stores (launch prerequisite) | Env-driven `SESSION_TABLE=http_sessions` + migration; `cache` and `cache_locks` migrations; a separate `scheduler_cache` table for the scheduler store; `CACHE_STORE=database`, `SESSION_DRIVER=database`, `APP_MAINTENANCE_DRIVER=cache`; `onOneServer()` on every every-minute task. |
