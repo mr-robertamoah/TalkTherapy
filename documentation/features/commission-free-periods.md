@@ -134,13 +134,14 @@ A super admin can give one counsellor a commission-free period of their own -- o
 
 - Same field rules as platform-wide (UTC, no backdating, end after the start and now, within 2 years, reason up to
   500). A counsellor's periods can't overlap each other; they may overlap a platform-wide one (whose id is then
-  recorded on payments). Only a counsellor who is verified, not suspended and not deleted can be given one, and never
-  the super admin's own counsellor profile. With `counsellor_recognition_id` (an approved recognition of theirs, not
-  already linked) the period is linked to it and an open report also blocks it.
+  recorded on payments). Only a counsellor who is verified, not suspended, not deleted and not the subject of an open
+  or under-review report can be given one, and never the super admin's own counsellor profile. With
+  `counsellor_recognition_id` (an approved recognition of theirs, not already linked) the period is linked to it.
 - The counsellor is told by a notification (Recognition kind; dates only) and sees "No platform commission on your
   payments between … and …" on their Payouts section and dashboard Earnings card. Nobody else sees it.
-- Periods aren't ended automatically if the counsellor is later suspended or loses verification; the list flags them
-  (`needsReview`) for the admin to decide.
+- Periods aren't ended automatically if the counsellor is later suspended, loses verification, is reported, or their
+  recognition is skipped; every response flags them (`needsReview`, plus `recognitionDecision`) for the admin to
+  decide. Ending or deleting a period sends the counsellor nothing; their notice just stops showing it.
 - Every create, end and delete, platform-wide or per-counsellor, is recorded in `platform_fee_waiver_events` (a
   deleted period's event keeps its dates and reason).
 

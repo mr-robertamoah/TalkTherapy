@@ -259,13 +259,17 @@ Check every item before going live.
     a bare rollback. Rolling back only `..200002` leaves approved recognitions with no consent (pending is cleared).
 - [ ] **Per-counsellor commission-free periods (SCRUM-475):**
   - The deploy brings `2026_12_16_100000`, a new `platform_fee_waiver_events` table (empty, no data migrated -- periods
-    created before it have no `created` event). No env vars.
+    created before it have no `created` event), and `2026_12_16_100001`, which adds append-only triggers to
+    `counsellor_recognition_events`. Both create triggers (`pfwe_no_update/delete`, `cre_no_update/delete`), so
+    `log_bin_trust_function_creators=1` must already be set on the database (as for the earlier audit tables); if the
+    deploy fails on it, set the flag, `DROP TRIGGER IF EXISTS` the four, and re-run. No env vars.
   - Rolling back SCRUM-475: prefer rolling back the code -- older code ignores the events table, and the per-counsellor
     periods already made keep applying to fees (`PlatformFeePolicy` already honoured them); end any that shouldn't run
     on from the database (`ends_at = NOW(), ended_by_id = <a super admin id>`) before or after. Rolling the migration
     back **deletes the whole history of every period, including the reasons of deleted ones**, so dump
-    `platform_fee_waiver_events` first, then roll back `2026_12_16_100000` with `--path=`, never a bare rollback
-    (verified on MySQL 8: fresh + seed, rollback, migrate).
+    `platform_fee_waiver_events` first, then roll back `2026_12_16_100001` and `2026_12_16_100000` with `--path=`
+    (newest first), never a bare rollback (verified on MySQL 8: fresh + seed, rollback, migrate). Rolling back only
+    `..100001` just drops the recognition-history triggers and loses nothing.
 
 ## The proxy
 
