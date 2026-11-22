@@ -35,6 +35,8 @@ class PlatformFeeWaiverService extends Service
 {
     public const NOT_ALLOWED = 'Only a super administrator can change commission-free periods.';
 
+    public const NOT_ALLOWED_TO_VIEW = 'Only an administrator can see commission-free periods.';
+
     public const NOT_FOUND = 'That commission-free period could not be found.';
 
     public const COUNSELLOR_NOT_FOUND = 'That counsellor could not be found.';
@@ -94,6 +96,33 @@ class PlatformFeeWaiverService extends Service
             'eligible' => $this->isEligible($counsellor),
             'waivers' => $this->list($counsellor->id),
             'events' => $this->events($counsellor->id),
+        ];
+    }
+
+    /**
+     * TT-7.11e2/SCRUM-477: the periods linked to a month's recognitions, for the admin recognition page -- any
+     * administrator (the page shapes what each one sees, AdminRecognitionFeeWaiverResource), and which of their
+     * counsellors could be given a new period now (for `needsReview`). A fixed number of queries, however many rows.
+     *
+     * @return array{waivers: Collection<int, PlatformFeeWaiver>, eligibleCounsellorIds: array<int, int>}
+     */
+    public function getLinkedToRecognitionMonthForAdmin(PlatformFeeWaiverDTO $dto, CarbonInterface $month): array
+    {
+        if (! $dto->user?->isAdmin()) {
+            throw new PlatformFeeWaiverException(self::NOT_ALLOWED_TO_VIEW, 403);
+        }
+
+        $waivers = PlatformFeeWaiver::query()
+            ->whereIn('id', CounsellorRecognition::query()->forMonth($month)->whereNotNull('platform_fee_waiver_id')->select('platform_fee_waiver_id'))
+            ->with(['createdBy', 'endedBy', 'recognition'])
+            ->orderBy('id')
+            ->get();
+
+        return [
+            'waivers' => $waivers,
+            'eligibleCounsellorIds' => GetRecognitionEligibleCounsellorIdsAction::new()->execute(
+                $waivers->pluck('counsellor_id')->map(fn ($id) => (int) $id)->unique()->values()->all()
+            ),
         ];
     }
 

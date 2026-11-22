@@ -3,15 +3,19 @@
 namespace App\Http\Controllers;
 
 use App\DTOs\CounsellorRecognitionDTO;
+use App\DTOs\PlatformFeeWaiverDTO;
 use App\DTOs\UpdateRecognitionCapsDTO;
 use App\Http\Requests\DecideCounsellorRecognitionRequest;
 use App\Http\Requests\SearchRecognitionCounsellorsRequest;
 use App\Http\Requests\ShowCounsellorRecognitionPageRequest;
 use App\Http\Requests\UpdateRecognitionCapsRequest;
 use App\Http\Requests\ViewCounsellorRecognitionRequest;
+use App\Http\Resources\AdminRecognitionFeeWaiverResource;
 use App\Http\Resources\CounsellorRecognitionResource;
 use App\Models\CounsellorRecognition;
+use App\Models\PlatformFeeWaiver;
 use App\Services\CounsellorRecognitionService;
+use App\Services\PlatformFeeWaiverService;
 use App\Services\SettingsService;
 use Carbon\CarbonImmutable;
 use Closure;
@@ -34,6 +38,7 @@ class AdminCounsellorRecognitionController extends Controller
         $month = $request->month();
         $dto = CounsellorRecognitionDTO::new()->fromArray(['user' => $user, 'month' => $month]);
         $service = CounsellorRecognitionService::new();
+        $ownCounsellorId = $service->ownCounsellorId($dto);
 
         return Inertia::render('Admin/Recognition', [
             'month' => $month,
@@ -48,8 +53,28 @@ class AdminCounsellorRecognitionController extends Controller
             'capsMax' => UpdateRecognitionCapsRequest::maxima(),
             'canManage' => $user->isSuperAdmin(),
             // Nobody decides their own recognition (the service refuses it): the page offers no controls on that row.
-            'ownCounsellorId' => $service->ownCounsellorId($dto),
+            'ownCounsellorId' => $ownCounsellorId,
+            // TT-7.11e2/SCRUM-477: the periods linked to this month's recognitions, for the "Fee waiver" column -- in
+            // the page props (one query for the month), not a JSON call per row.
+            'feeWaivers' => $this->feeWaivers($request, $month, $ownCounsellorId),
         ]);
+    }
+
+    private function feeWaivers(ShowCounsellorRecognitionPageRequest $request, string $month, ?int $ownCounsellorId): array
+    {
+        $result = PlatformFeeWaiverService::new()->getLinkedToRecognitionMonthForAdmin(
+            PlatformFeeWaiverDTO::new()->fromArray(['user' => $request->user()]),
+            CounsellorRecognition::parseMonth($month),
+        );
+
+        return $result['waivers']
+            ->map(fn (PlatformFeeWaiver $waiver) => (new AdminRecognitionFeeWaiverResource(
+                $waiver,
+                in_array((int) $waiver->counsellor_id, $result['eligibleCounsellorIds'], true),
+                $ownCounsellorId,
+            ))->resolve($request))
+            ->values()
+            ->all();
     }
 
     public function counsellors(SearchRecognitionCounsellorsRequest $request)
