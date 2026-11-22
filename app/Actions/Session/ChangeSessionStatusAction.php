@@ -10,8 +10,7 @@ use App\Enums\SessionStatusEnum;
 use App\Enums\StarSourceEnum;
 use App\Models\GroupTherapy;
 use App\Models\User;
-use Illuminate\Support\Facades\Log;
-use Throwable;
+use App\Support\BestEffortAfterCommit;
 
 class ChangeSessionStatusAction extends Action
 {
@@ -98,29 +97,15 @@ class ChangeSessionStatusAction extends Action
         if ($status === SessionStatusEnum::held->value && $endsForTheFirstTime) {
             RecordOrganizationInvoiceLineForSessionAction::new()->execute($session);
 
-            // TT-7.11b/SCRUM-471: the session's star(s), on the same first-time-held gate as billing and, like it, a
-            // side effect that must never block the status change.
-            try {
-                AfterSessionHeldAction::new()->execute($session);
-            } catch (Throwable $exception) {
-                Log::warning('Unable to award the star for a held session.', [
-                    'session_id' => $session->id,
-                    'exception' => $exception->getMessage(),
-                ]);
-            }
+            // TT-7.11b/SCRUM-471: the session's star(s), on the same first-time-held gate as billing -- after the
+            // caller's session lock is released, and never blocking the status change.
+            BestEffortAfterCommit::run(fn () => AwardSessionHeldStarAction::new()->execute($session));
         }
 
-        // TT-7.11b/SCRUM-471: a session that was held and later ends failed or abandoned (reopened, then ended so)
-        // loses its star. Nothing to delete for a session that was never held.
+        // TT-7.11b/SCRUM-471: a held session later ending failed or abandoned (only an administrator can do that to
+        // one -- SessionService) loses its star. Nothing to delete for a session that was never held.
         if (in_array($status, [SessionStatusEnum::failed->value, SessionStatusEnum::abandoned->value], true)) {
-            try {
-                RevokeCounsellorStarsAction::new()->forStarreable(StarSourceEnum::sessionHeld, $session);
-            } catch (Throwable $exception) {
-                Log::warning('Unable to revoke the star of a session that ended failed or abandoned.', [
-                    'session_id' => $session->id,
-                    'exception' => $exception->getMessage(),
-                ]);
-            }
+            BestEffortAfterCommit::run(fn () => RevokeCounsellorStarsAction::new()->forStarreable(StarSourceEnum::sessionHeld, $session));
         }
 
         return $session;
