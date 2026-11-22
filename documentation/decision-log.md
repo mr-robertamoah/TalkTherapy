@@ -13529,40 +13529,47 @@ Planned with the product-owner, architect and project-manager; split into SCRUM-
 
 - **The plan:** `documentation/operations/deployment-options.md`. It covers candidates and prices (checked
   2026-11-22, with each unverified figure marked), mixing providers, the deploy approach, environments and
-  secrets, data and compliance, monitoring, the cost model, the EC2 migration path, risks and 15 proposed
-  tickets. It is a plan only: no infrastructure, code or config changed.
+  secrets, data and compliance, monitoring, the cost model, the EC2 migration path, risks and ordered
+  tickets. Revision 2, the same day, applies a devops review. It is a plan only: no infrastructure, code
+  or config changed.
 - **Recommendation:**
   - **Production:** DigitalOcean in London (LON1; Frankfurt if the Accra latency test favours it). One
-    Droplet running the containers (web, Reverb, queue workers, the one scheduler) and DO Managed MySQL
-    (single node, daily backups and 7-day PITR).
-  - **Staging:** the same provider and region at the smallest size, deployed from `testing`.
-  - **Edges:** Cloudflare in front; encrypted off-provider backups in Cloudflare R2 (EU jurisdiction).
-  - **Deploys:** Kamal 2 from GitHub Actions over Tailscale with OIDC, so CI holds no long-lived cloud keys.
-  - **Cost:** about $59/month at launch and $225/month at 10×.
-  - **Runners-up:** Hetzner with MySQL we run ourselves (about €38 / €186: cheapest, but we would own
-    database operations). AWS London with RDS (about $58 + unverified lines at launch, $401 at 10×: native
-    OIDC, Multi-AZ, and triggers via a parameter group). AWS London is also the fallback if the DO spike
-    fails.
-- **Why the app and the database stay at one provider:** Laravel's sequential queries multiply any
-  cross-provider round trip, and the availability of two providers multiplies too. Mixing pays only at
-  the edges: CDN, backup storage and monitoring SaaS.
+    Droplet running four Kamal roles: web (nginx + php-fpm in one container), reverb (on its own `ws.`
+    subdomain, deployed only when needed), worker, and exactly one scheduler.
+  - **Database:** DO Managed MySQL (single node, daily backups, 7-day PITR).
+  - **Files:** `storage/app` on an encrypted DO Volume.
+  - **Staging:** the same provider at the smallest size, behind Cloudflare Access, deployed from `testing`.
+  - **Edges:** Cloudflare in front (Origin CA, Full strict, Authenticated Origin Pulls, DO Cloud
+    Firewall). Encrypted, delete-protected backups in R2 (EU jurisdiction).
+  - **Deploys:** Kamal 2 over Tailscale OIDC, so CI holds no long-lived cloud keys. App secrets live in
+    GitHub Environments with branch rules.
+  - **Cost:** about $78/month at launch and $239/month at 10×.
+  - **Runners-up:** Hetzner with MySQL we run ourselves (about €38 + $9 / €186 + $46). AWS London with RDS
+    (about $59 / $407 + unverified lines), which is also the fallback if the DO spike fails.
+- **Launch prerequisite found in review (T10):**
+  - File sessions, caches and maintenance mode don't survive separate, replaceable Kamal containers. They
+    would log everyone out, reset rate limits, lose the scheduler's once-only keys, block the restart
+    signals and break `onOneServer`.
+  - They move to database stores before the first Kamal deploy. That includes a `SESSION_TABLE` other than
+    `sessions`, because `sessions` is the therapy-sessions domain table.
+- **Urgent:** from 30 Nov 2026, new DO Standard MySQL clusters can't add standby nodes. If HA on Standard
+  Edition might ever be wanted, create the production cluster before then.
+- **Why the app and the database stay at one provider:** cross-provider round trips multiply over
+  Laravel's sequential queries, and the two providers' availabilities multiply too. Mixing pays only at
+  the edges.
 - **Ruled out:**
-  - PlanetScale (Vitess): no triggers ("any form of stored routines"), and the SCRUM-362 append-only tables
-    depend on them.
+  - PlanetScale: no triggers, and the app has 13 triggers on 7 tables.
   - Render and Fly.io: no managed MySQL.
-  - Redis: isn't needed at launch. The app uses none today, and one Reverb process with `ext-uv` covers the
-    assumed 2,000 connections at 10×.
-- **Gates before committing:**
-  - T1: latency measured from Accra. None was published, and every latency figure in the plan is
-    unverified.
-  - T2: a migration run against DO Managed MySQL. It must create the triggers
-    (`log_bin_trust_function_creators`, not documented by DO) and pass `sql_require_primary_key`.
-  - From 30 Nov 2026, new DO Standard clusters can't add standby nodes. HA would need Advanced Edition
-    (price not published).
+  - Redis: not needed at launch.
+- **Gates:**
+  - T1: Accra latency. None was published.
+  - T2: DO MySQL must:
+    - create and restore the triggers without SUPER;
+    - keep them in a PITR fork;
+    - pass `sql_require_primary_key`;
+    - allow migrator and runtime users.
 - **Marked for legal confirmation:**
-  - Hosting outside Ghana: Act 843 has no explicit transfer rule according to DLA Piper, but section 18
-    covers foreign data subjects, and a draft 2025 Bill adds a cross-border section.
-  - DPC registration and its two-year renewal.
-  - Backup retention against the privacy page's deletion promises.
-  - Naming the host, region and transfers on the privacy page. Fold this into the open SCRUM-364 lawyer
-    review.
+  - hosting outside Ghana (Act 843 section 18; the draft 2025 Bill);
+  - DPC registration and its renewal;
+  - backup retention against the privacy page;
+  - naming the host and the transfers on the privacy page, folded into the open SCRUM-364 lawyer review.
