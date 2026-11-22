@@ -6,6 +6,7 @@ use App\Actions\Star\AwardCounsellorStarAction;
 use App\DTOs\CounsellorRecognitionDTO;
 use App\DTOs\PlatformFeeWaiverDTO;
 use App\Enums\StarSourceEnum;
+use App\Exceptions\AppException;
 use App\Models\CounsellorRecognition;
 use App\Models\PlatformFeeWaiver;
 use App\Models\User;
@@ -13,6 +14,8 @@ use App\Services\CounsellorRecognitionService;
 use App\Services\PlatformFeeWaiverService;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 
 // TT-7.11d1/SCRUM-473: new-rule stars for the previous month (UTC) on the six demo counsellors, so the recognition
 // suggestions have a ranking to show -- including a tie (emma_williams and david_brown: same count, same first star) --
@@ -102,17 +105,26 @@ class RecognitionSeeder extends Seeder
 
         $nextMonth = CarbonImmutable::now('UTC')->startOfMonth()->addMonth();
 
-        PlatformFeeWaiverService::new()->createForCounsellor(
-            PlatformFeeWaiverDTO::new()->fromArray([
-                'user' => $superAdmin,
-                'counsellorId' => $counsellor->id,
-                'recognitionId' => $recognition->id,
-            ]),
-            [
-                'starts_at' => $nextMonth,
-                'ends_at' => $nextMonth->addMonth(),
-                'reason' => 'Counsellor of the month for '.$recognition->monthLabel(),
-            ],
-        );
+        // A refusal (she has an open report, or lost her verification, in this database) is logged, not fatal: the rest
+        // of the seed still runs.
+        try {
+            PlatformFeeWaiverService::new()->createForCounsellor(
+                PlatformFeeWaiverDTO::new()->fromArray([
+                    'user' => $superAdmin,
+                    'counsellorId' => $counsellor->id,
+                    'recognitionId' => $recognition->id,
+                ]),
+                [
+                    'starts_at' => $nextMonth,
+                    'ends_at' => $nextMonth->addMonth(),
+                    'reason' => 'Counsellor of the month for '.$recognition->monthLabel(),
+                ],
+            );
+        } catch (ValidationException|AppException $e) {
+            Log::warning('RecognitionSeeder: the demo commission-free period was refused.', [
+                'counsellor' => $counsellor->id,
+                'errors' => $e instanceof ValidationException ? $e->errors() : $e->getMessage(),
+            ]);
+        }
     }
 }

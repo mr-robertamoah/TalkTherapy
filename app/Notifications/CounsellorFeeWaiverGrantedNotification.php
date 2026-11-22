@@ -20,6 +20,9 @@ class CounsellorFeeWaiverGrantedNotification extends Notification implements Sho
 
     public const TITLE = 'No platform commission on your payments for a while';
 
+    // Queued: a period deleted before this is sent (or the counsellor purged) drops it rather than failing the job.
+    public bool $deleteWhenMissingModels = true;
+
     public function __construct(private PlatformFeeWaiver $waiver)
     {
         $this->afterCommit();

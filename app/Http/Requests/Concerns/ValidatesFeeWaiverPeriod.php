@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Concerns;
 
+use App\Models\PlatformFeeWaiver;
 use Carbon\CarbonImmutable;
 
 // TT-7.10b/SCRUM-468, shared since TT-7.11e/SCRUM-475: a new commission-free period, [starts_at, ends_at), in UTC --
@@ -12,9 +13,10 @@ use Carbon\CarbonImmutable;
 // PlatformFeeWaiverService, under a lock, which also re-checks the end against the (possibly moved-up) start.
 trait ValidatesFeeWaiverPeriod
 {
-    public const REASON_MAX = 500;
+    // The limits are the model's (PlatformFeeWaiverService checks them again); kept here for the existing callers.
+    public const REASON_MAX = PlatformFeeWaiver::REASON_MAX;
 
-    public const MAX_YEARS_AHEAD = 2;
+    public const MAX_YEARS_AHEAD = PlatformFeeWaiver::MAX_YEARS_AHEAD;
 
     protected function periodRules(): array
     {
@@ -22,7 +24,7 @@ trait ValidatesFeeWaiverPeriod
 
         return [
             'counsellor_id' => ['prohibited'],
-            'starts_at' => ['required', 'date', 'after_or_equal:'.$now->subMinute()->toDateTimeString(), 'before:'.$now->addYears(self::MAX_YEARS_AHEAD)->toDateTimeString()],
+            'starts_at' => ['required', 'date', 'after_or_equal:'.$now->subSeconds(PlatformFeeWaiver::BACKDATE_LEEWAY_SECONDS)->toDateTimeString(), 'before:'.$now->addYears(self::MAX_YEARS_AHEAD)->toDateTimeString()],
             'ends_at' => ['required', 'date', 'after:starts_at', 'after:now', 'before_or_equal:'.$now->addYears(self::MAX_YEARS_AHEAD)->toDateTimeString()],
             'reason' => ['required', 'string', 'max:'.self::REASON_MAX],
         ];

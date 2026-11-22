@@ -28,6 +28,15 @@ class PlatformFeeWaiver extends Model
     // How far ahead an upcoming platform-wide period is announced to counsellors and organisations.
     public const NOTICE_HORIZON_DAYS = 30;
 
+    // A new period's limits (TT-7.10b/SCRUM-468), checked by the FormRequests (ValidatesFeeWaiverPeriod) and again by
+    // PlatformFeeWaiverService for every caller (TT-7.11e/SCRUM-475): a start at most this far in the past (moved up to
+    // now), both ends within MAX_YEARS_AHEAD (also within what a MySQL timestamp holds), a reason up to REASON_MAX.
+    public const BACKDATE_LEEWAY_SECONDS = 60;
+
+    public const MAX_YEARS_AHEAD = 2;
+
+    public const REASON_MAX = 500;
+
     // Who created or ended a period is set from the acting user (forceFill), never mass-assigned. counsellor_id isn't
     // fillable either: TT-7.11e/SCRUM-475 sets it only from the route's counsellor (a row without one is platform-wide).
     protected $fillable = [
@@ -85,6 +94,12 @@ class PlatformFeeWaiver extends Model
     public function scopePlatformWide(Builder $query): Builder
     {
         return $query->whereNull('counsellor_id');
+    }
+
+    // TT-7.11e/SCRUM-475: one scope's periods -- platform-wide ($counsellorId null) or that counsellor's own.
+    public function scopeInScope(Builder $query, ?int $counsellorId): Builder
+    {
+        return $counsellorId === null ? $query->platformWide() : $query->where('counsellor_id', $counsellorId);
     }
 
     // The waivers in force at $at: started at or before it, not yet ended (the end itself isn't covered).

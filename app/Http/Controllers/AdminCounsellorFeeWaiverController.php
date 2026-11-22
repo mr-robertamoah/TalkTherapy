@@ -5,8 +5,9 @@ namespace App\Http\Controllers;
 use App\DTOs\PlatformFeeWaiverDTO;
 use App\Http\Requests\ManagePlatformFeeWaiverRequest;
 use App\Http\Requests\StoreCounsellorFeeWaiverRequest;
-use App\Http\Resources\AdminPlatformFeeWaiverResource;
+use App\Http\Resources\AdminCounsellorFeeWaiverResource;
 use App\Http\Resources\PlatformFeeWaiverEventResource;
+use App\Models\Counsellor;
 use App\Models\PlatformFeeWaiver;
 use App\Services\PlatformFeeWaiverService;
 use Closure;
@@ -14,32 +15,31 @@ use Illuminate\Validation\ValidationException;
 use Throwable;
 
 // TT-7.11e/SCRUM-475: one counsellor's own commission-free periods -- listed (JSON, for the SCRUM-474 recognition
-// page), created (optionally for an approved recognition), ended now, or deleted before they start. Only a super
-// administrator gets this far (the FormRequests answer 403 first); the service checks again. A refusal on the period
-// itself (overlap, not eligible, not running) is a field error; JSON for a script, back for an Inertia visit.
+// page), created (optionally for an approved recognition), ended now, or deleted before they start. Every response
+// carries its periods as AdminCounsellorFeeWaiverResource, so the page can merge them. Only a super administrator gets
+// this far (the FormRequests answer 403 first); the service checks again. A refusal on the period itself (overlap, not
+// eligible, not running) is a field error; JSON for a script, back for an Inertia visit.
 class AdminCounsellorFeeWaiverController extends Controller
 {
     public function index(ManagePlatformFeeWaiverRequest $request, int $counsellor)
     {
         try {
             $result = PlatformFeeWaiverService::new()->getForCounsellorForAdmin($this->dto($request, $counsellor));
-            $result['waivers']->load('recognition:id,platform_fee_waiver_id');
+            $model = $result['counsellor'];
 
             return response()->json([
                 'counsellor' => [
-                    'id' => $result['counsellor']->id,
-                    // False once they lose verification, are suspended or deleted: their periods are not ended
-                    // automatically, so the page alerts on any still running or coming up (`needsReview`).
+                    'id' => $model->id,
+                    // False once they lose verification, are suspended, deleted or the subject of an open report:
+                    // their periods are not ended automatically, so the page alerts on any still applying.
                     'eligible' => $result['eligible'],
-                    'verificationState' => $result['counsellor']->verificationState()->value,
-                    'suspended' => $result['counsellor']->isSuspended(),
-                    'deleted' => $result['counsellor']->trashed(),
+                    'verificationState' => $model->verificationState()->value,
+                    'suspended' => $model->isSuspended(),
+                    'deleted' => $model->trashed(),
                 ],
-                'waivers' => $result['waivers']->map(fn (PlatformFeeWaiver $waiver) => [
-                    ...(new AdminPlatformFeeWaiverResource($waiver))->resolve($request),
-                    'recognitionId' => $waiver->recognition?->id,
-                    'needsReview' => ! $result['eligible'] && in_array($waiver->status(), [PlatformFeeWaiver::ACTIVE, PlatformFeeWaiver::UPCOMING], true),
-                ])->values(),
+                'waivers' => $result['waivers']
+                    ->map(fn (PlatformFeeWaiver $waiver) => (new AdminCounsellorFeeWaiverResource($waiver, $result['eligible']))->resolve($request))
+                    ->values(),
                 'events' => PlatformFeeWaiverEventResource::collection($result['events'])->resolve($request),
             ]);
         } catch (Throwable $th) {
@@ -72,11 +72,14 @@ class AdminCounsellorFeeWaiverController extends Controller
     private function respond(ManagePlatformFeeWaiverRequest $request, Closure $action)
     {
         try {
-            $waiver = $action(PlatformFeeWaiverService::new());
+            $service = PlatformFeeWaiverService::new();
+            $waiver = $action($service);
+            $waiver->loadMissing(['createdBy', 'endedBy', 'recognition']);
+            $counsellor = Counsellor::withTrashed()->find($waiver->counsellor_id);
 
-            return $this->successResponse($request, $waiver instanceof PlatformFeeWaiver
-                ? ['waiver' => (new AdminPlatformFeeWaiverResource($waiver->load(['createdBy', 'endedBy'])))->resolve($request)]
-                : []);
+            return $this->successResponse($request, [
+                'waiver' => (new AdminCounsellorFeeWaiverResource($waiver, $counsellor !== null && $service->isEligible($counsellor)))->resolve($request),
+            ]);
         } catch (ValidationException $e) {
             throw $e;
         } catch (Throwable $th) {

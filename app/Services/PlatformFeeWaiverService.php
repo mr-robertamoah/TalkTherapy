@@ -15,6 +15,7 @@ use App\Models\PlatformFeeWaiver;
 use App\Models\PlatformFeeWaiverEvent;
 use App\Models\User;
 use App\Notifications\CounsellorFeeWaiverGrantedNotification;
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\QueryException;
@@ -41,7 +42,7 @@ class PlatformFeeWaiverService extends Service
     // As SCRUM-473's recognition: never a waiver for one's own counsellor profile.
     public const NOT_FOR_YOURSELF = 'You can\'t give yourself a commission-free period.';
 
-    public const NOT_ELIGIBLE = 'This counsellor can\'t be given a commission-free period now: they must be verified, not suspended, and not deleted.';
+    public const NOT_ELIGIBLE = 'This counsellor can\'t be given a commission-free period now: they must be verified, not suspended, not deleted, and not the subject of an open report.';
 
     // How many periods the admin lists show (newest start first) -- a handful a year at most.
     public const LIST_LIMIT = 50;
@@ -57,13 +58,7 @@ class PlatformFeeWaiverService extends Service
      */
     public function getPlatformWideForAdmin(): Collection
     {
-        return PlatformFeeWaiver::query()
-            ->platformWide()
-            ->with(['createdBy', 'endedBy'])
-            ->orderByDesc('starts_at')
-            ->orderByDesc('id')
-            ->limit(self::LIST_LIMIT)
-            ->get();
+        return $this->list(null);
     }
 
     /**
@@ -82,8 +77,9 @@ class PlatformFeeWaiverService extends Service
      * One counsellor's periods and their history, and whether they could be given a new one now (super administrators
      * only). A soft-deleted counsellor's are still listed, so a running one can be ended.
      *
-     * Waivers are not ended automatically when a counsellor later loses verification or is suspended (the user's
-     * decision): `eligible` is false then, and the recognition page alerts on it for the administrator to decide.
+     * Waivers are not ended automatically when a counsellor later loses verification, is suspended, is deleted or
+     * becomes the subject of an open report (the user's decision): `eligible` is false then, and
+     * AdminCounsellorFeeWaiverResource flags the periods still applying (`needsReview`) for the administrator.
      *
      * @return array{counsellor: Counsellor, eligible: bool, waivers: Collection<int, PlatformFeeWaiver>, events: Collection<int, PlatformFeeWaiverEvent>}
      */
@@ -91,21 +87,12 @@ class PlatformFeeWaiverService extends Service
     {
         $this->ensureCanManage($dto);
 
-        $counsellor = $dto->counsellorId ? Counsellor::withTrashed()->find($dto->counsellorId) : null;
-        if (! $counsellor) {
-            throw new PlatformFeeWaiverException(self::COUNSELLOR_NOT_FOUND, 404);
-        }
+        $counsellor = $this->findCounsellor($dto, lock: false);
 
         return [
             'counsellor' => $counsellor,
             'eligible' => $this->isEligible($counsellor),
-            'waivers' => PlatformFeeWaiver::query()
-                ->where('counsellor_id', $counsellor->id)
-                ->with(['createdBy', 'endedBy'])
-                ->orderByDesc('starts_at')
-                ->orderByDesc('id')
-                ->limit(self::LIST_LIMIT)
-                ->get(),
+            'waivers' => $this->list($counsellor->id),
             'events' => $this->events($counsellor->id),
         ];
     }
@@ -146,7 +133,7 @@ class PlatformFeeWaiverService extends Service
     public function create(PlatformFeeWaiverDTO $dto, array $values): PlatformFeeWaiver
     {
         $this->ensureCanManage($dto);
-        $this->ensureEndsAfterStart($values);
+        $values = $this->period($values);
 
         // Two periods created at once can't both pass the overlap check: the platform-wide rows are locked first (and
         // a deadlock between two such creates is retried, when the second then sees the first's row).
@@ -172,12 +159,12 @@ class PlatformFeeWaiverService extends Service
     public function createForCounsellor(PlatformFeeWaiverDTO $dto, array $values): PlatformFeeWaiver
     {
         $this->ensureCanManage($dto);
-        $this->ensureEndsAfterStart($values);
+        $values = $this->period($values);
 
         // The counsellor's row is the lock: two creates for one counsellor queue on it (an end or delete takes it too),
         // so the overlap check can't be raced, whatever the isolation level. Lock order: counsellor, then recognition.
         return DB::transaction(function () use ($dto, $values) {
-            $counsellor = $this->lockCounsellor($dto);
+            $counsellor = $this->findCounsellor($dto, lock: true);
 
             if ((int) $counsellor->user_id === $dto->user->id) {
                 throw new PlatformFeeWaiverException(self::NOT_FOR_YOURSELF, 403);
@@ -185,22 +172,22 @@ class PlatformFeeWaiverService extends Service
 
             $recognition = $dto->recognitionId ? $this->lockRecognition($dto->recognitionId, $counsellor) : null;
 
-            // Eligible now, read under the lock. A waiver for a recognition also needs no open report against them
-            // (SCRUM-473: the recognition itself is hidden while one is open).
-            if (! $this->isEligible($counsellor, withoutOpenReports: (bool) $recognition)) {
-                throw ValidationException::withMessages([
-                    'counsellor' => $recognition
-                        ? 'This counsellor can\'t be given a commission-free period for a recognition now: they must be verified, not suspended, not deleted, and not the subject of an open report.'
-                        : self::NOT_ELIGIBLE,
-                ]);
+            // Eligible now: read inside the transaction, once the counsellor's row is locked. Only that row is locked --
+            // the suspension, verification and report rows aren't, so a change committed a moment later isn't seen
+            // here (the list's `needsReview` shows it afterwards).
+            if (! $this->isEligible($counsellor)) {
+                throw ValidationException::withMessages(['counsellor' => self::NOT_ELIGIBLE]);
             }
 
-            $this->ensureNoOverlap(PlatformFeeWaiver::query()->where('counsellor_id', $counsellor->id)->get(['id', 'starts_at', 'ends_at']), $values);
+            // Locked too, though the counsellor's lock already serialises every change to their periods: it keeps the
+            // overlap read consistent with what the insert below will see, as the platform-wide check does.
+            $this->ensureNoOverlap(PlatformFeeWaiver::query()->inScope($counsellor->id)->lockForUpdate()->get(['id', 'starts_at', 'ends_at']), $values);
 
             $waiver = $this->insert($dto, $values, $counsellor, $recognition);
             $recognition?->forceFill(['platform_fee_waiver_id' => $waiver->id])->save();
 
-            // After commit (the notification's own afterCommit()).
+            // After commit (the notification's own afterCommit()). Only on create: ending or deleting a period sends
+            // nothing -- the counsellor's notice simply stops showing it.
             $counsellor->notify(new CounsellorFeeWaiverGrantedNotification($waiver));
 
             return $waiver;
@@ -219,7 +206,7 @@ class PlatformFeeWaiverService extends Service
     {
         $this->ensureCanManage($dto);
 
-        return DB::transaction(fn () => $this->end($dto, $this->lockWaiver($this->lockCounsellor($dto)->id, $dto->waiverId)));
+        return DB::transaction(fn () => $this->end($dto, $this->lockWaiver($this->findCounsellor($dto, lock: true)->id, $dto->waiverId)));
     }
 
     // Deletes a platform-wide period that hasn't started and that nothing refers to.
@@ -231,29 +218,71 @@ class PlatformFeeWaiverService extends Service
     }
 
     // A linked recognition's platform_fee_waiver_id is nulled by its foreign key; the deleted event keeps the link.
-    public function deleteForCounsellor(PlatformFeeWaiverDTO $dto): void
+    // Returns the period as it was (no longer stored), with its relations loaded for the response.
+    public function deleteForCounsellor(PlatformFeeWaiverDTO $dto): PlatformFeeWaiver
     {
         $this->ensureCanManage($dto);
 
-        DB::transaction(fn () => $this->remove($dto, $this->lockWaiver($this->lockCounsellor($dto)->id, $dto->waiverId)));
+        return DB::transaction(fn () => $this->remove($dto, $this->lockWaiver($this->findCounsellor($dto, lock: true)->id, $dto->waiverId)));
     }
 
-    // Currently verified, not suspended, not deleted (nor their account) -- as of now; with $withoutOpenReports, also
-    // not the reported party of an open report (GetRecognitionEligibleCounsellorIdsAction, SCRUM-473's rule).
-    public function isEligible(Counsellor $counsellor, bool $withoutOpenReports = false): bool
+    // SCRUM-134's purge (PurgeExpiredSoftDeletedCounsellorsAction) is about to force-delete the counsellor, and with them
+    // (the foreign key cascades) their periods: each gets a `deleted` event by nobody in particular, so the history
+    // stays. Call it in the same transaction as the force-delete.
+    public function recordPurgedForCounsellor(Counsellor $counsellor): void
     {
-        return GetRecognitionEligibleCounsellorIdsAction::new()->execute([$counsellor->id], $withoutOpenReports ? null : []) === [$counsellor->id];
+        PlatformFeeWaiver::query()->inScope($counsellor->id)->lockForUpdate()->orderBy('id')->get()
+            ->each(fn (PlatformFeeWaiver $waiver) => $this->recordEvent($waiver, Event::deleted, null, array_filter([
+                'reason' => $waiver->reason,
+                'counsellor_recognition_id' => CounsellorRecognition::query()->where('platform_fee_waiver_id', $waiver->id)->value('id'),
+                'purged' => true,
+            ], fn ($value) => $value !== null)));
     }
 
-    private function ensureEndsAfterStart(array $values): void
+    // Whether a counsellor may be given a new period now: currently verified, not suspended, not deleted (nor their
+    // account), and not the reported party of an open or under-review report -- SCRUM-473's recognition rule
+    // (GetRecognitionEligibleCounsellorIdsAction). Money is involved, so an investigation blocks it, linked to a
+    // recognition or not (SCRUM-475 review).
+    public function isEligible(Counsellor $counsellor): bool
     {
-        // Every caller, not just the FormRequest: a start moved up to now (ValidatesFeeWaiverPeriod::values()) must
-        // still leave the end after it.
-        if (! $values['ends_at']->gt($values['starts_at'])) {
-            throw ValidationException::withMessages([
-                'ends_at' => 'The end must be after the start.',
-            ]);
+        return GetRecognitionEligibleCounsellorIdsAction::new()->execute([$counsellor->id]) === [$counsellor->id];
+    }
+
+    /**
+     * The period's bounds, for every caller -- not only the FormRequest (ValidatesFeeWaiverPeriod), so a seeder, a job
+     * or a future endpoint can't store a backdated or far-off period. A start within the leeway is moved up to now.
+     *
+     * @return array{starts_at: CarbonInterface, ends_at: CarbonInterface, reason: string}
+     */
+    private function period(array $values): array
+    {
+        $now = CarbonImmutable::now('UTC');
+        $latest = $now->addYears(PlatformFeeWaiver::MAX_YEARS_AHEAD);
+        $startsAt = CarbonImmutable::instance($values['starts_at'])->utc();
+        $endsAt = CarbonImmutable::instance($values['ends_at'])->utc();
+        $reason = trim((string) ($values['reason'] ?? ''));
+
+        $errors = array_filter([
+            'starts_at' => match (true) {
+                $startsAt->lt($now->subSeconds(PlatformFeeWaiver::BACKDATE_LEEWAY_SECONDS)) => 'The start cannot be in the past.',
+                $startsAt->gte($latest) => 'The start must be within '.PlatformFeeWaiver::MAX_YEARS_AHEAD.' years.',
+                default => null,
+            },
+            'ends_at' => match (true) {
+                ! $endsAt->gt($startsAt->max($now)) => 'The end must be after the start, and in the future.',
+                $endsAt->gt($latest) => 'The end must be within '.PlatformFeeWaiver::MAX_YEARS_AHEAD.' years.',
+                default => null,
+            },
+            'reason' => $reason === '' || mb_strlen($reason) > PlatformFeeWaiver::REASON_MAX
+                ? 'A reason of up to '.PlatformFeeWaiver::REASON_MAX.' characters is required.'
+                : null,
+        ]);
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
         }
+
+        return ['starts_at' => $startsAt->max($now), 'ends_at' => $endsAt, 'reason' => $reason];
     }
 
     /**
@@ -309,7 +338,7 @@ class PlatformFeeWaiverService extends Service
     }
 
     // One that started is ended instead, so the record of which payments it covered stays.
-    private function remove(PlatformFeeWaiverDTO $dto, PlatformFeeWaiver $waiver): void
+    private function remove(PlatformFeeWaiverDTO $dto, PlatformFeeWaiver $waiver): PlatformFeeWaiver
     {
         if ($waiver->status() !== PlatformFeeWaiver::UPCOMING) {
             throw ValidationException::withMessages([
@@ -329,9 +358,10 @@ class PlatformFeeWaiverService extends Service
 
         // Written first, in the same transaction: the row is about to go, so the event keeps what it said (the reason
         // is administrator-only data, and these events are read by super administrators only).
+        $waiver->load(['createdBy', 'endedBy', 'recognition']);
         $this->recordEvent($waiver, Event::deleted, $dto->user, array_filter([
             'reason' => $waiver->reason,
-            'counsellor_recognition_id' => CounsellorRecognition::query()->where('platform_fee_waiver_id', $waiver->id)->value('id'),
+            'counsellor_recognition_id' => $waiver->recognition?->id,
         ], fn ($value) => $value !== null));
 
         try {
@@ -345,6 +375,8 @@ class PlatformFeeWaiverService extends Service
 
             throw $this->stillReferenced();
         }
+
+        return $waiver;
     }
 
     private function ensureCanManage(PlatformFeeWaiverDTO $dto): void
@@ -358,7 +390,7 @@ class PlatformFeeWaiverService extends Service
     {
         $waiver = $id
             ? PlatformFeeWaiver::query()
-                ->when($counsellorId === null, fn ($query) => $query->platformWide(), fn ($query) => $query->where('counsellor_id', $counsellorId))
+                ->inScope($counsellorId)
                 ->lockForUpdate()
                 ->find($id)
             : null;
@@ -370,11 +402,13 @@ class PlatformFeeWaiverService extends Service
         return $waiver;
     }
 
-    // The route's counsellor, locked -- the mutex for that counsellor's periods. Soft-deleted ones too, so a running
-    // period of theirs can still be ended (a new one is refused as not eligible).
-    private function lockCounsellor(PlatformFeeWaiverDTO $dto): Counsellor
+    // The route's counsellor -- with $lock, locked: the mutex for that counsellor's periods. Soft-deleted ones too, so
+    // a running period of theirs can still be listed and ended (a new one is refused as not eligible).
+    private function findCounsellor(PlatformFeeWaiverDTO $dto, bool $lock): Counsellor
     {
-        $counsellor = $dto->counsellorId ? Counsellor::withTrashed()->lockForUpdate()->find($dto->counsellorId) : null;
+        $counsellor = $dto->counsellorId
+            ? Counsellor::withTrashed()->when($lock, fn ($query) => $query->lockForUpdate())->find($dto->counsellorId)
+            : null;
 
         if (! $counsellor) {
             throw new PlatformFeeWaiverException(self::COUNSELLOR_NOT_FOUND, 404);
@@ -403,12 +437,13 @@ class PlatformFeeWaiverService extends Service
         return $recognition;
     }
 
-    private function recordEvent(PlatformFeeWaiver $waiver, Event $event, User $user, array $data = []): void
+    // $user null: nobody in particular (a purge).
+    private function recordEvent(PlatformFeeWaiver $waiver, Event $event, ?User $user, array $data = []): void
     {
         PlatformFeeWaiverEvent::create([
             'platform_fee_waiver_id' => $waiver->id,
             'counsellor_id' => $waiver->counsellor_id,
-            'user_id' => $user->id,
+            'user_id' => $user?->id,
             'event' => $event,
             'data' => [
                 'starts_at' => $waiver->starts_at->toIso8601ZuluString(),
@@ -416,6 +451,23 @@ class PlatformFeeWaiverService extends Service
                 ...$data,
             ],
         ]);
+    }
+
+    /**
+     * One scope's periods, newest start first: platform-wide ($counsellorId null) or that counsellor's, with what
+     * the admin resources read.
+     *
+     * @return Collection<int, PlatformFeeWaiver>
+     */
+    private function list(?int $counsellorId): Collection
+    {
+        return PlatformFeeWaiver::query()
+            ->inScope($counsellorId)
+            ->with($counsellorId === null ? ['createdBy', 'endedBy'] : ['createdBy', 'endedBy', 'recognition'])
+            ->orderByDesc('starts_at')
+            ->orderByDesc('id')
+            ->limit(self::LIST_LIMIT)
+            ->get();
     }
 
     /**
