@@ -22,4 +22,13 @@ enum SettingsEnum: string
     // invoice (OrganizationPaymentInstrument.pending_credit_amount) once TT-7.3b-e's invoicing
     // exists, never silently kept.
     case organizationPaymentInstrumentVerificationAmount = 'ORGANIZATION_PAYMENT_INSTRUMENT_VERIFICATION_AMOUNT';
+
+    // SCRUM-471: the daily star caps (whole numbers, 0 or more) -- config('recognition.cap.*') until a super admin sets
+    // one. See StarCapPolicy.
+    case recognitionCapSession = 'RECOGNITION_CAP_SESSION';
+    case recognitionCapHelpChat = 'RECOGNITION_CAP_HELP_CHAT';
+    case recognitionCapDiscussion = 'RECOGNITION_CAP_DISCUSSION';
+    case recognitionCapPost = 'RECOGNITION_CAP_POST';
+    case recognitionCapSessionPerClient = 'RECOGNITION_CAP_SESSION_PER_CLIENT';
+    case recognitionCapSessionPerGroup = 'RECOGNITION_CAP_SESSION_PER_GROUP';
 }

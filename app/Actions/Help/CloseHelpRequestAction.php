@@ -7,6 +7,7 @@ use App\Enums\HelpRequestStatusEnum;
 use App\Enums\SessionStatusEnum;
 use App\Enums\TherapyStatusEnum;
 use App\Models\HelpRequest;
+use App\Support\BestEffortAfterCommit;
 use App\Support\HelpBroadcast;
 use Illuminate\Support\Facades\DB;
 
@@ -38,6 +39,11 @@ class CloseHelpRequestAction extends Action
 
         if ($moved && $from === HelpRequestStatusEnum::connected && $request->session) {
             EndHelpCallAction::new()->execute($request->session);
+
+            // TT-7.11b/SCRUM-471: a help chat that really took place earns a star (AwardHelpChatStarAction decides).
+            // Its session was set held above through forceFill, not ChangeSessionStatusAction. A connected request
+            // closes only once.
+            BestEffortAfterCommit::run(fn () => AwardHelpChatStarAction::new()->execute($request));
         }
 
         return $moved;

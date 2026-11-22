@@ -47,8 +47,21 @@ class EnsureDiscussionDataIsValidAction extends Action
             throw new DiscussionException('You cannot a create discussion for a therapy which has ended.', 422);
         }
 
+        if (! $createDiscussionDTO->startTime || ! $createDiscussionDTO->endTime) {
+            throw new DiscussionException('A discussion needs a start and an end time.', 422);
+        }
+
         $startTime = Carbon::parse($createDiscussionDTO->startTime)->setTimezone(config('app.timezone'));
         $endTime = Carbon::parse($createDiscussionDTO->endTime)->setTimezone(config('app.timezone'));
+
+        // SCRUM-471: as a session (CreateSessionRequest), a discussion starts at least 30 minutes from now -- on create,
+        // and on an update that moves its start (an update resending the start it already has is left alone).
+        $movesStart = ! $createDiscussionDTO->discussion
+            || ! $createDiscussionDTO->discussion->start_time?->equalTo($startTime);
+        if ($movesStart && $startTime->lessThan(now()->addMinutes(30))) {
+            throw new DiscussionException('The start time has to be at least 30 minutes from now.', 422);
+        }
+
         if (
             $startTime->copy()->addMinutes(30)->greaterThan($endTime)
         ) {

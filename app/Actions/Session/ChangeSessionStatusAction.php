@@ -4,10 +4,13 @@ namespace App\Actions\Session;
 
 use App\Actions\Action;
 use App\Actions\Organization\RecordOrganizationInvoiceLineForSessionAction;
+use App\Actions\Star\RevokeCounsellorStarsAction;
 use App\DTOs\CreateSessionDTO;
 use App\Enums\SessionStatusEnum;
+use App\Enums\StarSourceEnum;
 use App\Models\GroupTherapy;
 use App\Models\User;
+use App\Support\BestEffortAfterCommit;
 
 class ChangeSessionStatusAction extends Action
 {
@@ -93,6 +96,20 @@ class ChangeSessionStatusAction extends Action
         // the primary clinical fact being recorded here.
         if ($status === SessionStatusEnum::held->value && $endsForTheFirstTime) {
             RecordOrganizationInvoiceLineForSessionAction::new()->execute($session);
+
+            // TT-7.11b/SCRUM-471: the session's star(s), on the same first-time-held gate as billing -- after the
+            // caller's session lock is released, and never blocking the status change.
+            BestEffortAfterCommit::run(fn () => AwardSessionHeldStarAction::new()->execute($session));
+        }
+
+        // TT-7.11b/SCRUM-471: a held session later ending failed or abandoned (only an administrator can do that to
+        // one -- SessionService) loses its star. Nothing to delete for a session that was never held.
+        if (in_array($status, [SessionStatusEnum::failed->value, SessionStatusEnum::abandoned->value], true)) {
+            // A help chat's star too (help_chat_held, on the same session).
+            BestEffortAfterCommit::run(function () use ($session) {
+                RevokeCounsellorStarsAction::new()->forStarreable(StarSourceEnum::sessionHeld, $session);
+                RevokeCounsellorStarsAction::new()->forStarreable(StarSourceEnum::helpChatHeld, $session);
+            });
         }
 
         return $session;

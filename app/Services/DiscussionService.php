@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Actions\CounsellorVerification\EnsureCounsellorMayTakeOnClientsAction;
+use App\Actions\Discussion\AwardDiscussionHeldStarAction;
 use App\Actions\Discussion\ChangeDiscussionStatusAction;
 use App\Actions\Discussion\CreateDiscussionAction;
 use App\Actions\Discussion\CreateDiscussionRequestAction;
@@ -22,19 +23,19 @@ use App\Actions\Discussion\EnsureNotAlreadyPartOfDiscussionAction;
 use App\Actions\Discussion\RemoveCounsellorFromDiscussionAction;
 use App\Actions\Discussion\UpdateDiscussionAction;
 use App\Actions\EnsureAddedbyIsValidAction;
-use App\Actions\Star\CreateStarAction;
+use App\Actions\Star\RevokeCounsellorStarsAction;
 use App\Actions\Suspension\EnsureCanActAsCounsellorAction;
 use App\Actions\Therapy\EnsureIsCounsellorAction;
 use App\Actions\User\EnsureRequestDataIsValidAction;
 use App\Actions\User\EnsureUserExistsAction;
 use App\DTOs\CreateDiscussionDTO;
 use App\DTOs\CreateRequestDTO;
-use App\DTOs\CreateStarDTO;
 use App\DTOs\GetDiscussionsDTO;
 use App\Enums\DiscussionStatusEnum;
 use App\Enums\PaginationEnum;
-use App\Enums\StarTypeEnum;
+use App\Enums\StarSourceEnum;
 use App\Events\DiscussionUpdatedEvent;
+use App\Exceptions\DiscussionException;
 use App\Http\Resources\CounsellorMiniResource;
 use App\Http\Resources\DiscussionMiniResource;
 use App\Models\Counsellor;
@@ -42,10 +43,16 @@ use App\Models\Discussion;
 use App\Notifications\DiscussionDeletedNotification;
 use App\Notifications\DiscussionStatusChangedNotification;
 use App\Notifications\DiscussionUpdatedNotification;
+use App\Support\BestEffortAfterCommit;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 
 class DiscussionService extends Service
 {
+    public const ALREADY_ENDED = 'This discussion has already ended, so it can no longer be changed.';
+
+    private const ENDED = [DiscussionStatusEnum::held->value, DiscussionStatusEnum::abandoned->value, DiscussionStatusEnum::failed->value];
+
     public function removeCounsellor(GetDiscussionsDTO $getDiscussionsDTO)
     {
         EnsureUserExistsAction::new()->execute($getDiscussionsDTO->user);
@@ -92,15 +99,6 @@ class DiscussionService extends Service
 
         $discussion = CreateDiscussionAction::new()->execute($createDiscussionDTO);
 
-        CreateStarAction::new()->execute(
-            CreateStarDTO::fromArray([
-                'starredby' => null,
-                'starred' => $createDiscussionDTO->addedby,
-                'starreable' => $discussion,
-                'type' => StarTypeEnum::participation->value,
-            ])
-        );
-
         return $discussion;
     }
 
@@ -132,7 +130,7 @@ class DiscussionService extends Service
 
         EnsureCanEndDiscussionAction::new()->execute($createDiscussionDTO);
 
-        $discussion = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, DiscussionStatusEnum::held->value);
+        $discussion = $this->changeStatus($createDiscussionDTO, DiscussionStatusEnum::held);
 
         broadcast(new DiscussionUpdatedEvent($discussion))->toOthers();
 
@@ -152,7 +150,7 @@ class DiscussionService extends Service
 
         EnsureCanActAsCounsellorAction::new()->execute($createDiscussionDTO->user?->counsellor);
 
-        $discussion = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, DiscussionStatusEnum::in_session->value);
+        $discussion = $this->changeStatus($createDiscussionDTO, DiscussionStatusEnum::in_session);
 
         broadcast(new DiscussionUpdatedEvent($discussion))->toOthers();
 
@@ -170,7 +168,7 @@ class DiscussionService extends Service
 
         EnsureCanUpdateDiscussionStatusAction::new()->execute($createDiscussionDTO);
 
-        $discussion = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, DiscussionStatusEnum::abandoned->value);
+        $discussion = $this->changeStatus($createDiscussionDTO, DiscussionStatusEnum::abandoned);
 
         broadcast(new DiscussionUpdatedEvent($discussion))->toOthers();
 
@@ -188,12 +186,49 @@ class DiscussionService extends Service
 
         EnsureCanFailDiscussionAction::new()->execute($createDiscussionDTO);
 
-        $discussion = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, DiscussionStatusEnum::failed->value);
+        $discussion = $this->changeStatus($createDiscussionDTO, DiscussionStatusEnum::failed);
 
         Notification::send(
             $createDiscussionDTO->discussion->getOtherUsers($createDiscussionDTO->user),
             new DiscussionStatusChangedNotification($discussion)
         );
+
+        return $discussion;
+    }
+
+    // SCRUM-471 (the user's decision): an ended discussion -- held, abandoned or failed -- is final: it can't be ended,
+    // abandoned, failed or reopened again; only an administrator can change it. Checked and changed under its row lock.
+    // The first time it is held (held_at, set once and never cleared) earns its stars; a held one later abandoned or
+    // failed (by an administrator) loses them. Both after commit, never blocking the change.
+    private function changeStatus(CreateDiscussionDTO $createDiscussionDTO, DiscussionStatusEnum $status): Discussion
+    {
+        $firstHeld = false;
+
+        $discussion = DB::transaction(function () use ($createDiscussionDTO, $status, &$firstHeld) {
+            $locked = Discussion::query()->whereKey($createDiscussionDTO->discussion->id)->lockForUpdate()->firstOrFail();
+
+            if (in_array($locked->status, self::ENDED, true) && ! $createDiscussionDTO->user->isAdmin()) {
+                throw new DiscussionException(self::ALREADY_ENDED, 422);
+            }
+
+            $createDiscussionDTO->discussion->setRawAttributes($locked->getAttributes(), true);
+            $firstHeld = $status === DiscussionStatusEnum::held && ! $locked->held_at;
+
+            $discussion = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, $status->value);
+            if ($firstHeld) {
+                $discussion->forceFill(['held_at' => now()])->save();
+            }
+
+            return $discussion;
+        });
+
+        if ($firstHeld) {
+            BestEffortAfterCommit::run(fn () => AwardDiscussionHeldStarAction::new()->execute($discussion));
+        }
+
+        if (in_array($status, [DiscussionStatusEnum::abandoned, DiscussionStatusEnum::failed], true)) {
+            BestEffortAfterCommit::run(fn () => RevokeCounsellorStarsAction::new()->forStarreable(StarSourceEnum::discussionHeld, $discussion));
+        }
 
         return $discussion;
     }

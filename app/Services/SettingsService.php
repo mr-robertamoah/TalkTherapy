@@ -50,6 +50,34 @@ class SettingsService extends Service
         return (int) ($configured[strtoupper($currency)] ?? config("settings.organization_payment_instrument_verification_amount.{$currency}", 0));
     }
 
+    // SCRUM-471: the daily star caps, keyed as config('recognition.cap') is -- each a super admin's setting if they set
+    // a whole number of 0 or more, otherwise the config default. One query for all of them.
+    public function getRecognitionCaps(): array
+    {
+        $keys = [
+            'session' => SettingsEnum::recognitionCapSession,
+            'help_chat' => SettingsEnum::recognitionCapHelpChat,
+            'discussion' => SettingsEnum::recognitionCapDiscussion,
+            'post' => SettingsEnum::recognitionCapPost,
+            'session_per_client' => SettingsEnum::recognitionCapSessionPerClient,
+            'session_per_group' => SettingsEnum::recognitionCapSessionPerGroup,
+        ];
+
+        $stored = PlatformSetting::query()
+            ->whereIn('key', array_map(fn (SettingsEnum $key) => $key->value, $keys))
+            ->pluck('value', 'key');
+
+        return collect($keys)
+            ->map(function (SettingsEnum $key, string $name) use ($stored) {
+                $value = $stored[$key->value] ?? null;
+
+                return is_string($value) && ctype_digit($value)
+                    ? (int) $value
+                    : (int) config("recognition.cap.{$name}");
+            })
+            ->all();
+    }
+
     public function update(SettingDTO $dto): PlatformSetting
     {
         return UpdateSettingAction::new()->execute($dto);
@@ -86,6 +114,8 @@ class SettingsService extends Service
                 ])
                 ->values()
                 ->all(),
+            // SCRUM-471: for the recognition settings form (SCRUM-474).
+            'recognitionCaps' => $this->getRecognitionCaps(),
         ];
     }
 }

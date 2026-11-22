@@ -12,6 +12,10 @@ use App\Models\Therapy;
 use App\Models\User;
 use Carbon\Carbon;
 
+// SCRUM-471: a discussion now has to start at least 30 minutes from now, so these fixed 2025 times are checked from
+// before them.
+beforeEach(fn () => Carbon::setTestNow('2024-12-01 00:00:00'));
+
 test('rescheduling a discussion to an earlier, genuinely free slot does not throw a false prohibition error', function () {
     $counsellorUser = User::factory()->create();
     $counsellor = Counsellor::factory()->create(['user_id' => $counsellorUser->id]);

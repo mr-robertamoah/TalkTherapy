@@ -26,11 +26,21 @@ class RevokeCounsellorStarsAction extends Action
     // Every star the rule gave for this thing, to any counsellor, whatever its award key (a bulk revoke).
     public function forStarreable(StarSourceEnum $source, Model $starreable): int
     {
+        return $this->forStarreables($source, $starreable->getMorphClass(), [$starreable->getKey()]);
+    }
+
+    // SCRUM-471: the same for many things of one type, in one DELETE (e.g. every session a refunded payment covered).
+    public function forStarreables(StarSourceEnum $source, string $starreableType, array $starreableIds): int
+    {
+        if ($starreableIds === []) {
+            return 0;
+        }
+
         return Star::query()
             ->where('starred_type', (new Counsellor)->getMorphClass())
             ->where('source', $source->value)
-            ->where('starreable_type', $starreable->getMorphClass())
-            ->where('starreable_id', $starreable->getKey())
+            ->where('starreable_type', $starreableType)
+            ->whereIn('starreable_id', $starreableIds)
             ->delete();
     }
 }

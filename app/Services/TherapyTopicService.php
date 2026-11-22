@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Actions\Star\CreateStarAction;
 use App\Actions\Therapy\EnsureTherapyCanProceedAction;
 use App\Actions\Therapy\EnsureTherapyExistsAction;
 use App\Actions\TherapyTopic\CreateTherapyTopicAction;
@@ -12,15 +11,12 @@ use App\Actions\TherapyTopic\EnsureCanUpdateTherapyTopicAction;
 use App\Actions\TherapyTopic\EnsureDataIsValidAction;
 use App\Actions\TherapyTopic\EnsureTherapyTopicExistsAction;
 use App\Actions\TherapyTopic\UpdateTherapyTopicAction;
-use App\DTOs\CreateStarDTO;
 use App\DTOs\CreateTherapyTopicDTO;
 use App\DTOs\GetTherapyTopicsDTO;
 use App\Enums\PaginationEnum;
-use App\Enums\StarTypeEnum;
 use App\Http\Resources\TherapyTopicResource;
 use App\Models\GroupTherapy;
 use App\Models\Therapy;
-use App\Models\User;
 
 class TherapyTopicService extends Service
 {
@@ -65,15 +61,6 @@ class TherapyTopicService extends Service
         EnsureDataIsValidAction::new()->execute($createTherapyTopicDTO);
 
         $topic = CreateTherapyTopicAction::new()->execute($createTherapyTopicDTO);
-
-        CreateStarAction::new()->execute(
-            CreateStarDTO::fromArray([
-                'starredby' => null,
-                'starred' => $createTherapyTopicDTO->user,
-                'starreable' => $topic,
-                'type' => StarTypeEnum::participation->value,
-            ])
-        );
 
         return $topic;
     }

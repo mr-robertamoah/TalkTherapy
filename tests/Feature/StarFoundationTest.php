@@ -11,6 +11,7 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -48,24 +49,21 @@ function sfdCount(?array $ids, ?string $from = null, ?string $to = null)
     );
 }
 
-// New-rule stars are written directly by AwardCounsellorStarAction.
-arch('only the legacy call sites create stars through CreateStarAction')
-    ->expect('App\Actions\Star\CreateStarAction')
-    ->toOnlyBeUsedIn([
-        // Legacy award points, removed in SCRUM-471.
-        'App\Actions\Session\AfterSessionCreatedAction',
-        'App\Services\TherapyTopicService',
-        'App\Services\TherapyService',
-        'App\Services\DiscussionService',
-        'App\Services\GroupTherapyService',
-        'App\Services\PostService',
-        'App\Services\LanguageService',
-        'App\Services\ProfessionService',
-        'App\Services\ReligionService',
-        'App\Services\LicensingAuthorityService',
-        'App\Services\TherapyCaseService',
-        'App\Services\StarService',
-    ]);
+// SCRUM-471: the legacy award points and CreateStarAction are gone; AwardCounsellorStarAction is the one writer.
+test('nothing but AwardCounsellorStarAction writes stars', function () {
+    expect(file_exists(app_path('Actions/Star/CreateStarAction.php')))->toBeFalse();
+
+    $writers = collect(File::allFiles(app_path()))
+        ->filter(fn ($file) => preg_match(
+            '/Star::(query\(\)->)?(create|forceCreate|insert|firstOrCreate|updateOrCreate|make)\b|new Star\b|->(stars|starreable|starred)\(\)->(create|save|forceCreate)\b/',
+            $file->getContents(),
+        ))
+        ->map(fn ($file) => str_replace(app_path().DIRECTORY_SEPARATOR, '', $file->getPathname()))
+        ->values()
+        ->all();
+
+    expect($writers)->toBe(['Actions/Star/AwardCounsellorStarAction.php']);
+});
 
 test('an award stars the counsellor morph with its source, key and type', function () {
     $counsellor = sfdCounsellor();
@@ -235,9 +233,13 @@ test('the profile star counts are what they were before', function () {
         ->and(sfdCounsellor()->overallStarsCount)->toBe(0);
 });
 
-test('the migration rolls back and runs again', function () {
+test('the migrations roll back and run again', function () {
     $migration = include database_path('migrations/2026_12_13_100000_add_source_and_award_key_to_stars_table.php');
+    // SCRUM-471's index on source and starreable, which has to go first.
+    $revokeIndex = include database_path('migrations/2026_12_13_200000_add_starreable_source_index_to_stars_table.php');
 
+    $revokeIndex->down();
+    expect(Schema::hasIndex('stars', 'stars_source_starreable_index'))->toBeFalse();
     $migration->down();
     expect(Schema::hasColumns('stars', ['source', 'award_key']))->toBeFalse()
         ->and(Schema::hasIndex('stars', 'stars_period_count_index'))->toBeFalse()
@@ -247,4 +249,7 @@ test('the migration rolls back and runs again', function () {
     expect(Schema::hasColumns('stars', ['source', 'award_key']))->toBeTrue()
         ->and(Schema::hasIndex('stars', 'stars_period_count_index'))->toBeTrue()
         ->and(Schema::hasIndex('stars', ['starred_type', 'starred_id', 'award_key'], 'unique'))->toBeTrue();
+
+    $revokeIndex->up();
+    expect(Schema::hasIndex('stars', ['source', 'starreable_type', 'starreable_id']))->toBeTrue();
 });

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Actions\EnsureAddedbyIsValidAction;
+use App\Actions\Post\AwardPostPublishedStarAction;
 use App\Actions\Post\CreatePostAction;
 use App\Actions\Post\DeletePostAction;
 use App\Actions\Post\EnsureCanCreatePostAction;
@@ -10,13 +11,11 @@ use App\Actions\Post\EnsureCanUpdatePostAction;
 use App\Actions\Post\EnsurePostDataIsValidAction;
 use App\Actions\Post\EnsurePostExistsAction;
 use App\Actions\Post\UpdatePostAction;
-use App\Actions\Star\CreateStarAction;
 use App\Actions\Suspension\EnsureCanActAsCounsellorAction;
 use App\DTOs\CreatePostDTO;
-use App\DTOs\CreateStarDTO;
 use App\Enums\PaginationEnum;
-use App\Enums\StarTypeEnum;
 use App\Models\Post;
+use App\Support\BestEffortAfterCommit;
 
 class PostService extends Service
 {
@@ -36,14 +35,8 @@ class PostService extends Service
 
         $post = CreatePostAction::new()->execute($createPostDTO);
 
-        CreateStarAction::new()->execute(
-            CreateStarDTO::fromArray([
-                'starredby' => null,
-                'starred' => $createPostDTO->addedby ?: $createPostDTO->user,
-                'starreable' => $post,
-                'type' => StarTypeEnum::contribution->value,
-            ])
-        );
+        // TT-7.11b/SCRUM-471: a counsellor's post earns a star, a few a day. Never blocks publishing it.
+        BestEffortAfterCommit::run(fn () => AwardPostPublishedStarAction::new()->execute($post));
 
         return $post;
     }
