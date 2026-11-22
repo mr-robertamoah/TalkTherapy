@@ -784,3 +784,7 @@ Skipped once she has any period of her own.
 - As the super admin: `GET /administrator/counsellors/{her counsellor id}/fee-waivers` lists it (upcoming, with
   `recognitionId` and `needsReview: false`) and its history; `POST .../fee-waivers/{id}/delete` deletes it (it is
   upcoming), and the seeder makes it again on the next run.
+- SCRUM-477: on `/administrator/recognition` (last month), her row's **Fee waiver** column shows the period's dates
+  (GMT) and *upcoming*. As the super admin it also shows the reason and **delete** (two clicks). As the ordinary
+  admin `suspension_demo_normal_admin`, just the dates and status. Her row has no "Also waive the platform fee"
+  option, since a period is already linked.

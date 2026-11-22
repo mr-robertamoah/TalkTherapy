@@ -95,14 +95,23 @@ acted on their own recognition. Counsellors never see star counts or ranks.
 - a **Reason**, prefilled "Counsellor of the month, <Month Year>" (the recognition's month). Administrators only;
   the counsellor is told the dates, never the reason.
 
+Focus moves to the checkbox when the panel opens. The option isn't offered on a row whose recognition already has a
+linked period (a recognition links to one period at most).
+
+The fields are checked before anything is posted: both dates and a reason (up to 500 characters), the end after the
+start, and the start not in the past (a minute's leeway, as on the server). Each problem shows under its field, and
+**confirm approve** / **confirm add** stays disabled until they pass.
+
 **confirm approve** (or **confirm add**) saves the approval first. Only if that succeeds is the period created, as a
 commission-free period of this counsellor's own linked to the new recognition (`POST
-/administrator/counsellors/{id}/fee-waivers` with `counsellor_recognition_id`). If the period is refused, the approval
-stays, and a red notice above the suggestions says **"Approved without a fee waiver."** with the reason. Reasons include:
+/administrator/counsellors/{id}/fee-waivers` with `counsellor_recognition_id`). If the server refuses the period, the
+approval stays, and a red notice above the suggestions (kept until dismissed) says **"<Name> approved without a fee
+waiver."** (or **"added"**), followed by the reason. Reasons the page can't check itself include:
 
 - it overlaps another of the counsellor's own periods;
-- the counsellor isn't eligible now (an open report, suspended, verification lapsed);
-- a start in the past, or an end not after the start.
+- the counsellor isn't eligible now (an open report, suspended, verification lapsed).
+
+No other decision can be confirmed until the period has been saved or refused.
 
 There is no "add a waiver" for a row already approved without one; a super admin who needs one later can skip and
 re-approve the row, or use the JSON route directly (see `commission-free-periods.md`).
@@ -112,7 +121,9 @@ recognition:
 
 - its start and end (GMT) and its status: *upcoming*, *active*, *ended* or *cancelled* (ended early with "End now");
 - a red **needs review** pill while it is upcoming or active but the counsellor is no longer eligible, or the
-  recognition is no longer approved. Periods are never ended automatically; the administrator decides;
+  recognition is no longer approved. Periods are never ended automatically; the administrator decides. A report
+  about an urgent help request (which hides who asked for help) never shows here, though it still stops a new
+  period;
 - for a **super administrator**, its reason, plus **end now** (while active) or **delete** (while upcoming), each with
   a confirm click;
 - **--** for a row without a linked period.
@@ -122,7 +133,8 @@ the viewer's **own** row (an administrator who is also a counsellor) the column 
 status or *needs review*, which could reveal an open report about them.
 
 The column comes in the page props (`feeWaivers`), read in a fixed number of queries for the month; the
-per-counsellor JSON list stays super-admin only.
+per-counsellor JSON list stays super-admin only. When the table is wider than the window, it scrolls sideways rather
+than clipping the last column.
 
 ### Consent
 
@@ -203,10 +215,10 @@ Accounts:
    <last month>". Click **confirm approve**. It now reads "2 of 5 approved", the success alert says the fee was
    waived, his Fee waiver column shows the dates and *upcoming*, and the audit lists "approved" by you.
    Sarah's row shows her seeded period (*upcoming*) with **delete**.
-3. Under **Add a counsellor**, type `james`, click **add**, tick **Also waive the platform fee**, and set the start
-   to a time in the past (for example the 1st of this month). Click **confirm add**. James shows under "Also decided"
-   with *added manually*, and the red "Approved without a fee waiver." notice says the start cannot be in the past.
-   His Fee waiver column reads **--**.
+3. Under **Add a counsellor**, type `james`, click **add**, and tick **Also waive the platform fee**. Set the start
+   to a time in the past (for example the 1st of this month): "The start cannot be in the past." shows under it and
+   **confirm add** is disabled. Untick the option and click **confirm add**. James shows under "Also decided" with
+   *added manually*, and his Fee waiver column reads **--**.
 4. Click **skip** on Sarah, then **confirm skip**. Her row reads *skipped*, and the audit reads "skipped (was
    approved)". Her dashboard request is closed. Her period is not ended; its column now also shows **needs review**.
    Click **delete**, then **confirm delete**: the column reads **--**.

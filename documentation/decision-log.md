@@ -14072,3 +14072,26 @@ Fee waiver column.
 - **Status pill:** `waiverStatusPill()` uses Payouts' tones (upcoming blue, active green, ended gray, cancelled amber);
   "needs review" is a red pill. End now is offered only while active and delete only while upcoming, as the resource's
   `canEnd`/`canDelete` already say.
+- **Review and security fixes:**
+  - **needsReview and help-request reports (security review M1):** a report about an urgent help request hides who
+    asked for help, so a period flagged for review with no visible reason would reveal one. The displayed
+    eligibility (`PlatformFeeWaiverService::displayEligibleIds()` / `looksEligible()`) takes
+    `GetCounsellorIdsWithOpenReportsAction`'s `flaggableCounsellorIds` as the reported ids. It feeds this page's
+    `needsReview`, and also SCRUM-475's JSON (`eligible`, and `needsReview` on the list and on every create, end and
+    delete response). Creating a period still goes through `isEligible()` on every open report, so such a report
+    still refuses one. Accepted residual, as in SCRUM-474: that refusal itself says "not eligible" without a
+    visible reason.
+  - **Checked before the approval is posted:** `waiverOptionErrors()` checks both dates and the reason (up to the
+    `waiverReasonMax` prop), that the end is after the start and in the future, and that the start isn't more than
+    the server's minute in the past. Errors show inline under each field and confirm stays disabled, so an approval
+    isn't saved with a period that can only be refused. Overlap and eligibility are still only known to the server.
+  - **No option on a row with a linked period:** the slot is only given when `!waiverFor(row)`. A recognition links
+    to one period at most (the service refuses a second), so offering it there could only fail after the approval.
+  - **One refusal message:** a refused period shows only in the notice (not also as an alert), headed "<Name>
+    approved without a fee waiver." or "added" on the add path, followed by the server's reason. While the period is
+    being posted, every confirm is disabled (`waiverSaving`).
+  - **Shared helpers:** `waiverStatusPill()` and `utcInputValue()` moved to `commissionFree.js`. Payouts' commission-
+    free list uses the same pill.
+  - **Table width:** `AdminTable`'s card is `overflow-x-auto` instead of `overflow-hidden`, for every admin table. A
+    table wider than the window (this page's eight columns at about 1580px) now scrolls instead of clipping its last
+    column. Narrower tables look the same.
