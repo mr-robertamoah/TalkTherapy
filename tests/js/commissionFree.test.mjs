@@ -22,6 +22,24 @@ describe('commission-free notice', () => {
         )
     })
 
+    it('words a counsellor\'s own period as theirs', () => {
+        assert.equal(
+            commissionFreeNoticeText({ startsAt: '2026-12-01T00:00:00Z', endsAt: '2027-01-01T00:00:00Z', scope: 'personal' }),
+            'No platform commission on your payments between 1 Dec 2026, 00:00 GMT and 1 Jan 2027, 00:00 GMT',
+        )
+        assert.equal(
+            commissionFreeNoticeText({ startsAt: '2026-12-01T00:00:00Z', endsAt: null, scope: 'personal' }),
+            'No platform commission on your payments from 1 Dec 2026, 00:00 GMT',
+        )
+    })
+
+    it('words a platform-wide period, with or without a scope, for everyone', () => {
+        assert.equal(
+            commissionFreeNoticeText({ startsAt: '2026-12-10T00:00:00Z', endsAt: '2026-12-17T09:30:00Z', scope: 'platform' }),
+            'No platform commission on payments made between 10 Dec 2026, 00:00 GMT and 17 Dec 2026, 09:30 GMT',
+        )
+    })
+
     it('is nothing without a period', () => {
         assert.equal(commissionFreeNoticeText(null), null)
         assert.equal(formatUtc(null), '')

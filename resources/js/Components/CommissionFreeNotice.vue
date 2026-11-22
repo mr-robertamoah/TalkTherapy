@@ -1,6 +1,7 @@
 <script setup>
 // TT-7.10b/SCRUM-468: the one-line notice counsellors and organisations see while a platform-wide commission-free
-// period is running or coming up -- only its dates (the reason is for administrators).
+// period is running or coming up -- only its dates (the reason is for administrators). TT-7.11e/SCRUM-475: or, for a
+// counsellor, their own period (scope 'personal', worded "your payments").
 import { computed } from 'vue'
 import { commissionFreeNoticeText } from '@/Support/commissionFree.js'
 
