@@ -31,12 +31,14 @@ class GetRecognitionSuggestionsAction extends Action
         $decisions = CounsellorRecognition::query()->forMonth($from)->get()->keyBy('counsellor_id');
         $ranking = $this->ranking($from, $decisions->keys()->all());
 
-        $suggested = $ranking['ranked']->filter(fn (array $row) => $row['rank'] <= $perMonth);
+        $suggested = $ranking['ranked']->filter(fn (array $row) => self::isSuggested($row));
         $cutoffRank = $suggested->count() > $perMonth ? $suggested->max('rank') : null;
         $otherIds = $decisions->keys()->diff($suggested->keys())->values();
 
+        // Whether each is suspended, in the same query as their user (an active suspension of any scope covers
+        // counselling -- Counsellor::isSuspended()).
         $counsellors = Counsellor::withTrashed()
-            ->with('user')
+            ->with(['user' => fn ($query) => $query->withExists(['suspensions as has_active_suspension' => fn ($query) => $query->active()])])
             ->whereIn('id', $suggested->keys()->merge($otherIds)->all())
             ->get()
             ->keyBy('id');
@@ -104,6 +106,13 @@ class GetRecognitionSuggestionsAction extends Action
         return $ranked;
     }
 
+    // THE rule for "suggested": ranked within the month's cap -- the top N plus everyone tied with the Nth. $row is a
+    // ranking() row, or null for a counsellor not ranked (no stars that month, or not eligible).
+    public static function isSuggested(?array $row): bool
+    {
+        return $row !== null && $row['rank'] <= self::perMonth();
+    }
+
     public static function monthStart(CarbonInterface $month): CarbonImmutable
     {
         return CarbonImmutable::create($month->year, $month->month, 1, 0, 0, 0, 'UTC');
@@ -130,7 +139,7 @@ class GetRecognitionSuggestionsAction extends Action
             // Why a decided row may no longer be eligible (a suggested one always is).
             'flags' => [
                 'verificationState' => $counsellor?->verificationState()->value,
-                'suspended' => (bool) $counsellor?->isSuspended(),
+                'suspended' => (bool) $counsellor?->user?->has_active_suspension,
                 'openReport' => $extra['openReport'],
                 'deleted' => ! $counsellor || $counsellor->trashed() || (bool) $counsellor->user?->trashed(),
             ],

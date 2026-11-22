@@ -37,6 +37,10 @@ class CounsellorRecognitionService extends Service
 
     public const NOT_FOUND = 'That recognition could not be found.';
 
+    public const NOT_YOURS_TO_DECIDE = 'You can\'t decide your own recognition.';
+
+    public const NOT_ELIGIBLE = 'This counsellor can\'t be recognised now: they must be verified, not suspended, and not the subject of an open report.';
+
     public const WITHDRAW = 'withdraw';
 
     public const RESTORE = 'restore';
@@ -55,14 +59,15 @@ class CounsellorRecognitionService extends Service
         $month = $this->month($dto);
         $counsellor = $this->counsellor($dto);
 
-        $ranked = $this->suggestion($month, $counsellor->id);
-        if (! $ranked) {
+        $ranking = GetRecognitionSuggestionsAction::new()->ranking($month);
+        $ranked = $ranking['ranked']->get($counsellor->id);
+        if (! GetRecognitionSuggestionsAction::isSuggested($ranked)) {
             throw ValidationException::withMessages([
                 'counsellor_id' => 'This counsellor is not among this month\'s suggestions. Add them instead.',
             ]);
         }
 
-        return $this->recognise($dto, $month, $counsellor, $ranked['stars'], $ranked['rank'], manually: false);
+        return $this->recognise($dto, $month, $counsellor, $ranked, $ranking['reportedIds'], manually: false);
     }
 
     // A counsellor who isn't suggested -- still only one eligible now, and within the cap.
@@ -72,20 +77,17 @@ class CounsellorRecognitionService extends Service
         $month = $this->month($dto);
         $counsellor = $this->counsellor($dto);
 
-        $ranked = GetRecognitionSuggestionsAction::new()->ranking($month)['ranked']->get($counsellor->id);
-        if ($ranked && $ranked['rank'] <= GetRecognitionSuggestionsAction::perMonth()) {
+        // One pass over the open reports, which also covers this counsellor when they have no stars.
+        $ranking = GetRecognitionSuggestionsAction::new()->ranking($month, [$counsellor->id]);
+        $ranked = $ranking['ranked']->get($counsellor->id);
+        if (GetRecognitionSuggestionsAction::isSuggested($ranked)) {
             throw ValidationException::withMessages([
                 'counsellor_id' => 'This counsellor is already suggested for this month. Approve them instead.',
             ]);
         }
 
-        if (! in_array($counsellor->id, GetRecognitionEligibleCounsellorIdsAction::new()->execute([$counsellor->id]), true)) {
-            throw ValidationException::withMessages([
-                'counsellor_id' => 'This counsellor can\'t be recognised now: they must be verified, not suspended, and not the subject of an open report.',
-            ]);
-        }
-
-        return $this->recognise($dto, $month, $counsellor, $ranked['stars'] ?? 0, $ranked['rank'] ?? null, manually: true);
+        // Eligibility is checked by recognise(), under the lock.
+        return $this->recognise($dto, $month, $counsellor, $ranked, $ranking['reportedIds'], manually: true);
     }
 
     // A suggested counsellor, or one already decided this month (approve -> skip). Skipping needs no eligibility.
@@ -94,7 +96,11 @@ class CounsellorRecognitionService extends Service
         $this->ensureCanManage($dto);
         $month = $this->month($dto);
         $counsellor = $this->counsellor($dto, withTrashed: true);
-        $ranked = $this->suggestion($month, $counsellor->id);
+
+        // The ranking is only needed for a counsellor not yet decided this month (re-checked under the lock below).
+        $decided = CounsellorRecognition::query()->forMonth($month)->where('counsellor_id', $counsellor->id)->exists();
+        $ranked = $decided ? null : GetRecognitionSuggestionsAction::new()->ranking($month)['ranked']->get($counsellor->id);
+        $ranked = GetRecognitionSuggestionsAction::isSuggested($ranked) ? $ranked : null;
 
         return $this->inTransaction(function () use ($dto, $month, $counsellor, $ranked) {
             $recognition = $this->lockMonth($month)->firstWhere('counsellor_id', $counsellor->id);
@@ -179,16 +185,26 @@ class CounsellorRecognitionService extends Service
         });
     }
 
-    private function recognise(CounsellorRecognitionDTO $dto, CarbonImmutable $month, Counsellor $counsellor, int $stars, ?int $rank, bool $manually): CounsellorRecognition
+    // $ranked: the counsellor's ranking() row (null when unranked); $reportedIds: from the same ranking's pass over the
+    // open reports.
+    private function recognise(CounsellorRecognitionDTO $dto, CarbonImmutable $month, Counsellor $counsellor, ?array $ranked, array $reportedIds, bool $manually): CounsellorRecognition
     {
         $perMonth = GetRecognitionSuggestionsAction::perMonth();
+        $stars = $ranked['stars'] ?? 0;
+        $rank = $ranked['rank'] ?? null;
 
-        return $this->inTransaction(function () use ($dto, $month, $counsellor, $stars, $rank, $manually, $perMonth) {
+        return $this->inTransaction(function () use ($dto, $month, $counsellor, $stars, $rank, $reportedIds, $manually, $perMonth) {
             $rows = $this->lockMonth($month);
             $recognition = $rows->firstWhere('counsellor_id', $counsellor->id);
 
             if ($recognition?->isApproved()) {
                 return $recognition;
+            }
+
+            // Eligible as of now, with the month locked: verification, suspension and deletion read again here (the
+            // open reports come from the ranking's pass a moment ago).
+            if (! in_array($counsellor->id, GetRecognitionEligibleCounsellorIdsAction::new()->execute([$counsellor->id], $reportedIds), true)) {
+                throw ValidationException::withMessages(['counsellor_id' => self::NOT_ELIGIBLE]);
             }
 
             if ($rows->filter(fn (CounsellorRecognition $row) => $row->isApproved())->count() >= $perMonth) {
@@ -233,9 +249,13 @@ class CounsellorRecognitionService extends Service
         });
     }
 
-    // Every row of the month, locked, so the cap holds when two decisions are made at once. Under InnoDB's REPEATABLE
-    // READ (MySQL's default) the locking read also takes gap locks on the (month, decision) index, so a first row
-    // inserted concurrently for an empty month waits too; the unique (counsellor_id, month) index catches the rest.
+    // Every row of the month, locked, so the cap holds when two decisions are made at once. Lock order everywhere is
+    // recognition rows first, then their consent requests.
+    //
+    // ASSUMES InnoDB REPEATABLE READ (MySQL's default) or SERIALIZABLE: there the locking read also takes gap
+    // (next-key) locks on the (month, decision) index, so a first row inserted concurrently for an empty month waits
+    // too. Under READ COMMITTED there are no gap locks, and two first approvals of an empty month could both pass the
+    // cap; the unique (counsellor_id, month) index still stops two rows for one counsellor.
     private function lockMonth(CarbonImmutable $month)
     {
         return CounsellorRecognition::query()->forMonth($month)->lockForUpdate()->get();
@@ -275,14 +295,6 @@ class CounsellorRecognitionService extends Service
             ->each(fn (Request $request) => $request->update(['status' => RequestStatusEnum::inconsequencial->value]));
     }
 
-    // The counsellor's row in the month's ranking, when it is within the cap (a suggestion); null otherwise.
-    private function suggestion(CarbonImmutable $month, int $counsellorId): ?array
-    {
-        $ranked = GetRecognitionSuggestionsAction::new()->ranking($month)['ranked']->get($counsellorId);
-
-        return $ranked && $ranked['rank'] <= GetRecognitionSuggestionsAction::perMonth() ? $ranked : null;
-    }
-
     private function counsellor(CounsellorRecognitionDTO $dto, bool $withTrashed = false): Counsellor
     {
         $counsellor = $dto->counsellorId
@@ -293,14 +305,20 @@ class CounsellorRecognitionService extends Service
             throw ValidationException::withMessages(['counsellor_id' => 'That counsellor could not be found.']);
         }
 
+        // Security review (M1): never a decision about one's own counsellor profile -- as
+        // EnsureCanRevokeCounsellorVerificationAction. Another super administrator's profile may be decided.
+        if ((int) $counsellor->user_id === $dto->user->id) {
+            throw new CounsellorRecognitionException(self::NOT_YOURS_TO_DECIDE, 403);
+        }
+
         return $counsellor;
     }
 
-    // Checked again here for every caller, not only the FormRequest: 'YYYY-MM', no later than the current month.
+    // Checked again here for every caller, not only the FormRequest: the current UTC month or the previous one.
     private function month(CounsellorRecognitionDTO $dto): CarbonImmutable
     {
         return CounsellorRecognition::parseMonth($dto->month)
-            ?? throw ValidationException::withMessages(['month' => 'Choose a month (YYYY-MM) no later than this one.']);
+            ?? throw ValidationException::withMessages(['month' => CounsellorRecognition::MONTH_RULE]);
     }
 
     private function ensureCanManage(CounsellorRecognitionDTO $dto): void

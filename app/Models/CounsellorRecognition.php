@@ -31,17 +31,21 @@ class CounsellorRecognition extends Model
         'rank' => 'integer',
     ];
 
-    // The month a recognition can be decided for: 'YYYY-MM' (year 2000 on), no later than the current month (UTC).
-    // Its first moment, in UTC; null for anything else.
+    public const MONTH_RULE = 'Choose this month or last month (YYYY-MM).';
+
+    // The month a recognition can be decided for: 'YYYY-MM', and only the current UTC month or the one before -- never
+    // further back (security review: a back-dated recognition would be a route to a waiver). Its first moment, in
+    // UTC; null for anything else.
     public static function parseMonth(mixed $value): ?CarbonImmutable
     {
-        if (! is_string($value) || ! preg_match('/^(2\d{3})-(0[1-9]|1[0-2])$/', $value, $parts)) {
+        if (! is_string($value) || ! preg_match('/^(\d{4})-(0[1-9]|1[0-2])$/', $value, $parts)) {
             return null;
         }
 
         $month = CarbonImmutable::create((int) $parts[1], (int) $parts[2], 1, 0, 0, 0, 'UTC');
+        $current = CarbonImmutable::now('UTC')->startOfMonth();
 
-        return $month->greaterThan(CarbonImmutable::now('UTC')->startOfMonth()) ? null : $month;
+        return $month->equalTo($current) || $month->equalTo($current->subMonth()) ? $month : null;
     }
 
     // The stored value for a month: its 1st, as 'Y-m-d'.
