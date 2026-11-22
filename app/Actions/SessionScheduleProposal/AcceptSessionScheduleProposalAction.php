@@ -15,10 +15,13 @@ use App\Models\Request;
 use App\Models\Therapy;
 use App\Models\User;
 use App\Notifications\SessionScheduleProposalAcceptedNotification;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class AcceptSessionScheduleProposalAction extends Action
 {
+    public const START_PASSED = 'The proposed start time has already passed.';
+
     // "Option C" (user decision, SCRUM-24/TT-2.5): if the proposed time is no longer valid by
     // accept-time, this does NOT auto-reject and does NOT surface a raw error -- the request
     // stays pending, with `data.staleReason` set, so the counsellor UI (TT-2.5c) can present the
@@ -79,6 +82,17 @@ class AcceptSessionScheduleProposalAction extends Action
                 'latitude' => $request->data['latitude'] ?? null,
                 'longitude' => $request->data['longitude'] ?? null,
             ]);
+
+            // SCRUM-471: a proposal accepted after its start time would create a session that is already due (and could
+            // be held, and starred, at once) -- it goes stale like any other no-longer-valid time.
+            $startTime = $sessionDto->startTime ? rescue(fn () => Carbon::parse($sessionDto->startTime), report: false) : null;
+            if (! $startTime || ! $startTime->isFuture()) {
+                $request->update(['data' => array_merge($request->data, [
+                    'staleReason' => self::START_PASSED,
+                ])]);
+
+                return $request->refresh();
+            }
 
             try {
                 EnsureCanCreateSessionAction::new()->execute($sessionDto);
