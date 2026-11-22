@@ -66,6 +66,7 @@ use App\Services\TherapyCaseService;
 use App\Services\TherapyService;
 use App\Services\TherapyTopicService;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
@@ -494,7 +495,7 @@ test('the default session cap is 8 a day', function () {
 
     expect(nsrStars(StarSourceEnum::sessionHeld, $counsellor)->count())->toBe(8)
         ->and(SettingsService::new()->getSettingsForAdmin()['recognitionCaps'])->toBe([
-            'session' => 8, 'help_chat' => 5, 'discussion' => 2, 'post' => 3, 'session_per_client' => 1,
+            'session' => 8, 'help_chat' => 5, 'discussion' => 2, 'post' => 3, 'session_per_client' => 1, 'session_per_group' => 1,
         ]);
 });
 
@@ -814,4 +815,153 @@ test('the old award points give no stars', function () {
     ]));
 
     expect(Star::query()->count())->toBe(0);
+});
+
+// --- Security re-check ----------------------------------------------------------------------------------------------
+
+test('one puppet member and 8 sessions in one group earn its counsellor 1 star a day', function () {
+    $counsellor = nsrCounsellor();
+    [$first, $group, $member] = nsrGroupSession([$counsellor]);
+    $sessions = collect([$first])->merge(collect(range(2, 8))->map(fn () => Session::factory()->create([
+        'for_type' => GroupTherapy::class, 'for_id' => $group->id, 'status' => SessionStatusEnum::held_confirmation->value,
+        'start_time' => now()->subHour(), 'end_time' => now()->subMinutes(5),
+    ])));
+
+    foreach ($sessions as $session) {
+        nsrChat($session, $counsellor, $member);
+        nsrHold($session, $counsellor->user);
+    }
+    expect(nsrStars(StarSourceEnum::sessionHeld, $counsellor)->count())->toBe(1);
+
+    // Another group the same day still earns; the same group again the next day too.
+    [$elsewhere, , $otherMember] = nsrGroupSession([$counsellor]);
+    nsrChat($elsewhere, $counsellor, $otherMember);
+    nsrHold($elsewhere, $counsellor->user);
+    $this->travel(1)->days();
+    $tomorrow = Session::factory()->create([
+        'for_type' => GroupTherapy::class, 'for_id' => $group->id, 'status' => SessionStatusEnum::held_confirmation->value,
+        'start_time' => now()->subHour(), 'end_time' => now()->subMinutes(5),
+    ]);
+    nsrChat($tomorrow, $counsellor, $member);
+    nsrHold($tomorrow, $counsellor->user);
+
+    expect(nsrStars(StarSourceEnum::sessionHeld, $counsellor)->count())->toBe(3);
+});
+
+test('an administrator\'s per-group setting is respected', function () {
+    nsrSetting(SettingsEnum::recognitionCapSessionPerGroup, 2);
+    $counsellor = nsrCounsellor();
+    [$first, $group, $member] = nsrGroupSession([$counsellor]);
+    $sessions = collect([$first])->merge(collect(range(2, 3))->map(fn () => Session::factory()->create([
+        'for_type' => GroupTherapy::class, 'for_id' => $group->id, 'status' => SessionStatusEnum::held_confirmation->value,
+        'start_time' => now()->subHour(), 'end_time' => now()->subMinutes(5),
+    ])));
+
+    foreach ($sessions as $session) {
+        nsrChat($session, $counsellor, $member);
+        nsrHold($session, $counsellor->user);
+    }
+
+    expect(nsrStars(StarSourceEnum::sessionHeld, $counsellor)->count())->toBe(2)
+        ->and(SettingsService::new()->getRecognitionCaps()['session_per_group'])->toBe(2);
+});
+
+test('an unverified client is no proof: chat, video or attendance', function (string $proof) {
+    $counsellor = nsrCounsellor();
+    $client = User::factory()->adult()->create();
+    [$session] = nsrSession($counsellor, client: $client);
+    match ($proof) {
+        'chat' => nsrChat($session, $counsellor, $client),
+        'video' => collect([$counsellor->user_id, $client->id])->each(fn ($userId) => VideoSessionParticipant::factory()->create([
+            'video_session_id' => VideoSession::query()->firstOrCreate(['session_id' => $session->id], ['provider' => 'daily', 'provider_room_id' => 'r', 'provider_meta' => []])->id,
+            'participant_id' => $userId,
+        ])),
+        'attendance' => SessionAttendance::query()->create([
+            'session_id' => $session->id, 'user_id' => $client->id, 'status' => SessionAttendanceStatusEnum::present->value,
+            'marked_by_counsellor_id' => $counsellor->id, 'marked_at' => now(),
+        ]),
+    };
+    $client->forceFill(['email_verified_at' => null])->save();
+
+    nsrHold($session, $client);
+
+    expect(Star::query()->count())->toBe(0);
+})->with(['chat', 'video', 'attendance']);
+
+test('a group session proven only by an unverified member earns nothing', function () {
+    $counsellor = nsrCounsellor();
+    [$session, , $member] = nsrGroupSession([$counsellor]);
+    nsrChat($session, $counsellor, $member);
+    $member->forceFill(['email_verified_at' => null])->save();
+
+    nsrHold($session, $counsellor->user);
+
+    expect(Star::query()->count())->toBe(0);
+});
+
+test('a help chat with an unverified person earns nothing', function () {
+    $counsellor = nsrCounsellor();
+    $request = nsrHelpChat($this, $counsellor);
+    SendHelpMessageAction::new()->store($request, $counsellor->user, 'I am here.');
+    $request->user->forceFill(['email_verified_at' => null])->save();
+    $this->travel(6)->minutes();
+
+    nsrCloseHelp($request);
+
+    expect(Star::query()->count())->toBe(0);
+});
+
+test('an administrator abandoning a held help chat takes its star back', function () {
+    $counsellor = nsrCounsellor();
+    $request = nsrHelpChat($this, $counsellor);
+    SendHelpMessageAction::new()->store($request, $counsellor->user, 'I am here.');
+    $this->travel(6)->minutes();
+    nsrCloseHelp($request);
+    expect(nsrStars(StarSourceEnum::helpChatHeld, $counsellor)->count())->toBe(1);
+
+    $this->actingAs(nsrAdmin())->postJson(route('api.sessions.abandon', ['sessionId' => $request->session_id]))->assertSuccessful();
+
+    expect(Session::query()->find($request->session_id)->status)->toBe(SessionStatusEnum::abandoned->value)
+        ->and(nsrStars(StarSourceEnum::helpChatHeld, $counsellor)->count())->toBe(0);
+});
+
+test('an abandoned or failed discussion can\'t be reopened by its counsellors; an administrator can', function (DiscussionStatusEnum $ended) {
+    $creator = nsrCounsellor();
+    $discussion = nsrDiscussion($creator, [$creator]);
+    $discussion->forceFill(['status' => $ended->value])->save();
+
+    expect(fn () => DiscussionService::new()->getInDiscussion(nsrDiscussionDTO($discussion, $creator->user)))
+        ->toThrow(DiscussionException::class, DiscussionService::ALREADY_ENDED);
+    expect($discussion->fresh()->status)->toBe($ended->value);
+
+    DiscussionService::new()->getInDiscussion(nsrDiscussionDTO($discussion, nsrAdmin()));
+    expect($discussion->fresh()->status)->toBe(DiscussionStatusEnum::in_session->value);
+})->with([DiscussionStatusEnum::abandoned, DiscussionStatusEnum::failed]);
+
+test('the held_at migration backfills discussions already held from their last change', function () {
+    $migration = include database_path('migrations/2026_12_13_200001_add_held_at_to_discussions_table.php');
+    $migration->down();
+    $creator = nsrCounsellor();
+    $held = nsrDiscussion($creator, []);
+    $pending = nsrDiscussion($creator, []);
+    DB::table('discussions')->where('id', $held->id)->update(['status' => DiscussionStatusEnum::held->value, 'updated_at' => '2026-10-05 14:00:00']);
+
+    $migration->up();
+
+    expect(DB::table('discussions')->where('id', $held->id)->value('held_at'))->toBe('2026-10-05 14:00:00')
+        ->and(DB::table('discussions')->where('id', $pending->id)->value('held_at'))->toBeNull();
+});
+
+test('a malformed time is a 422, not a 500, for a discussion or a session', function () {
+    $counsellor = nsrCounsellor();
+    $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => User::factory()->adult(), 'counsellor_id' => $counsellor->id]);
+
+    $this->actingAs($counsellor->user)->postJson(route('api.discussions.create'), [
+        'name' => 'Case review', 'description' => 'About the case', 'startTime' => 'garbage', 'endTime' => 'garbage',
+    ])->assertStatus(422)->assertJsonValidationErrors(['startTime', 'endTime']);
+
+    $this->actingAs($counsellor->user)->postJson(route('api.sessions.create', ['therapyId' => $therapy->id]), [
+        'name' => 'A session', 'about' => 'About it', 'type' => 'ONLINE', 'paymentType' => 'FREE',
+        'startTime' => 'garbage', 'endTime' => ['not', 'a', 'time'],
+    ])->assertStatus(422)->assertJsonValidationErrors(['startTime', 'endTime']);
 });
