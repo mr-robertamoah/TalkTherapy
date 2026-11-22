@@ -13597,3 +13597,55 @@ Split into SCRUM-470–476 (TT-7.11a–f); the first, SCRUM-470, is the star fou
 - **`config('recognition.stars_count_from')`:** an optional extra floor on the count window. New-rule stars only exist
   from the release anyway (legacy rows have a NULL source). Only `YYYY-MM-DD` is accepted; anything else is ignored
   with one logged warning per request (review fix) rather than failing the count.
+
+## SCRUM-466 — deployment options plan (2026-11-22)
+
+- **The plan:** `documentation/operations/deployment-options.md`. It covers candidates and prices (checked
+  2026-11-22, with each unverified figure marked), mixing providers, the deploy approach, environments and
+  secrets, data and compliance, monitoring, the cost model, the EC2 migration path, risks and ordered
+  tickets. Revision 2, the same day, applies a devops review. It is a plan only: no infrastructure, code
+  or config changed.
+- **Recommendation:**
+  - **Production:** DigitalOcean in London (LON1; Frankfurt if the Accra latency test favours it). One
+    Droplet running four Kamal roles: web (nginx + php-fpm in one container), reverb (on its own `ws.`
+    subdomain, deployed only when needed), worker, and exactly one scheduler.
+  - **Database:** DO Managed MySQL (single node, daily backups, 7-day PITR).
+  - **Files:** `storage/app` on an encrypted DO Volume.
+  - **Staging:** the same provider at the smallest size, behind Cloudflare Access, deployed from `testing`.
+  - **Edges:** Cloudflare in front (Origin CA, Full strict, Authenticated Origin Pulls, DO Cloud
+    Firewall). Encrypted, delete-protected backups in R2 (EU jurisdiction).
+  - **Deploys:** Kamal 2 over Tailscale OIDC, so CI holds no long-lived cloud keys. App secrets live in
+    GitHub Environments with branch rules.
+  - **Cost:** about $78/month at launch and $239/month at 10×.
+  - **Runners-up:** Hetzner with MySQL we run ourselves (about €38 + $9 / €186 + $46). AWS London with RDS
+    (about $59 / $407 + unverified lines), which is also the fallback if the DO spike fails.
+- **Launch prerequisite found in review (T10):**
+  - File sessions, caches and maintenance mode don't survive separate, replaceable Kamal containers. They
+    would log everyone out, reset rate limits, lose the scheduler's once-only keys, block the restart
+    signals and break `onOneServer`.
+  - They move to database stores before the first Kamal deploy. That includes a `SESSION_TABLE` other than
+    `sessions`, because `sessions` is the therapy-sessions domain table.
+- **Urgent:** from 30 Nov 2026, new DO Standard MySQL clusters can't add standby nodes. If HA on Standard
+  Edition might ever be wanted, create the production cluster before then.
+- **Why the app and the database stay at one provider:** cross-provider round trips multiply over
+  Laravel's sequential queries, and the two providers' availabilities multiply too. Mixing pays only at
+  the edges.
+- **Ruled out:**
+  - PlanetScale: no triggers, and the app has 13 triggers on 7 tables.
+  - Render and Fly.io: no managed MySQL.
+  - Redis: not needed at launch.
+- **Gates:**
+  - T1: Accra latency. None was published.
+  - T2: DO MySQL must:
+    - create and restore the triggers without SUPER;
+    - keep them in a PITR fork;
+    - pass `sql_require_primary_key`;
+    - allow migrator and runtime users.
+- **Marked for legal confirmation:**
+  - hosting outside Ghana (Act 843 section 18; the draft 2025 Bill);
+  - DPC registration and its renewal;
+  - backup retention against the privacy page;
+  - naming the host and the transfers on the privacy page, folded into the open SCRUM-364 lawyer review.
+- **User decisions (2026-11-22):**
+  - **The EC2 server holds no real user data,** so the move is a fresh deploy plus a DNS change, with no data migration.
+  - **Standby database: decide later.** Production starts on a single-node cluster, so the 30 Nov 2026 DO Standard deadline is not acted on. If a standby is wanted later, the options are DO's higher tier or the AWS RDS fallback.
