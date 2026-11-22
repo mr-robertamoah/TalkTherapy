@@ -3,7 +3,6 @@
 use App\Actions\Recognition\GetCounsellorIdsWithOpenReportsAction;
 use App\Actions\Recognition\GetRecognitionSuggestionsAction;
 use App\Actions\Request\RespondToCounsellorRecognitionRequestAction;
-use App\Actions\Star\AwardCounsellorStarAction;
 use App\Actions\Suspension\ApplySuspensionAction;
 use App\DTOs\CounsellorRecognitionDTO;
 use App\Enums\AdministratorTypeEnum;
@@ -64,13 +63,23 @@ function rbkCounsellor(array $state = []): Counsellor
     return Counsellor::factory()->create(array_merge(['user_id' => User::factory()->adult()], $state));
 }
 
-// $count new-rule stars, all at $at (so $at is also the first star).
+// $count new-rule stars, all at $at (so $at is also the first star). Written directly rather than through
+// AwardCounsellorStarAction: these are fixtures for stars already earned, and the award action (SCRUM-471) refuses
+// counsellors who are unverified or suspended *now* and applies the daily caps -- the eligibility tests need stars
+// on counsellors whose verification lapsed or was revoked after they earned them.
 function rbkStars(Counsellor $counsellor, int $count, string $at = '2026-10-10 10:00:00'): void
 {
     static $key = 0;
 
     for ($i = 0; $i < $count; $i++) {
-        $star = AwardCounsellorStarAction::new()->execute($counsellor, StarSourceEnum::sessionHeld, $counsellor->user, 'session_held:rbk'.(++$key));
+        $star = (new Star)->forceFill([
+            'type' => StarSourceEnum::sessionHeld->starType()->value,
+            'source' => StarSourceEnum::sessionHeld,
+            'award_key' => 'session_held:rbk'.(++$key),
+        ]);
+        $star->starred()->associate($counsellor);
+        $star->starreable()->associate($counsellor->user);
+        $star->save();
         $star->forceFill(['created_at' => Carbon::parse($at, 'UTC')])->save();
     }
 }
