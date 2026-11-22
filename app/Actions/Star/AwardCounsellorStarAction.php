@@ -33,7 +33,7 @@ class AwardCounsellorStarAction extends Action
 
         $star->starred()->associate($counsellor);
         $star->starreable()->associate($starreable);
-        // As CreateStarAction: a star nobody in particular gave is the platform's (the super administrator).
+        // A star nobody in particular gave is the platform's (the super administrator).
         $by = $by ?? GetSuperAdministratorAction::new()->execute();
         if ($by) {
             $star->starredby()->associate($by);

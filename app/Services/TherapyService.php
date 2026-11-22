@@ -8,7 +8,6 @@ use App\Actions\CounsellorVerification\EnsureCounsellorMayTakeOnClientsAction;
 use App\Actions\GroupTherapy\EnsureGroupTherapyCanBecomeAnonymousAction;
 use App\Actions\Guardianship\EnsureMinorHasActiveGuardianAction;
 use App\Actions\Request\SendTherapyAssistanceRequestAction;
-use App\Actions\Star\CreateStarAction;
 use App\Actions\Suspension\EnsureCanActAsCounsellorAction;
 use App\Actions\Therapy\CreateTherapyAction;
 use App\Actions\Therapy\DeleteTherapyAction;
@@ -34,13 +33,11 @@ use App\Actions\Therapy\UpdateTherapyAction;
 use App\Actions\User\AlertGuardianAction;
 use App\Actions\User\EnsureUserMeetsTherapyRequirementsAction;
 use App\DTOs\AssistTherapyDTO;
-use App\DTOs\CreateStarDTO;
 use App\DTOs\CreateTherapyDTO;
 use App\DTOs\GetTherapyDTO;
 use App\DTOs\GuardianAlertDTO;
 use App\DTOs\TherapyAssistanceRequestDTO;
 use App\Enums\PaginationEnum;
-use App\Enums\StarTypeEnum;
 use App\Models\AdminContentAccess;
 use App\Models\Therapy;
 use App\Models\User;
@@ -66,15 +63,6 @@ class TherapyService extends Service
         EnsureCounsellorMayTakeOnClientsAction::new()->execute($createTherapyDTO->counsellor, asTarget: true);
 
         $therapy = CreateTherapyAction::new()->execute($createTherapyDTO);
-
-        CreateStarAction::new()->execute(
-            CreateStarDTO::fromArray([
-                'starredby' => null,
-                'starred' => $createTherapyDTO->user,
-                'starreable' => $therapy,
-                'type' => StarTypeEnum::participation->value,
-            ])
-        );
 
         AlertGuardianAction::new()->execute(
             GuardianAlertDTO::new()->fromArray([
