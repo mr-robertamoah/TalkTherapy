@@ -2,16 +2,28 @@
 
 namespace Database\Seeders;
 
+use App\Actions\Recognition\GetRecognitionSuggestionsAction;
+use App\Actions\Recognition\RecordCounsellorRecognitionEventAction;
 use App\Actions\Star\AwardCounsellorStarAction;
 use App\DTOs\CounsellorRecognitionDTO;
 use App\DTOs\PlatformFeeWaiverDTO;
+use App\DTOs\RequestResponseDTO;
+use App\Enums\CounsellorRecognitionConsentEnum;
+use App\Enums\CounsellorRecognitionDecisionEnum;
+use App\Enums\CounsellorRecognitionEventEnum;
+use App\Enums\RequestStatusEnum;
 use App\Enums\StarSourceEnum;
+use App\Enums\TherapyPaymentTypeEnum;
+use App\Enums\TherapySessionTypeEnum;
+use App\Enums\TherapyStatusEnum;
 use App\Exceptions\AppException;
 use App\Models\CounsellorRecognition;
 use App\Models\PlatformFeeWaiver;
+use App\Models\Report;
 use App\Models\User;
 use App\Services\CounsellorRecognitionService;
 use App\Services\PlatformFeeWaiverService;
+use App\Services\RequestService;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Log;
@@ -25,6 +37,9 @@ use Illuminate\Validation\ValidationException;
 //
 // TT-7.11e/SCRUM-475: sarah_johnson's approved recognition also gets her own commission-free period for next month (UTC),
 // made through PlatformFeeWaiverService -- skipped once she has any period of her own.
+//
+// TT-7.11f/SCRUM-476: the showcase's states for last month (showcase()) and this month's stars for Home's "Leading"
+// (leading()). See documentation/seeded-data.md, "Counsellor recognition".
 class RecognitionSeeder extends Seeder
 {
     use RefusesOutsideLocal;
@@ -40,6 +55,16 @@ class RecognitionSeeder extends Seeder
     ];
 
     public const APPROVED = 'sarah_johnson';
+
+    // Username => new-rule stars earned this month (Home's "Leading").
+    public const LEADING_STARS = [
+        'james_wilson' => 5,
+        'lisa_anderson' => 4,
+        'david_brown' => 3,
+        'michael_chen' => 2,
+    ];
+
+    public const REPORT_MARKER = '[Recognition demo: open report]';
 
     public function run(): void
     {
@@ -73,6 +98,146 @@ class RecognitionSeeder extends Seeder
 
         $this->approve($month);
         $this->waive($month);
+        $this->showcase($month);
+        $this->leading();
+    }
+
+    // TT-7.11f/SCRUM-476: the rest of last month's recognitions, one per state the showcase handles -- michael_chen
+    // accepted, emma_williams declined, james_wilson accepted but with an open report, suspended_counsellor_demo
+    // accepted but suspended (with sarah_johnson's pending one, the 5 a month allows). Each is skipped once that
+    // counsellor has a row for the month; the report once it exists.
+    private function showcase(CarbonImmutable $month): void
+    {
+        $superAdmin = User::query()->where('username', 'mr_robertamoah')->first();
+
+        if (! $superAdmin) {
+            return;
+        }
+
+        try {
+            $this->recogniseAndAnswer($superAdmin, $month, 'michael_chen', 'approve', RequestStatusEnum::accepted);
+            $this->recogniseAndAnswer($superAdmin, $month, 'emma_williams', 'approve', RequestStatusEnum::rejected);
+            $this->recogniseAndAnswer($superAdmin, $month, 'james_wilson', 'add', RequestStatusEnum::accepted);
+        } catch (ValidationException|AppException $e) {
+            // E.g. one of them is no longer eligible in this database: the rest of the seed still runs.
+            Log::warning('RecognitionSeeder: a demo recognition was refused.', [
+                'errors' => $e instanceof ValidationException ? $e->errors() : $e->getMessage(),
+            ]);
+        }
+
+        $this->reportJames();
+        $this->recogniseSuspended($superAdmin, $month);
+    }
+
+    // Through the real service and the counsellor's own answer to the consent request (requests.respond's path).
+    private function recogniseAndAnswer(User $superAdmin, CarbonImmutable $month, string $username, string $decide, RequestStatusEnum $answer): void
+    {
+        $counsellor = User::query()->where('username', $username)->first()?->counsellor;
+
+        if (! $counsellor || CounsellorRecognition::query()->forMonth($month)->where('counsellor_id', $counsellor->id)->exists()) {
+            return;
+        }
+
+        $recognition = CounsellorRecognitionService::new()->{$decide}(CounsellorRecognitionDTO::new()->fromArray([
+            'user' => $superAdmin,
+            'month' => $month->format('Y-m'),
+            'counsellorId' => $counsellor->id,
+        ]));
+
+        $request = $recognition->consentRequests()->wherePending()->latest('id')->first();
+
+        if ($request) {
+            RequestService::new()->respondToRequest(RequestResponseDTO::new()->fromArray([
+                'user' => $counsellor->user,
+                'response' => strtolower($answer->value),
+                'request' => $request,
+            ]));
+        }
+    }
+
+    // An open report naming james_wilson (by john_davis, on a therapy of theirs), so his accepted recognition is
+    // hidden everywhere until it is resolved or dismissed.
+    private function reportJames(): void
+    {
+        $james = User::query()->where('username', 'james_wilson')->first()?->counsellor;
+        $client = User::query()->where('username', 'john_davis')->first();
+
+        if (! $james || ! $client || Report::query()->where('description', 'like', self::REPORT_MARKER.'%')->exists()) {
+            return;
+        }
+
+        $therapy = $client->addedTherapies()->create([
+            'name' => 'Recognition Demo Therapy (reported counsellor)',
+            'background_story' => 'Seeded therapy whose counsellor has an open report (SCRUM-476).',
+            'counsellor_id' => $james->id,
+            'session_type' => TherapySessionTypeEnum::periodic->value,
+            'payment_type' => TherapyPaymentTypeEnum::free->value,
+            'allow_in_person' => false,
+            'anonymous' => false,
+            'public' => false,
+            'status' => TherapyStatusEnum::in_session->value,
+        ]);
+
+        $report = new Report(['description' => self::REPORT_MARKER.' My counsellor kept missing our sessions.', 'data' => ['counsellorId' => $james->id]]);
+        $report->addedby()->associate($client);
+        $report->reportable()->associate($therapy);
+        $report->save();
+    }
+
+    // suspended_counsellor_demo can't be recognised through the service (it refuses a suspended counsellor), so the row
+    // is written directly, as if they had been recognised and agreed before their suspension -- with the same events.
+    private function recogniseSuspended(User $superAdmin, CarbonImmutable $month): void
+    {
+        $counsellor = User::query()->where('username', 'suspended_counsellor_demo')->first()?->counsellor;
+        $rows = CounsellorRecognition::query()->forMonth($month)->get();
+
+        if (! $counsellor || $rows->contains('counsellor_id', $counsellor->id)
+            || $rows->filter(fn (CounsellorRecognition $row) => $row->isApproved())->count() >= GetRecognitionSuggestionsAction::perMonth()) {
+            return;
+        }
+
+        $recognition = (new CounsellorRecognition)->forceFill([
+            'counsellor_id' => $counsellor->id,
+            'month' => CounsellorRecognition::monthKey($month),
+            'decision' => CounsellorRecognitionDecisionEnum::approved,
+            'consent' => CounsellorRecognitionConsentEnum::accepted,
+            'consent_changed_at' => now(),
+            'added_manually' => true,
+            'stars_count' => 0,
+            'decided_by_id' => $superAdmin->id,
+            'decided_at' => now(),
+        ]);
+        $recognition->save();
+
+        RecordCounsellorRecognitionEventAction::new()->execute($recognition, CounsellorRecognitionEventEnum::added, $superAdmin, ['stars' => 0]);
+        RecordCounsellorRecognitionEventAction::new()->execute($recognition, CounsellorRecognitionEventEnum::consentAccepted, $counsellor->user);
+    }
+
+    // TT-7.11f/SCRUM-476: this month's new-rule stars, for Home's "Leading (current month)" (signed-in users). james_wilson
+    // has the most, but his open report keeps him out. Keyed per month, so running it again adds nothing. Backdated to
+    // earlier days of the month where there are any, so the daily caps don't stop the next one.
+    private function leading(): void
+    {
+        $month = CarbonImmutable::now('UTC')->startOfMonth();
+
+        foreach (self::LEADING_STARS as $username => $count) {
+            $counsellor = User::query()->where('username', $username)->first()?->counsellor;
+
+            if (! $counsellor) {
+                continue;
+            }
+
+            for ($i = 1; $i <= $count; $i++) {
+                $star = AwardCounsellorStarAction::new()->execute(
+                    $counsellor,
+                    StarSourceEnum::sessionHeld,
+                    $counsellor->user,
+                    "seeded_leading:{$month->format('Y-m')}:{$i}",
+                );
+                $at = CarbonImmutable::now('UTC')->subDays($i)->setTime(9, 0);
+                $star?->forceFill(['created_at' => $at->lessThan($month) ? $month : $at])->save();
+            }
+        }
     }
 
     private function approve(CarbonImmutable $month): void
