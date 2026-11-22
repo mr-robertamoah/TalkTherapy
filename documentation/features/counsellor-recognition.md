@@ -1,15 +1,13 @@
 # Counsellor recognition (SCRUM-464)
 
 Each month a super administrator picks up to 5 "Counsellors of the month" from the counsellors who earned the most
-stars under the new star rules. A recognised counsellor is asked whether they agree to be featured. This document
-covers what an administrator can do today. Built so far:
+stars under the new star rules. A recognised counsellor is asked whether they agree to be featured. Built:
 
 - the stars (SCRUM-470, SCRUM-471);
 - the recognition backend (SCRUM-473);
-- the admin page (SCRUM-474).
-
-Still to come: the per-counsellor fee waiver given with a recognition (SCRUM-475), and the public showcase that
-replaces Home's "Starred" section (SCRUM-476). Until SCRUM-476 ships, nothing about a recognition is shown publicly.
+- the admin page (SCRUM-474);
+- the per-counsellor fee waiver backend (SCRUM-475);
+- the public showcase, the profile badge and the counsellor's consent controls (SCRUM-476, below).
 
 ## The admin page: `/administrator/recognition`
 
@@ -87,7 +85,8 @@ acted on their own recognition. Counsellors never see star counts or ranks.
 
 The counsellor answers the request on their dashboard (accept or decline). Afterwards they can withdraw their
 consent or give it again (`POST /counsellor/recognitions/{id}/consent`). Each change shows on the row's consent pill
-and in the audit. A declined or withdrawn recognition will never be shown publicly (SCRUM-476).
+and in the audit. A declined or withdrawn recognition is never shown to anyone but the counsellor (see "Who sees a
+recognition" below).
 
 ### What happened (audit)
 
@@ -116,6 +115,68 @@ A super administrator edits all six at once and clicks **save limits**. Each lim
 changed.`), with who made it and the old and new values. The new values apply to the next star awarded. Ordinary admins see
 the values read-only. Until a limit is saved, it shows the defaults from `config/recognition.php` (8, 5, 2, 3, 1, 1).
 
+## The showcase (SCRUM-476)
+
+### Who sees a recognition
+
+One rule, `GetVisibleRecognitionsAction`, decides it for Home, the profile badge and nothing else:
+
+- only **approved** recognitions;
+- a **guest** sees those the counsellor **accepted**;
+- a **signed-in** user also sees those still **pending** an answer;
+- the **counsellor** also sees their own **declined** and **withdrawn** ones;
+- **nobody** sees any while the counsellor is suspended, has an open or under-review report of any kind (an urgent
+  help request's report included), has a lapsed or revoked verification, or has deleted their profile or account. It
+  comes back as soon as that clears. Nothing on the page says why a recognition isn't shown, or what kind of report
+  there is.
+
+No star counts or ranks are shown anywhere public, to anyone, and neither is anything about consent or fee waivers.
+
+### Home: "Counsellors of the month"
+
+The first section on Home (`/`), for guests and signed-in users alike, replacing "Starred Counsellors (previous
+month)". It shows the **latest month that has an approved recognition**, for example "October 2026", and only that
+month. Each card shows:
+
+- the photo, name and profession;
+- the badge **"Counsellor of the month, <Month Year>"**;
+- up to 3 of the counsellor's cases;
+- a **View profile** link.
+
+The cards are in approval order, never by stars. When nothing is visible, it reads "no counsellors of the month to
+show yet". This guest Home section is the public showcase; `/about` is unchanged.
+
+### Home: "Leading Counsellors (current month)"
+
+Signed-in users only; a guest doesn't get the section, or its data. The 5 counsellors with the most **new-rule** stars
+so far this UTC month, among those who could be recognised now (verified, not suspended or deleted, no open report).
+Legacy stars never count. Ranked like the admin suggestions: most stars, then the earliest first star, then the lowest
+id. The cards show the position but no counts.
+
+The "Counsellors" row and `GET /api/counsellors/random` no longer send star counts, and no longer load every star row
+of every counsellor on the page.
+
+### The profile
+
+- **The badge:** under the name on `/counsellor/{id}`, one **"Counsellor of the month, <Month Year>"** badge per
+  recognised month this viewer may see, newest first.
+- **The star numbers are gone** for everyone, the counsellor included (the "M / O stars" box). Star counts are kept
+  for administrators on the recognition page.
+- **The counsellor's own "Counsellor of the month" card** (theirs only, and only once they have an approved
+  recognition) lists every approved month with where its consent stands, and the controls:
+  - pending: **Agree to be featured** / **Don't feature me** (the consent request on their dashboard, answered here
+    through `requests.respond`);
+  - accepted: **Stop featuring me** (withdraw);
+  - declined or withdrawn: **Feature me** (opt back in).
+
+  It doesn't say whether a recognition is shown to others right now, only that it is shown "while your profile is
+  verified and in good standing".
+
+### What we hold about you
+
+`/profile/your-data`, "As a counsellor", lists each approved recognition's month and consent ("you agreed to be
+featured", "you chose not to be featured", ...). A month an administrator skipped them isn't listed.
+
 ## Routes
 
 | Route | Who | What |
@@ -125,17 +186,25 @@ the values read-only. Until a limit is saved, it shows the defaults from `config
 | `POST /administrator/recognition/{approve,skip,add}` | super admin, throttled | `month`, `counsellor_id` |
 | `GET /administrator/recognition/counsellors?search=&month=` | super admin, 60/min | `{counsellors: [{id, name, username}]}` |
 | `POST /administrator/settings/recognition-caps` | super admin, 10/min | `caps[session, help_chat, discussion, post, session_per_client, session_per_group]` |
+| `GET /` (`home`) | anyone | `recognisedCounsellors` (`id, name, avatar, profession, cases, month`); `leadingCounsellors` (signed-in only) |
+| `GET /counsellor/{id}` (`counsellor.show`) | anyone | `recognitionBadges` (month labels); `recognitions` for the counsellor only |
+| `POST /counsellor/recognitions/{id}/consent` | the counsellor, 10/min | `action`: `withdraw` or `restore` |
+| `POST /api/requests/{id}` (`requests.respond`) | the counsellor | `response`: `accepted` or `rejected`, for a pending one |
 
 ## Test data
 
 From `RecognitionSeeder`, which `DatabaseSeeder` calls; see `documentation/seeded-data.md`, "Counsellor
 recognition". It stars the six demo counsellors for **last month (UTC)**, counted from when the seeder ran:
 
-- `sarah_johnson`: 6 stars, already **approved** with her consent pending;
-- `michael_chen`: 5 stars;
-- `emma_williams` and `david_brown`: 4 stars each, tied at rank 3;
+- `sarah_johnson`: 6 stars, **approved** with her consent **pending**;
+- `michael_chen`: 5 stars, approved and **accepted**;
+- `emma_williams`: 4 stars, approved and **declined**; `david_brown`: 4 stars, tied with her at rank 3;
 - `lisa_anderson`: 3 stars;
-- `james_wilson`: 2 stars, rank 6, so not suggested with the default cap of 5.
+- `james_wilson`: 2 stars, rank 6, **added by hand** and accepted, but with an **open report** about him;
+- and `suspended_counsellor_demo`, accepted but **suspended**.
+
+That is 5 of 5 approved for last month. This month, `james_wilson`, `lisa_anderson`, `david_brown` and `michael_chen`
+have 5, 4, 3 and 2 new-rule stars (Home's "Leading").
 
 To add it to an existing local database:
 
@@ -143,28 +212,47 @@ To add it to an existing local database:
 docker compose exec -u www-data php php artisan db:seed --class=RecognitionSeeder
 ```
 
-Accounts:
+Accounts (the demo password for all but the super admin; see `documentation/seeded-data.md`):
 
 - the seeded super admin, `mr_robertamoah` (password: `SUPER_PASSWORD` in `.env.docker`);
-- an ordinary admin, `suspension_demo_normal_admin` (the shared demo password; see `documentation/seeded-data.md`);
-- `sarah_johnson` (the shared demo password), to answer the consent request.
+- an ordinary admin, `suspension_demo_normal_admin`;
+- `sarah_johnson`, `michael_chen`, `emma_williams` for the consent controls;
+- `maria_garcia` as an ordinary signed-in user.
 
 ## Try it
 
+### The admin page
+
 1. As the super admin, open http://localhost:8000/administrator/recognition. Last month is selected and shows
-   "1 of 5 approved". Sarah is rank 1 (*approved*, *consent pending*), Emma and David share rank 3, and James isn't
-   listed.
-2. Click **approve** on Michael Chen, then **confirm approve**. It now reads "2 of 5 approved", and the audit lists
-   "approved" by you.
-3. Under **Add a counsellor**, type `james`, click **add**, then **confirm add**. James shows under "Also decided"
-   with *added manually*.
-4. Click **skip** on Sarah, then **confirm skip**. Her row reads *skipped*, and the audit reads "skipped (was
-   approved)". Her dashboard request is closed.
-5. Under **Daily star limits**, set Posts to `101` and save; the field shows an error. Set it to `4` and save; the
+   "5 of 5 approved". Sarah is rank 1 (*approved*, *consent pending*), Michael *consent given*, Emma *consent
+   declined*. Under "Also decided" are James (*added manually*, *open report*) and the suspended demo counsellor
+   (*suspended*).
+2. Click **skip** on Emma, then **confirm skip**. It reads "4 of 5 approved" and the audit "skipped (was approved)".
+   Click **approve** on David Brown, then **confirm approve**: "5 of 5" again.
+3. Under **Daily star limits**, set Posts to `101` and save; the field shows an error. Set it to `4` and save; the
    value persists after a reload.
-6. Switch to this month; it's empty until stars are earned this month.
-7. Sign in as `suspension_demo_normal_admin` and open the same page. Everything is visible, but there are no buttons,
+4. Switch to this month; it's empty (nobody has been decided for it).
+5. Sign in as `suspension_demo_normal_admin` and open the same page. Everything is visible, but there are no buttons,
    no search, and the limits are read-only.
-8. Sign in as `sarah_johnson` while her approval is still pending (before step 4, or after re-seeding). Accept the
-   request on `/counsellor/dashboard`; the admin page then shows *consent given* and the audit "agreed to be
-   featured".
+
+### The showcase (on a fresh seed, before the admin steps above)
+
+1. **Guest:** sign out and open http://localhost:8000/. "Counsellors of the month" shows last month's label and one
+   card: **Dr. Michael Chen**, with "Counsellor of the month, <Month Year>", his profession, up to 3 cases and View
+   profile. There is no "Leading" section and no star counts anywhere. His profile (View profile) shows the badge
+   under his name and no star box.
+2. **Signed in:** sign in as `maria_garcia`. Home shows **Sarah** (pending) and **Michael**, and a "Leading
+   Counsellors (current month)" row: Lisa Anderson (1), David Brown (2), Michael Chen (3), with no counts. James isn't
+   in either: his open report hides him. Open Emma's profile: no badge (she declined).
+3. **The counsellor:**
+   - Sign in as `sarah_johnson` and open your profile (`/counsellor/{her id}`). The "Counsellor of the month" card lists
+     last month, "Waiting for your answer". Click **Agree to be featured**: "Featured on Home and on your profile". A
+     guest now sees her on Home too.
+   - Click **Stop featuring me**: she disappears from Home for everyone (her own badge stays, for her). Click
+     **Feature me**: she is back.
+   - Sign in as `emma_williams`: her card says "You chose not to be featured. Only you see it." and her badge shows
+     on her own profile and her own Home only. **Feature me** makes her public.
+   - `/profile/your-data`, "As a counsellor", lists the month and the consent.
+4. **Hidden and back:** as the super admin, dismiss or resolve the "[Recognition demo: open report]" report at
+   `/administrator/reports`. James then shows on Home for everyone, and leads "Leading". Lift
+   `suspended_counsellor_demo`'s suspension at `/administrator/suspensions`; their card appears on Home too.

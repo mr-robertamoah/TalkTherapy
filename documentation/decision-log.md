@@ -14027,3 +14027,83 @@ the security review and browser QA.
 - **SCRUM-475:** the empty "Fee waiver" column was removed. SCRUM-475 is in PR #377, and the waiver UI comes in a
   follow-up once both have merged. `decide()` in `Recognition.vue` still marks where the waiver fields will join the
   approve request and its confirm step.
+
+## SCRUM-476 — recognition showcase (TT-7.11f, 2026-11-22)
+
+TT-7.11f, part 7 of 7 of SCRUM-464: Home's "Counsellors of the month", the profile badge, the counsellor's consent
+controls, and Home's "Leading" on new-rule stars.
+
+- **One visibility rule:** `GetVisibleRecognitionsAction::execute(?User $viewer, ?Counsellor $for = null)` is the only
+  place that decides who sees a recognition. The Home showcase, the profile badge and the seeder's test all go through
+  it. Approved only. A guest sees `accepted`; a signed-in user `accepted` and `pending`; the counsellor also their own
+  `declined` and `withdrawn`. Everything is hidden while the counsellor isn't `whereRecognisableNow()` (verified now,
+  not suspended, profile and account not deleted) or is in `GetCounsellorIdsWithOpenReportsAction`'s
+  `counsellorIds` -- the full list, so an urgent help request's report hides them too, as the user asked. It is
+  checked on every read and nothing is stored, so a recognition comes back once the suspension, report or
+  verification clears.
+- **Never revealing which report (judgment call):** no surface gives a reason. The counsellor's own card doesn't say
+  whether a recognition is shown to others right now, only "shown while your profile is verified and in good
+  standing". Residual, accepted: anyone can tell that a recognition has disappeared (signing out shows the guest view),
+  so a counsellor can infer that something stands against them. Nothing says what kind, so a help request's report
+  is never distinguishable from any other.
+- **The owner sees their own hidden rows only on the consent card (judgment call):** the rule applies to the counsellor
+  as well (their badge and Home card hide while suspended or reported). The consent card lists every approved
+  recognition whatever its visibility (`CounsellorService::getCounsellorData()`, owner only), so they can always
+  withdraw or opt back in.
+- **"Latest approved month" is global (judgment call):** the showcase shows the latest month that has any approved
+  recognition, the same month for every viewer, and only the rows of it this viewer may see. While that month's
+  recognitions are still pending, a guest sees an empty section rather than the month before. Falling back to an older
+  month per viewer would show guests and signed-in users different months, and keep a month on Home after the next one
+  was decided. Skipped rows don't make a month the latest. At most `recognition.per_month` cards.
+- **Order (judgment call):** approval order (id), never the snapshot's rank or stars, so the order says nothing about
+  star standing.
+- **Payload:** `RecognisedCounsellorResource` is exactly `id` (the counsellor's, for the profile link), `name`,
+  `avatar`, `profession` (its name), `cases` (up to 3 names) and `month` ("October 2026"). The action eager-loads the
+  counsellor's user (for `getName()`'s fallback), avatar, profession and cases (limited to 3 per counsellor in the
+  eager load). A test holds Home's query count constant from 1 to 5 recognised and leading counsellors, for a guest
+  and a signed-in user.
+- **Where the public section goes:** the guest Home section is the showcase. `/about` is unchanged: the ticket says
+  "public home or about", and Home already reaches guests.
+- **Leading:** `CounsellorService::getLeadingCounsellorsForCurrentMonth()` now reuses
+  `GetRecognitionSuggestionsAction::ranking()` for the current UTC month (new-rule stars through
+  `CountCounsellorStarsAction`, eligible now, no open report of any kind), takes the top 5 and loads their cards in one
+  query. Sent to signed-in users only; a guest's `leadingCounsellors` prop is `[]`. The old `User::stars`-based
+  `getBestCounsellorsForPreviousMonth`/`getLeadingCounsellorsForCurrentMonth` are gone, with the `Star` scopes only
+  they used (`whereWithinCurrentMonth`, `whereWithinPreviousMonth`, `whereStarredCounsellor`, the scope with the
+  `orWhere` bug).
+- **No star counts anywhere public:** `StarredCounsellorResource` is renamed `CounsellorCardResource` and no longer
+  sends `stars`/`overallStars`. It is used for Leading and for `api.counsellors.random`, which no longer eager-loads
+  every star row of every counsellor on the page (the over-fetch). `api.counsellors` (`CounsellorMiniResource`) sent
+  no counts already. A test walks every key of Home's props, the profile's props and both APIs, for a guest and a
+  signed-in user, and finds no star count or rank.
+- **Profile star numbers removed, for everyone (judgment call):** `overallStarsCount` and `currentMonthStarsCount` are
+  dropped from `CounsellorResource` and their accessors from `Counsellor`, and the "M / O stars" box (`StarBadge.vue`,
+  now unused, deleted) is gone from the profile and the Home cards. Switching them to new-rule counts for the owner
+  only was considered and rejected: SCRUM-473/474 already decided counsellors never see star counts or ranks
+  (`CounsellorRecognitionResource` hides them from the counsellor), and a counsellor watching their own number is a
+  way to game the rules. This also removes the inflated current-month number SCRUM-470 left. Administrators still
+  see the month's stars on the recognition page. SCRUM-470's test that the accessors kept their old numbers is
+  removed with them.
+- **Consent controls on the profile:** the counsellor's own "Counsellor of the month" card uses the existing
+  endpoints. A pending one is answered through its consent request (`requests.respond`, `accepted`/`rejected`; the
+  card gets the pending request's id from `OwnCounsellorRecognitionResource`). Accepted can be withdrawn, and declined
+  or withdrawn restored (`counsellor.recognitions.consent`). A pending one whose request was closed can still be
+  withdrawn. No new endpoint. The button states live in `resources/js/Support/recognitionConsent.js`, tested with
+  `npm run test:js`.
+- **Your Data:** `GetYourDataAction`'s `counsellor.recognitions` lists each **approved** recognition's month and
+  consent, newest first, capped like the page's other lists (one query). Skipped months aren't listed (judgment
+  call): a skip is the team's deliberation, like the stars and rank behind a recognition, which counsellors aren't
+  shown either.
+- **Seed data:** `RecognitionSeeder` now fills last month's five places: Sarah pending (as before), Michael accepted
+  and Emma declined (approved through the service and answered through `RequestService::respondToRequest`), James
+  added by hand and accepted, then given an open report by `john_davis` ("[Recognition demo: open report]", on a new
+  therapy), and `suspended_counsellor_demo` accepted. The service refuses to recognise a suspended counsellor, so that
+  row is written directly, with the same `added` and `consent_accepted` events. It also gives this month's new-rule
+  stars to James, Lisa, David and Michael for Leading (James is left out by his report). Each part is skipped once it
+  exists, and a test runs the seeder twice. The month is now 5 of 5 approved, so the admin page's "try it" skips one
+  before approving another.
+- **Tests:** `tests/Feature/RecognitionShowcaseTest.php` (prefix `rsc`, file-local helpers): the 96-case visibility
+  matrix (guest, signed-in, owner × accepted, pending, declined, withdrawn × none, suspended, reported via data,
+  reported via help request, lapsed, revoked, profile deleted, account deleted), coming back, the latest month, the
+  exact payload, no counts, Leading, the badge, the owner's controls end to end, Home's query count, Your Data and the
+  seeder.

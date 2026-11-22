@@ -770,6 +770,28 @@ or adds (`james_wilson`, rank 6, isn't suggested, so he can be added) and sets t
 Add it to an existing local database with
 `docker compose exec -u www-data php php artisan db:seed --class=RecognitionSeeder`.
 
+### The showcase states (SCRUM-476)
+
+The same seeder fills last month's other four places, so the month has **5 of 5 approved**. Each is skipped once that
+counsellor has a decision for the month. All passwords are `password`.
+
+| Counsellor | Last month's recognition | Shown on Home and their profile |
+|---|---|---|
+| `sarah_johnson` | approved, consent **pending** (above) | to signed-in users only |
+| `michael_chen` | approved, **accepted** (he answered the consent request) | to everyone, guests included |
+| `emma_williams` | approved, **declined** | to Emma only |
+| `james_wilson` | added by hand, **accepted**, then an **open report** about him: "[Recognition demo: open report] …", by `john_davis` on "Recognition Demo Therapy (reported counsellor)" | to nobody, until the report is resolved or dismissed |
+| `suspended_counsellor_demo` | **accepted**, but their counsellor role is suspended (SCRUM-359's demo) | to nobody, until the suspension is lifted |
+
+The suspended counsellor's row is written directly, because the service refuses to recognise a suspended counsellor;
+it has the same `added` and `consent_accepted` events. The report is made once (found by its "[Recognition demo: open
+report]" prefix). To approve someone else for last month on the admin page, skip one of these first.
+
+It also gives this month's new-rule stars for Home's **Leading (current month)** row, which only signed-in users see:
+`james_wilson` 5, `lisa_anderson` 4, `david_brown` 3, `michael_chen` 2. James is left out because of his open report,
+so the row reads Lisa, David, Michael. The stars are backdated a day apart within this month, so the daily caps don't
+stop them. On the 1st of a month only the first of each counsellor's stars can be given.
+
 ### Her own commission-free period (SCRUM-475)
 
 The same seeder also gives `sarah_johnson` her own commission-free period, linked to that recognition: **the whole of
