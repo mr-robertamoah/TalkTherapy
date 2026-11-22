@@ -233,9 +233,13 @@ test('the profile star counts are what they were before', function () {
         ->and(sfdCounsellor()->overallStarsCount)->toBe(0);
 });
 
-test('the migration rolls back and runs again', function () {
+test('the migrations roll back and run again', function () {
     $migration = include database_path('migrations/2026_12_13_100000_add_source_and_award_key_to_stars_table.php');
+    // SCRUM-471's index on source and starreable, which has to go first.
+    $revokeIndex = include database_path('migrations/2026_12_13_200000_add_starreable_source_index_to_stars_table.php');
 
+    $revokeIndex->down();
+    expect(Schema::hasIndex('stars', 'stars_source_starreable_index'))->toBeFalse();
     $migration->down();
     expect(Schema::hasColumns('stars', ['source', 'award_key']))->toBeFalse()
         ->and(Schema::hasIndex('stars', 'stars_period_count_index'))->toBeFalse()
@@ -245,4 +249,7 @@ test('the migration rolls back and runs again', function () {
     expect(Schema::hasColumns('stars', ['source', 'award_key']))->toBeTrue()
         ->and(Schema::hasIndex('stars', 'stars_period_count_index'))->toBeTrue()
         ->and(Schema::hasIndex('stars', ['starred_type', 'starred_id', 'award_key'], 'unique'))->toBeTrue();
+
+    $revokeIndex->up();
+    expect(Schema::hasIndex('stars', ['source', 'starreable_type', 'starreable_id']))->toBeTrue();
 });
