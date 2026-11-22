@@ -13,19 +13,21 @@ use Illuminate\Database\Eloquent\Model;
 // source) are never touched. Each returns how many stars were removed.
 class RevokeCounsellorStarsAction extends Action
 {
-    public function byAwardKey(string $awardKey): int
+    public function forCounsellorAndKey(Counsellor $counsellor, string $awardKey): int
     {
         return Star::query()
+            ->where('starred_type', $counsellor->getMorphClass())
+            ->where('starred_id', $counsellor->getKey())
             ->where('award_key', $awardKey)
             ->whereNotNull('source')
             ->delete();
     }
 
-    // Every star the rule gave for this thing, whatever its award key (a bulk revoke).
+    // Every star the rule gave for this thing, to any counsellor, whatever its award key (a bulk revoke).
     public function forStarreable(StarSourceEnum $source, Model $starreable): int
     {
         return Star::query()
-            ->where('starred_type', Counsellor::class)
+            ->where('starred_type', (new Counsellor)->getMorphClass())
             ->where('source', $source->value)
             ->where('starreable_type', $starreable->getMorphClass())
             ->where('starreable_id', $starreable->getKey())

@@ -12,9 +12,10 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\UniqueConstraintViolationException;
 
 // TT-7.11a/SCRUM-470: the one writer of new-rule stars. A star always goes on the Counsellor (never their User), with
-// the rule that earned it and an award key naming the earning event. Awarding the same key twice is a no-op: the
-// unique index on award_key decides, so concurrent awards cannot both insert. Returns the new star, or null when the
-// key was already awarded.
+// the rule that earned it and an award key naming the earning event. Each counsellor holds at most one star per key
+// (unique on starred_type, starred_id, award_key), so every counsellor of a group session can be starred for it, and
+// awarding the same counsellor the same key again is a no-op -- the index decides, so concurrent awards cannot both
+// insert. Returns the new star, or null when this counsellor already has it.
 class AwardCounsellorStarAction extends Action
 {
     public function execute(
