@@ -2,9 +2,12 @@
 
 use App\Actions\Recognition\GetCounsellorIdsWithOpenReportsAction;
 use App\Actions\Recognition\GetRecognitionSuggestionsAction;
+use App\Actions\Request\RespondToCounsellorRecognitionRequestAction;
 use App\Actions\Star\AwardCounsellorStarAction;
 use App\Actions\Suspension\ApplySuspensionAction;
+use App\DTOs\CounsellorRecognitionDTO;
 use App\Enums\AdministratorTypeEnum;
+use App\Enums\ConstantsEnum;
 use App\Enums\CounsellorRecognitionConsentEnum;
 use App\Enums\CounsellorRecognitionDecisionEnum;
 use App\Enums\HelpRequestStatusEnum;
@@ -24,11 +27,15 @@ use App\Models\Star;
 use App\Models\Therapy;
 use App\Models\User;
 use App\Notifications\CounsellorRecognisedNotification;
+use App\Services\CounsellorRecognitionService;
 use App\Support\NotificationCategories;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Notifications\Events\NotificationSending;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Validation\ValidationException;
 
 // TT-7.11d1/SCRUM-473: the recognition backend -- suggestions from new-rule stars, a super administrator's decisions,
 // and the counsellor's featuring consent.
@@ -257,6 +264,7 @@ test('the suggestions route returns a month, defaulting to the previous one', fu
 
     $this->actingAs($admin)->getJson(route('admin.recognition.suggestions', ['month' => '2026-11']))->assertOk()->assertJsonPath('suggestions', []);
     $this->actingAs($admin)->getJson(route('admin.recognition.suggestions', ['month' => '2026-12']))->assertUnprocessable()->assertJsonValidationErrors('month');
+    $this->actingAs($admin)->getJson(route('admin.recognition.suggestions', ['month' => '2026-09']))->assertUnprocessable()->assertJsonValidationErrors('month');
     $this->actingAs($admin)->getJson(route('admin.recognition.suggestions', ['month' => '2026-1']))->assertUnprocessable()->assertJsonValidationErrors('month');
 });
 
@@ -314,8 +322,9 @@ test('approving snapshots the stars and rank, sends the consent request and the 
     $listed = $this->actingAs($counsellor->user)->get(route('counsellor.dashboard'))->viewData('page')['props']['dashboard']['needsAction'];
     expect($listed['total'])->toBe(1)
         ->and($listed['items'][0]['recognition'])->toBe(['month' => '2026-10'])
-        ->and($listed['items'][0]['for'])->toBe(['id' => $recognition->id, 'month' => '2026-10'])
-        ->and(array_keys($listed['items'][0]['from']))->toBe(['id', 'fullName', 'username', 'isUser'])
+        ->and($listed['items'][0]['for'])->toBe(['id' => $recognition->id])
+        // Sent by the platform: which super administrator approved it is never shown.
+        ->and($listed['items'][0]['from'])->toBe(['fullName' => 'TalkTherapy', 'isUser' => false])
         ->and($listed['items'][0]['isRespondent'])->toBeTrue();
 });
 
@@ -382,8 +391,8 @@ test('no more than the monthly cap are approved, however they were chosen', func
     rbkDecide($this, 'add', rbkCounsellor())->assertUnprocessable()->assertJsonValidationErrors('counsellor_id');
 
     // Another month has its own cap.
-    rbkStars($september = rbkCounsellor(), 1, '2026-09-10 10:00:00');
-    rbkDecide($this, 'approve', $september, month: '2026-09')->assertOk();
+    rbkStars($november = rbkCounsellor(), 1, '2026-11-10 10:00:00');
+    rbkDecide($this, 'approve', $november, month: '2026-11')->assertOk();
 
     // Skipping one frees a place.
     rbkDecide($this, 'skip', $tied[0])->assertOk();
@@ -476,10 +485,13 @@ test('a guest and an ordinary user are refused, and every change is throttled', 
     }
 });
 
-test('a month must be YYYY-MM and no later than this one', function () {
+test('a month must be YYYY-MM, and this month or last month only', function () {
     rbkStars($counsellor = rbkCounsellor(), 2, '2026-11-02 10:00:00');
+    rbkStars($earlier = rbkCounsellor(), 2, '2026-09-02 10:00:00');
 
-    foreach (['2026-12', '2027-01', '26-10', '2026-13', '2026-00', ''] as $month) {
+    // Never back-dated further (a route to waivers), nor ahead.
+    foreach (['2026-09', '2025-11', '2026-12', '2027-01', '26-10', '2026-13', '2026-00', ''] as $month) {
+        rbkDecide($this, 'add', $earlier, month: $month)->assertUnprocessable()->assertJsonValidationErrors('month');
         rbkDecide($this, 'approve', $counsellor, month: $month)->assertUnprocessable()->assertJsonValidationErrors('month');
     }
 
@@ -567,4 +579,139 @@ test('a suspension leaves a pending consent pending', function () {
     expect($recognition->fresh()->consent)->toBe(CounsellorRecognitionConsentEnum::pending)
         ->and(rbkConsentRequest($recognition)->status)->toBe(RequestStatusEnum::pending->value)
         ->and(RequestTypeEnum::counsellingTypes())->not->toContain(RequestTypeEnum::counsellorRecognition->value);
+});
+
+// ---- Review and security fixes ----
+
+test('a super admin can\'t decide about their own counsellor profile, but another super admin can', function () {
+    $admin = rbkAdmin();
+    $own = rbkCounsellor(['user_id' => $admin->id]);
+    rbkStars($own, 3);
+
+    foreach (['approve', 'add', 'skip'] as $action) {
+        rbkDecide($this, $action, $own, $admin)->assertForbidden()->assertJsonPath('message', CounsellorRecognitionService::NOT_YOURS_TO_DECIDE);
+    }
+    expect(CounsellorRecognition::count())->toBe(0);
+
+    rbkDecide($this, 'approve', $own, rbkAdmin())->assertOk();
+});
+
+test('the service refuses a month the form would refuse', function () {
+    rbkStars($counsellor = rbkCounsellor(), 2, '2026-09-02 10:00:00');
+
+    expect(fn () => CounsellorRecognitionService::new()->add(CounsellorRecognitionDTO::new()->fromArray([
+        'user' => rbkAdmin(), 'month' => '2026-09', 'counsellorId' => $counsellor->id,
+    ])))->toThrow(ValidationException::class);
+});
+
+test('a consent request that no longer waits on an answer is refused, and nobody is recorded as answering it', function () {
+    rbkStars($counsellor = rbkCounsellor(), 2);
+    rbkDecide($this, 'approve', $counsellor)->assertOk();
+    $recognition = CounsellorRecognition::sole();
+    $request = rbkConsentRequest($recognition);
+
+    // No answer at all is not a decline.
+    $this->actingAs($counsellor->user)->postJson(route('requests.respond', ['requestId' => $request->id]), [])
+        ->assertStatus(422)->assertJsonPath('error', RespondToCounsellorRecognitionRequestAction::NO_ANSWER);
+
+    // The recognition moved on while the request stayed open.
+    $recognition->forceFill(['consent' => CounsellorRecognitionConsentEnum::accepted])->save();
+
+    $this->actingAs($counsellor->user)->postJson(route('requests.respond', ['requestId' => $request->id]), ['response' => 'rejected'])
+        ->assertStatus(422)->assertJsonPath('error', RespondToCounsellorRecognitionRequestAction::NO_LONGER_WAITING);
+
+    expect($request->fresh())
+        ->status->toBe(RequestStatusEnum::pending->value)
+        ->responded_by_id->toBeNull()
+        ->responded_at->toBeNull()
+        ->and($recognition->fresh()->consent)->toBe(CounsellorRecognitionConsentEnum::accepted)
+        ->and(rbkEvents($recognition))->toBe(['approved']);
+});
+
+test('switching off the recognition kind stops its email and in-app notice', function () {
+    rbkStars($counsellor = rbkCounsellor(), 2);
+    rbkDecide($this, 'approve', $counsellor)->assertOk();
+    $recognition = CounsellorRecognition::sole();
+    $notification = new CounsellorRecognisedNotification($recognition, rbkConsentRequest($recognition));
+    $sends = fn (string $channel) => app('events')->until(new NotificationSending($counsellor->fresh(), $notification, $channel)) !== false;
+
+    expect($sends('mail'))->toBeTrue()->and($sends('database'))->toBeTrue();
+
+    $counsellor->user->forceFill(['notification_channels' => ['recognition' => ['mail' => false, 'database' => false]]])->save();
+
+    expect($sends('mail'))->toBeFalse()->and($sends('database'))->toBeFalse();
+});
+
+test('a decided counsellor since deleted or anonymised is listed under others, without their name', function () {
+    rbkStars($deleted = rbkCounsellor(), 3);
+    rbkStars($closed = rbkCounsellor(), 2);
+    rbkDecide($this, 'approve', $deleted)->assertOk();
+    rbkDecide($this, 'approve', $closed)->assertOk();
+
+    $deleted->delete();
+    // As AnonymiseClosedAccountAction leaves a closed account: the profile's name gone, the account anonymised.
+    $closed->forceFill(['name' => null])->saveQuietly();
+    $closed->user->forceFill(['anonymised_at' => now()])->saveQuietly();
+    $closed->user->delete();
+
+    $result = rbkSuggest();
+    $others = collect($result['others'])->keyBy('counsellorId');
+
+    expect($result['suggestions'])->toBe([])
+        ->and($others[$deleted->id])->toMatchArray(['decision' => 'approved', 'stars' => 0, 'rank' => null])
+        ->and($others[$deleted->id]['flags']['deleted'])->toBeTrue()
+        ->and($others[$closed->id]['flags']['deleted'])->toBeTrue()
+        ->and($others[$closed->id]['name'])->toBe(ConstantsEnum::deletedUserLabel->value);
+});
+
+test('with a cap of 0 nobody can be added or approved', function () {
+    config(['recognition.per_month' => 0]);
+    rbkStars($counsellor = rbkCounsellor(), 2);
+
+    expect(rbkSuggest()['suggestions'])->toBe([]);
+    rbkDecide($this, 'add', $counsellor)->assertUnprocessable()->assertJsonValidationErrors('counsellor_id');
+    rbkDecide($this, 'approve', $counsellor)->assertUnprocessable()->assertJsonValidationErrors('counsellor_id');
+    expect(CounsellorRecognition::count())->toBe(0);
+});
+
+test('the suggestions take the same number of queries however many counsellors and reports there are', function () {
+    $reporter = rbkCounsellor();
+    $admin = rbkAdmin();
+
+    // Each round: a suggested counsellor, one with open reports about them (by data, as a counsellor and as a user),
+    // one suspended and decided earlier (an `others` row), and an ambiguous report.
+    $seed = function (int $rounds) use ($reporter, $admin) {
+        foreach (range(1, $rounds) as $i) {
+            rbkStars(rbkCounsellor(), 2);
+
+            rbkStars($reported = rbkCounsellor(), 2);
+            rbkReport($reported->user, $reporter, ['counsellorId' => $reported->id]);
+            rbkReport($reported->user, $reporter->user, ['userId' => $reported->user_id], 'under_review');
+            rbkReport($reported->user, $reporter, ['counsellorId' => $reported->id, 'userId' => User::factory()->create()->id]);
+
+            $decided = rbkCounsellor();
+            (new CounsellorRecognition)->forceFill([
+                'counsellor_id' => $decided->id, 'month' => '2026-10-01', 'decision' => 'skipped', 'decided_by_id' => $admin->id,
+            ])->save();
+            rbkSuspend($decided);
+        }
+    };
+    $queries = function () {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $result = rbkSuggest();
+        $count = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        return [$count, count($result['suggestions']), count($result['others'])];
+    };
+
+    config(['recognition.per_month' => 20]);
+    $seed(1);
+    [$few, $suggested, $others] = $queries();
+    $seed(4);
+    [$many, $moreSuggested, $moreOthers] = $queries();
+
+    expect([$suggested, $others, $moreSuggested, $moreOthers])->toBe([1, 1, 5, 5])
+        ->and($many)->toBe($few);
 });
