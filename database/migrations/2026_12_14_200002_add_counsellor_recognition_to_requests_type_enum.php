@@ -18,11 +18,16 @@ return new class extends Migration
         });
     }
 
-    // Reversible, unlike the earlier additions: the consent requests go with the recognitions they were for (that
-    // table is dropped by the same rollback), then the type is taken out of the list.
+    // Reversible, unlike the earlier additions: the consent requests are deleted, then the type is taken out of the
+    // list. The three SCRUM-473 migrations are meant to roll back together (see the production checklist); if only
+    // this one is, a consent left pending has no request to answer, so it is cleared.
     public function down(): void
     {
         DB::table('requests')->where('type', RequestTypeEnum::counsellorRecognition->value)->delete();
+
+        if (Schema::hasTable('counsellor_recognitions')) {
+            DB::table('counsellor_recognitions')->where('consent', 'pending')->update(['consent' => null]);
+        }
 
         Schema::table('requests', function (Blueprint $table) {
             $table->enum('type', array_values(array_diff(
