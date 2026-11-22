@@ -12,11 +12,13 @@ enum NotificationCategoryEnum: string
     case discussions = 'discussions';
     case organisations = 'organisations';
     case payments = 'payments';
+    // TT-7.11d1/SCRUM-473: being recognised as a Counsellor of the month.
+    case recognition = 'recognition';
 
     // Only a counsellor is sent these.
     public function forCounsellorsOnly(): bool
     {
-        return in_array($this, [self::discussions, self::organisations], true);
+        return in_array($this, [self::discussions, self::organisations, self::recognition], true);
     }
 
     public function label(): string
@@ -27,6 +29,7 @@ enum NotificationCategoryEnum: string
             self::discussions => 'Case discussions (counsellors)',
             self::organisations => 'Organisation pay changes (counsellors)',
             self::payments => 'Your refunds',
+            self::recognition => 'Recognition (counsellors)',
         };
     }
 
@@ -38,6 +41,7 @@ enum NotificationCategoryEnum: string
             self::discussions => 'Being added to, and changes to, case discussions with other counsellors.',
             self::organisations => 'Proposed, accepted and expiring changes to what an organisation pays you.',
             self::payments => 'A refund going through, failing, or being turned down.',
+            self::recognition => 'Being recognised as a Counsellor of the month. Your answer stays on your dashboard either way.',
         };
     }
 }

@@ -752,3 +752,18 @@ Waived money, made during the ended period, so the labels can be seen:
 |---|---|---|
 | `commission_free_demo_counsellor` | `password` | Dr. CommissionFree DemoCounsellor. Three pending GHS earnings: from `payout_demo_client`, GHS 100.00 with **no fee** ("Commission-free · GHS 10.00 waived") and GHS 50.00 with the usual GHS 5.00 fee; and GHS 50.00 with no fee (GHS 5.00 waived) from the organisation charge below. Visit their own profile (`/counsellor/{id}`), "Payouts". |
 | `org_demo_admin` | `password` | `/organizations/1/reconciliation`, "Financed Sessions": a "Therapy with Dr. CommissionFree DemoCounsellor" row of GHS 50.00 dated inside the ended period, Platform Fee GHS 0.00 with **"Waived · GHS 5.00 waived"**. It is the seeder's own "Commission-Free Demo Org Therapy" (client `org_demo_payperuse_member`, counsellor `commission_free_demo_counsellor`); no other demo charge or balance changes. |
+
+## Counsellor recognition (SCRUM-473, `RecognitionSeeder`)
+
+Local and testing only. New-rule stars for the **previous month (UTC, relative to the run)** on the six demo
+counsellors, made through `AwardCounsellorStarAction` (keyed per month, so running it again adds nothing):
+`sarah_johnson` 6, `michael_chen` 5, `emma_williams` 4 and `david_brown` 4 (a tie: same count and same first star),
+`lisa_anderson` 3, `james_wilson` 2. With the default cap of 5, the suggestions are the first five (Emma and David
+share rank 3).
+
+`sarah_johnson` (`password`) is already recognised for that month by the super admin (`mr_robertamoah`), so her
+featuring consent request is pending under "Needs your action" on `/counsellor/dashboard`, and she has a
+"You've been recognised as a Counsellor of the month for <Month Year>" notification. Skipped if that month already has
+a decision. There is no admin page yet (SCRUM-474): as the super admin, `GET /administrator/recognition/suggestions`
+(optionally `?month=YYYY-MM`) returns the suggestions as JSON. Add it to an existing local database with
+`docker compose exec -u www-data php php artisan db:seed --class=RecognitionSeeder`.

@@ -49,6 +49,8 @@ class GetRequestResourceAction extends Action
                     RequestTypeEnum::sessionScheduleProposal->value,
                     // SCRUM-381: from a Counsellor, `for` a Therapy or GroupTherapy, `to` null.
                     RequestTypeEnum::safeguardingException->value,
+                    // TT-7.11d1/SCRUM-473: from a super administrator's User, to a Counsellor, `for` a recognition.
+                    RequestTypeEnum::counsellorRecognition->value,
                 ]
             )
         ) {

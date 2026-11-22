@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AboutController;
 use App\Http\Controllers\AdminContentAccessController;
+use App\Http\Controllers\AdminCounsellorRecognitionController;
 use App\Http\Controllers\AdminEmergencyNumberController;
 use App\Http\Controllers\AdminHelpRequestController;
 use App\Http\Controllers\AdministratorController;
@@ -17,6 +18,7 @@ use App\Http\Controllers\AdminSuspensionController;
 use App\Http\Controllers\CounsellorController;
 use App\Http\Controllers\CounsellorDashboardController;
 use App\Http\Controllers\CounsellorPricingController;
+use App\Http\Controllers\CounsellorRecognitionConsentController;
 use App\Http\Controllers\DiscussionController;
 use App\Http\Controllers\GroupTherapyController;
 use App\Http\Controllers\GroupVideoConsentController;
@@ -223,6 +225,12 @@ Route::middleware('auth')->group(function () {
     Route::post('/administrator/settings/platform-fee-waivers', [AdminPlatformFeeWaiverController::class, 'store'])->name('admin.settings.platform-fee-waivers.store')->middleware(['admin', 'throttle:10,1,admin.settings.platform-fee-waivers.store']);
     Route::post('/administrator/settings/platform-fee-waivers/{waiver}/end', [AdminPlatformFeeWaiverController::class, 'end'])->name('admin.settings.platform-fee-waivers.end')->whereNumber('waiver')->middleware(['admin', 'throttle:10,1,admin.settings.platform-fee-waivers.end']);
     Route::post('/administrator/settings/platform-fee-waivers/{waiver}/delete', [AdminPlatformFeeWaiverController::class, 'destroy'])->name('admin.settings.platform-fee-waivers.delete')->whereNumber('waiver')->middleware(['admin', 'throttle:10,1,admin.settings.platform-fee-waivers.delete']);
+    // TT-7.11d1/SCRUM-473: counsellor recognition -- a super administrator only (the FormRequests answer 403 first). The
+    // suggestions are JSON for the SCRUM-474 page; every decision is throttled.
+    Route::get('/administrator/recognition/suggestions', [AdminCounsellorRecognitionController::class, 'suggestions'])->name('admin.recognition.suggestions')->middleware(['admin', 'throttle:60,1,admin.recognition.suggestions']);
+    Route::post('/administrator/recognition/approve', [AdminCounsellorRecognitionController::class, 'approve'])->name('admin.recognition.approve')->middleware(['admin', 'throttle:30,1,admin.recognition.approve']);
+    Route::post('/administrator/recognition/skip', [AdminCounsellorRecognitionController::class, 'skip'])->name('admin.recognition.skip')->middleware(['admin', 'throttle:30,1,admin.recognition.skip']);
+    Route::post('/administrator/recognition/add', [AdminCounsellorRecognitionController::class, 'add'])->name('admin.recognition.add')->middleware(['admin', 'throttle:30,1,admin.recognition.add']);
 
     // TT-7.3b-followup/SCRUM-245: the manual "resolve this" surface SCRUM-238 left unbuilt --
     // platform-admin only (mirrors administrator.payouts' own convention exactly). Write routes
@@ -439,6 +447,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/counsellor/{counsellorId}', [CounsellorController::class, 'updateCounsellor'])->name('counsellor.update')->middleware('throttle:30,1,counsellor-update'); // SCRUM-192: image uploads (shared by the four profile forms, so roomier), own counter
     Route::post('/counsellor/{counsellorId}/pricings', [CounsellorPricingController::class, 'store'])->name('counsellor.pricings.store')->middleware('throttle:30,1,counsellor.pricings.store');
     Route::delete('/counsellor/{counsellorId}/pricings', [CounsellorPricingController::class, 'destroy'])->name('counsellor.pricings.destroy')->middleware('throttle:30,1,counsellor.pricings.destroy');
+    // TT-7.11d1/SCRUM-473: a counsellor withdrawing their featuring consent, or opting back in (their own only).
+    Route::post('/counsellor/recognitions/{recognition}/consent', CounsellorRecognitionConsentController::class)->name('counsellor.recognitions.consent')->whereNumber('recognition')->middleware('throttle:10,1,counsellor.recognitions.consent');
     // TT-7.6d/SCRUM-228: deliberately no {counsellorId} route param -- self-service only, always
     // the authenticated user's own counsellor/payout (security requirement carried from TT-7.6a's
     // review). TT-7.6e's admin-on-behalf-of trigger reuses this same route via counsellorId in

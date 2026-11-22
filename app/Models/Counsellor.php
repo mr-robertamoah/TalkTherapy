@@ -360,6 +360,12 @@ class Counsellor extends Model
         return $this->hasMany(CounsellorPayout::class);
     }
 
+    // TT-7.11d1/SCRUM-473: the months a super administrator decided about them (approved or skipped).
+    public function recognitions(): HasMany
+    {
+        return $this->hasMany(CounsellorRecognition::class);
+    }
+
     public function addedPosts()
     {
         return $this->morphMany(Post::class, 'addedby');
