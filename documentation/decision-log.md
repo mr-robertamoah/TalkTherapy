@@ -13573,3 +13573,6 @@ Planned with the product-owner, architect and project-manager; split into SCRUM-
   - DPC registration and its renewal;
   - backup retention against the privacy page;
   - naming the host and the transfers on the privacy page, folded into the open SCRUM-364 lawyer review.
+- **User decisions (2026-11-22):**
+  - **The EC2 server holds no real user data,** so the move is a fresh deploy plus a DNS change, with no data migration.
+  - **Standby database: decide later.** Production starts on a single-node cluster, so the 30 Nov 2026 DO Standard deadline is not acted on. If a standby is wanted later, the options are DO's higher tier or the AWS RDS fallback.
