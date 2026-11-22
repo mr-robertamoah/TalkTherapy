@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\SessionScheduleProposal\AcceptSessionScheduleProposalAction;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Enums\SessionStatusEnum;
@@ -158,6 +159,28 @@ test('accepting a proposal that is now stale does not auto-reject and does not c
     expect($proposal->data['staleReason'] ?? null)->not->toBeNull();
     expect(Session::where('name', 'Weekly check-in')->exists())->toBeFalse();
     Notification::assertNotSentTo($client, SessionScheduleProposalAcceptedNotification::class);
+});
+
+// SCRUM-471: a proposal whose start has passed would create a session already due -- it goes stale instead.
+test('accepting a proposal after its start time stays pending with a stale reason', function () {
+    Notification::fake();
+    $counsellor = aCounsellorForScheduleProposalRespondRoute();
+    $client = User::factory()->adult()->create();
+    $therapy = aTherapyForScheduleProposalRespondRoute($counsellor, $client);
+    $proposal = aPendingScheduleProposalForRespondRoute($therapy, $client, $counsellor, [
+        'proposedById' => $client->id,
+        'startTime' => now()->subMinutes(5)->toDateTimeString(),
+        'endTime' => now()->addHour()->toDateTimeString(),
+    ]);
+
+    $this->actingAs($counsellor->user)
+        ->postJson(route('requests.respond', ['requestId' => $proposal->id]), ['response' => 'accepted'])
+        ->assertStatus(201);
+
+    $proposal->refresh();
+    expect($proposal->status)->toBe(RequestStatusEnum::pending->value)
+        ->and($proposal->data['staleReason'] ?? null)->toBe(AcceptSessionScheduleProposalAction::START_PASSED)
+        ->and(Session::where('name', 'Weekly check-in')->exists())->toBeFalse();
 });
 
 test('accepting a proposal whose therapy no longer has an assigned counsellor stays pending with a stale reason', function () {
