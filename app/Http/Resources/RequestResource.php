@@ -7,6 +7,7 @@ use App\Actions\SafeguardingException\EnsureCanManageSafeguardingExceptionAction
 use App\Actions\User\AnonymiseClosedAccountAction;
 use App\Enums\ConstantsEnum;
 use App\Enums\RequestTypeEnum;
+use App\Models\CounsellorRecognition;
 use App\Models\Discussion;
 use App\Models\GroupTherapy;
 use App\Models\Organization;
@@ -146,6 +147,11 @@ class RequestResource extends JsonResource
                 $this->type === RequestTypeEnum::safeguardingException->value,
                 fn () => $this->safeguardingException($isRespondent),
             ),
+            // TT-7.11d1/SCRUM-473: a featuring consent request -- the month only (its data), never stars or rank.
+            'recognition' => $this->when(
+                $this->type === RequestTypeEnum::counsellorRecognition->value,
+                fn () => ['month' => $this->data['month'] ?? null],
+            ),
             'round' => $this->when(! is_null($this->round), $this->round),
             'expiresAt' => $this->when(! is_null($this->expires_at), fn () => $this->expires_at?->diffForHumans()),
             'createdAt' => $this->created_at->diffForHumans(),
@@ -243,7 +249,9 @@ class RequestResource extends JsonResource
         // and visible to every admin, and `from`/`for` are likewise the same submitting user.
         // SCRUM-387 (security review): a refund request is listed to every administrator too (the
         // admin queue), so its payer is narrowed the same way.
-        if ($this->isNullToAdminOnlyType() || $this->type === RequestTypeEnum::refund->value) {
+        // TT-7.11d1/SCRUM-473: a featuring consent request comes from the super administrator who approved it -- the
+        // counsellor sees their name only.
+        if ($this->isNullToAdminOnlyType() || in_array($this->type, [RequestTypeEnum::refund->value, RequestTypeEnum::counsellorRecognition->value], true)) {
             return NarrowUserProjection::of($this->from);
         }
 
@@ -432,6 +440,11 @@ class RequestResource extends JsonResource
                 'amount' => $this->for?->amount,
                 'currency' => $this->for?->currency,
             ];
+        }
+
+        // TT-7.11d1/SCRUM-473: a featuring consent request is `for` the recognition -- its id and month only.
+        if ($this->for_type == CounsellorRecognition::class) {
+            return ['id' => $this->for_id, 'month' => $this->data['month'] ?? null];
         }
 
         return $this->counsellorParty($this->for);

@@ -3,6 +3,7 @@
 namespace App\DTOs;
 
 use App\Models\Counsellor;
+use App\Models\CounsellorRecognition;
 use App\Models\Discussion;
 use App\Models\GroupTherapy;
 use App\Models\Organization;
@@ -22,7 +23,8 @@ class CreateRequestDTO extends BaseDTO
 
     // TT-7.7a/SCRUM-249: Transaction added for RequestTypeEnum::refund's own `for` -- the
     // transaction being refunded.
-    public User|Counsellor|Discussion|Therapy|GroupTherapy|Organization|OrganizationCounsellor|Transaction|null $for = null;
+    // TT-7.11d1/SCRUM-473: CounsellorRecognition for RequestTypeEnum::counsellorRecognition (featuring consent).
+    public User|Counsellor|Discussion|Therapy|GroupTherapy|Organization|OrganizationCounsellor|Transaction|CounsellorRecognition|null $for = null;
 
     public ?array $data = [];
 

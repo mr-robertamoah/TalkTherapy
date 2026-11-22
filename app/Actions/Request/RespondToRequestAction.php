@@ -91,6 +91,11 @@ class RespondToRequestAction extends Action
             $request = RespondToSafeguardingExceptionRequestAction::new()->execute($requestResponseDTO);
         }
 
+        // TT-7.11d1/SCRUM-473: a counsellor's featuring consent.
+        if ($requestResponseDTO->request->type == RequestTypeEnum::counsellorRecognition->value) {
+            $request = RespondToCounsellorRecognitionRequestAction::new()->execute($requestResponseDTO);
+        }
+
         // TODO respond to other requests
         // (SCRUM-119/120: this per-type dispatch chain is accepted, tracked debt -- see the
         // architect note on documentation/implementation_plan.md's Epic TT-6. A follow-up to
