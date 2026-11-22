@@ -61,3 +61,34 @@ export const STAR_CAP_FIELDS = [
     { key: 'session_per_client', label: 'Per client', hint: 'session and help-chat stars a day from one client (0 stops every session and help-chat star that has a client)' },
     { key: 'session_per_group', label: 'Per group', hint: 'group-session stars a day from one group' },
 ]
+
+// TT-7.11e2/SCRUM-477: the optional fee waiver offered when approving -- prefilled with the next calendar month in UTC
+// (the 1st of next month 00:00 to the 1st of the month after), as `datetime-local` values the server reads as UTC, and
+// a reason naming the recognition's month ("Counsellor of the month, October 2026"). `now` is a Date (tests pass one).
+export function waiverPrefill(recognitionMonthLabel, now = new Date()) {
+    const year = now.getUTCFullYear()
+    const month = now.getUTCMonth() // 0-11; Date.UTC rolls month 12 into January of the next year.
+
+    return {
+        starts_at: utcInputValue(new Date(Date.UTC(year, month + 1, 1))),
+        ends_at: utcInputValue(new Date(Date.UTC(year, month + 2, 1))),
+        reason: `Counsellor of the month, ${recognitionMonthLabel}`,
+    }
+}
+
+// 'YYYY-MM-DDTHH:mm' in UTC, for a datetime-local input labelled GMT.
+function utcInputValue(date) {
+    const pad = (value) => String(value).padStart(2, '0')
+
+    return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}T${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`
+}
+
+// A commission-free period's status (PlatformFeeWaiver::status()) as a pill. Cancelled: ended early with "End now".
+export function waiverStatusPill(status) {
+    return {
+        upcoming: { label: 'upcoming', tone: 'blue' },
+        active: { label: 'active', tone: 'green' },
+        ended: { label: 'ended', tone: 'gray' },
+        cancelled: { label: 'cancelled', tone: 'amber' },
+    }[status] ?? { label: status ?? 'unknown', tone: 'gray' }
+}

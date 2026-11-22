@@ -7,6 +7,8 @@ import {
     recognitionAlerts,
     recognitionEventLabel,
     STAR_CAP_FIELDS,
+    waiverPrefill,
+    waiverStatusPill,
 } from '../../resources/js/Support/recognition.js'
 
 describe('recognition alerts', () => {
@@ -56,5 +58,41 @@ describe('star cap fields', () => {
             STAR_CAP_FIELDS.map((field) => field.key),
             ['session', 'help_chat', 'discussion', 'post', 'session_per_client', 'session_per_group'],
         )
+    })
+})
+
+// TT-7.11e2/SCRUM-477
+describe('waiver prefill', () => {
+    it('covers the next calendar month in UTC, with a reason naming the recognition month', () => {
+        assert.deepEqual(waiverPrefill('October 2026', new Date('2026-11-22T09:30:00Z')), {
+            starts_at: '2026-12-01T00:00',
+            ends_at: '2027-01-01T00:00',
+            reason: 'Counsellor of the month, October 2026',
+        })
+    })
+
+    it('rolls December over into January of the next year', () => {
+        const prefill = waiverPrefill('December 2026', new Date('2026-12-15T12:00:00Z'))
+
+        assert.equal(prefill.starts_at, '2027-01-01T00:00')
+        assert.equal(prefill.ends_at, '2027-02-01T00:00')
+        assert.equal(prefill.reason, 'Counsellor of the month, December 2026')
+    })
+
+    it('goes by the UTC date, not the browser\'s', () => {
+        // 23:30 on 31 January UTC is already 1 February in a UTC+1 browser -- still January in UTC.
+        assert.equal(waiverPrefill('January 2027', new Date('2027-01-31T23:30:00Z')).starts_at, '2027-02-01T00:00')
+        assert.equal(waiverPrefill('January 2027', new Date('2027-02-01T00:00:00Z')).starts_at, '2027-03-01T00:00')
+    })
+})
+
+describe('waiver status pill', () => {
+    it('labels each status, with a fallback', () => {
+        assert.deepEqual(waiverStatusPill('upcoming'), { label: 'upcoming', tone: 'blue' })
+        assert.deepEqual(waiverStatusPill('active'), { label: 'active', tone: 'green' })
+        assert.deepEqual(waiverStatusPill('ended'), { label: 'ended', tone: 'gray' })
+        assert.deepEqual(waiverStatusPill('cancelled'), { label: 'cancelled', tone: 'amber' })
+        assert.deepEqual(waiverStatusPill('odd'), { label: 'odd', tone: 'gray' })
+        assert.equal(waiverStatusPill(null).label, 'unknown')
     })
 })
