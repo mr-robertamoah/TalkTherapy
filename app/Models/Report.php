@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\ReportOutcomeEnum;
 use App\Enums\ReportStatusEnum;
+use Closure;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
@@ -82,18 +83,63 @@ class Report extends Model
             return $this->reportedPartyCache;
         }
 
+        return $this->resolveReportedParty(
+            fn ($id) => User::withTrashed()->find($id),
+            fn ($id) => Counsellor::withTrashed()->with('user')->find($id),
+        );
+    }
+
+    // SCRUM-473: reportedParty() for many reports at once -- the people they name are read in two queries instead of
+    // one or two per report, then each report is answered by the same rule. Load `reportable` and `addedby` (with a
+    // reporting counsellor's user) on the reports first.
+    public static function preloadReportedParties(iterable $reports): void
+    {
+        $reports = collect($reports)->reject(fn (self $report) => $report->reportedPartyResolved);
+        $userIds = [];
+        $counsellorIds = [];
+
+        foreach ($reports as $report) {
+            if ($help = $report->helpRequest()) {
+                $userIds[] = $help->user_id;
+
+                continue;
+            }
+
+            $data = is_array($report->data) ? $report->data : [];
+            if (is_scalar($data['userId'] ?? null) && $data['userId']) {
+                $userIds[] = $data['userId'];
+            }
+            if (is_scalar($data['counsellorId'] ?? null) && $data['counsellorId']) {
+                $counsellorIds[] = $data['counsellorId'];
+            }
+        }
+
+        $users = $userIds ? User::withTrashed()->whereIn('id', array_unique($userIds))->get()->keyBy('id') : collect();
+        $counsellors = $counsellorIds ? Counsellor::withTrashed()->with('user')->whereIn('id', array_unique($counsellorIds))->get()->keyBy('id') : collect();
+
+        foreach ($reports as $report) {
+            $report->resolveReportedParty(
+                fn ($id) => is_scalar($id) ? $users->get($id) : null,
+                fn ($id) => is_scalar($id) ? $counsellors->get($id) : null,
+            );
+        }
+    }
+
+    // The rule behind reportedParty(), with how a named User or Counsellor is found passed in.
+    private function resolveReportedParty(Closure $findUser, Closure $findCounsellor): User|Counsellor|null
+    {
         // SCRUM-398: an urgent help request is about the person who asked -- from the request, never from
         // data (nothing is stored there, so no id can travel to a reporter or a list).
         if ($help = $this->helpRequest()) {
             $this->reportedPartyResolved = true;
 
-            return $this->reportedPartyCache = User::withTrashed()->find($help->user_id);
+            return $this->reportedPartyCache = $findUser($help->user_id);
         }
 
         $data = is_array($this->data) ? $this->data : [];
         $named = array_filter([
-            ($data['userId'] ?? null) ? User::withTrashed()->find($data['userId']) : null,
-            ($data['counsellorId'] ?? null) ? Counsellor::withTrashed()->with('user')->find($data['counsellorId']) : null,
+            ($data['userId'] ?? null) ? $findUser($data['userId']) : null,
+            ($data['counsellorId'] ?? null) ? $findCounsellor($data['counsellorId']) : null,
         ]);
         $named = array_values(array_filter(
             $named,

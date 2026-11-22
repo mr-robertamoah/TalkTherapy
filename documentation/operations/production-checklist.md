@@ -248,6 +248,15 @@ Check every item before going live.
     migration back deletes every star's source and award key for good (new-rule stars become indistinguishable from
     legacy ones), so dump `stars` first, then on the **current** code roll back `2026_12_13_100000` with `--path=`,
     never a bare rollback.
+- [ ] **Counsellor recognition backend (SCRUM-473):**
+  - The deploy brings `2026_12_14_200000` (`counsellor_recognitions`), `2026_12_14_200001` (its events) and
+    `2026_12_14_200002`, which re-applies the `requests.type` enum with `COUNSELLOR_RECOGNITION_REQUEST` (a table
+    rebuild on `requests`, like every earlier enum addition -- check `SELECT COUNT(*) FROM requests;` first).
+  - Rolling back SCRUM-473: prefer rolling back the code -- older code ignores the new tables and request type. Rolling
+    the migrations back **deletes every featuring consent request** (`2026_12_14_200002`) and **every recognition and
+    its history** (`2026_12_14_200000`/`..01`) for good, so dump `requests`, `counsellor_recognitions` and
+    `counsellor_recognition_events` first, then roll back the three files together with `--path=` (newest first), never
+    a bare rollback. Rolling back only `..200002` leaves approved recognitions with no consent (pending is cleared).
 
 ## The proxy
 

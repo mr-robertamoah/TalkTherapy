@@ -297,6 +297,8 @@ class Request extends Model
                     RequestTypeEnum::groupTherapy->value,
                     RequestTypeEnum::discussion->value,
                     RequestTypeEnum::sessionScheduleProposal->value,
+                    // TT-7.11d1/SCRUM-473: featuring consent for a recognition.
+                    RequestTypeEnum::counsellorRecognition->value,
                 ]))
             ->orWhere(fn (Builder $query) => $query
                 ->where('to_type', User::class)

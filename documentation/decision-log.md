@@ -13649,3 +13649,87 @@ Split into SCRUM-470–476 (TT-7.11a–f); the first, SCRUM-470, is the star fou
 - **User decisions (2026-11-22):**
   - **The EC2 server holds no real user data,** so the move is a fresh deploy plus a DNS change, with no data migration.
   - **Standby database: decide later.** Production starts on a single-node cluster, so the 30 Nov 2026 DO Standard deadline is not acted on. If a standby is wanted later, the options are DO's higher tier or the AWS RDS fallback.
+
+## SCRUM-473 — recognition backend (TT-7.11d1, 2026-11-22)
+
+- **Month rule (security review):** a month is `YYYY-MM`, and only the current UTC month or the previous one. The
+  current month is allowed so an admin can act early; nothing further back, because a back-dated recognition would
+  become a route to a per-counsellor waiver (SCRUM-475). Stored as the 1st (`date`, kept as the plain `Y-m-01` string on the model so equality
+  matches on MySQL and SQLite). Stars count over [1st, 1st of next month) UTC through `CountCounsellorStarsAction`, so
+  legacy stars never count. The suggestions route defaults to the previous month when none is given. The month is
+  checked by the FormRequest and again in the service.
+- **Eligibility is as of now, whichever month:** currently verified (`whereCurrentlyVerified`), not suspended, not
+  soft-deleted, the account not deleted, and not the reported party of an open or under-review report. Eligibility is
+  never frozen into the month.
+- **Ambiguous reports:** `GetCounsellorIdsWithOpenReportsAction` makes one chunked pass over open/under-review reports
+  and uses `Report::reportedParty()` (a Counsellor, or a User mapped to their counsellor profile -- so an urgent help
+  request made by a counsellor's own account counts). A report whose party is null or ambiguous counts against nobody;
+  the suggestions carry `unattributedOpenReports` and a fixed note for the page. The pass loads what
+  `reportedParty()`/`isReportedBy()` read up front: the reportable, the reporter (with a reporting counsellor's user),
+  and -- through the new `Report::preloadReportedParties()`, which answers by the same rule -- the named people in two
+  queries per chunk. `add()` passes its counsellor into the ranking's pass, so reports are scanned once per decision;
+  `skip()` builds no ranking for a counsellor already decided. The suspended flag comes from a `withExists` on active
+  suspensions. A test holds the suggestions' query count constant as counsellors and reports grow.
+- **Tie rule:** order by stars desc, first star asc, id asc; rows tied on both stars and first star share a rank
+  (1, 2, 2, 4). Suggestions are every row ranked within `recognition.per_month` -- the top N plus everyone tied with
+  the Nth (flagged `tiedAtCutoff`). A tie on stars alone is not a tie.
+- **No self-recognition (security review, M1):** approve, add and skip refuse with a 403 when the counsellor's user
+  is the acting super admin -- the same guard as `EnsureCanRevokeCounsellorVerificationAction`. Recognising another
+  super admin's counsellor profile stays allowed (another person decides it, and it is recorded who).
+- **Approve vs add:** approve is only for a suggested counsellor; add is only for one who isn't (so the record says
+  which); both need eligibility now and room under the cap -- re-checked inside the locked transaction (verification,
+  suspension, deletion read again; open reports from the same request's single pass). "Suggested" is one rule,
+  `GetRecognitionSuggestionsAction::isSuggested()` (rank within `per_month`). Add sets `added_manually`, with the counsellor's current
+  stars (often 0) and rank (null when unranked) as the snapshot. Skip needs no eligibility, but only a suggested or
+  already-decided counsellor can be skipped (no junk rows). Repeating the current decision is a no-op (no event, no
+  second request or notification) -- a double click is harmless.
+- **Cap locking:** at most `per_month` approved per month, counted with every row of that month read `lockForUpdate`
+  inside the transaction (retried on deadlock). Under InnoDB REPEATABLE READ the locking read takes gap locks on the
+  `(month, decision)` index, so a first row inserted at the same moment for an empty month waits too; the unique
+  `(counsellor_id, month)` index catches a double insert for one counsellor (turned into a field error). Same
+  isolation caveat as SCRUM-468's overlap check.
+- **Consent state machine:** approve sets `pending` and sends the `COUNSELLOR_RECOGNITION_REQUEST` (from the super
+  admin's User, to the Counsellor, for the recognition, data `{month}` only).
+  Only an explicit `accepted`/`rejected` answer counts: the generic validator lets a missing response through as a
+  decline, so this type refuses it (422). A request whose recognition no longer waits on it (no longer approved or
+  pending) is refused with a 422 and left untouched, so no `responded_by_id` is stamped (as
+  `RespondToSafeguardingExceptionRequestAction` refuses a late answer). Lock order is the recognition, then its
+  request, everywhere; the answer's transaction retries 3 times. Answering it: accepted -> `accepted`,
+  rejected -> `declined`; only the Counsellor it is addressed to may answer (the generic `to` rule; the type is not in
+  the admin queue, so no admin can, including the sender). The counsellor's own POST: withdraw takes `accepted` or
+  `pending` to `withdrawn` (a pending request is then made moot, INCONSEQUENCIAL); restore takes `withdrawn` or
+  `declined` to `accepted`. Someone else's recognition is a 404, the same as a missing one (no existence oracle). A
+  skipped recognition's consent can't be changed. Every change writes an event with who made it.
+- **Approve -> skip:** the row is updated (consent null, `consent_changed_at` stamped), an event records `from:
+  approved`, and any pending consent request is set INCONSEQUENCIAL -- the existing "made moot" status, so answering
+  it afterwards is the usual 422. Skip -> approve sends a new request and notification; the old one stays closed.
+- **Suspension:** the type is deliberately not in `counsellingTypes()`, so `ApplySuspensionEffectsAction` leaves a
+  pending consent pending (the user's decision).
+- **Notification kind (judgment call):** `CounsellorRecognisedNotification` goes under a new counsellors-only SCRUM-40
+  kind, "Recognition (counsellors)", rather than always-on or an unrelated existing kind -- it isn't safety or account
+  standing, and none of the five kinds fits. Switching it off never hides the request, which stays on the counsellor's
+  dashboard ("needs your action" now includes this type). Database always, mail when the counsellor's email is
+  verified, after commit. Text and link: "You've been recognised as a Counsellor of the month for <Month Year>", to
+  the counsellor dashboard (there is no per-request page). Only the month is stored and shown, never stars or rank.
+- **The platform is the sender (security review):** `RequestResource` shows `from` as `{fullName: 'TalkTherapy',
+  isUser: false}` -- no id, name or username -- so which super admin approved it is never revealed, to anyone. `for`
+  is the recognition's id only; the month is in the `recognition: {month}` block. RequestBadge shows "You've been
+  recognised as a Counsellor of the month for <Month Year>. Agree to be featured publicly?" with the generic
+  accept/reject, so the dashboard card isn't blank.
+- **Requests enum migration is reversible:** unlike the earlier additions, `down()` deletes the consent requests,
+  clears any consent left pending (no request is left to answer it) and narrows the list again. The three SCRUM-473
+  migrations are meant to roll back together; the production checklist says to back up first, use `--path`, never a
+  bare rollback, and prefer rolling back the code (verified on MySQL 8: fresh + seed, rollback 3, migrate). Recognition tables cascade from the
+  counsellor; events cascade from the recognition; `platform_fee_waiver_id` nulls on delete and is unused until
+  SCRUM-475.
+- **Seams for the next tickets:** the suggestions payload (rows with `recognitionId`, decision, consent, flags:
+  verification state, suspended, open report, deleted; plus `others` for decided rows no longer suggested) is the
+  SCRUM-474 page's data; `CounsellorRecognition::platformFeeWaiver()` for SCRUM-475; `Counsellor::recognitions()` and
+  the consent states for SCRUM-476's showcase.
+- **Live eligibility is the next tickets' job:** `decision = approved` and `consent = accepted` are necessary but not
+  sufficient. SCRUM-475 (when applying a waiver) and SCRUM-476 (when showing a recognition) must re-check eligibility
+  live -- currently verified, not suspended, no open report, not deleted (`GetRecognitionEligibleCounsellorIdsAction`)
+  -- at that moment. Nothing here hides anything.
+- **Seed data:** `RecognitionSeeder` gives the six demo counsellors last month's new-rule stars (with a tie between
+  `emma_williams` and `david_brown`) and approves `sarah_johnson` through the service, so her consent request is
+  pending on her dashboard.

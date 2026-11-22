@@ -87,6 +87,8 @@ const computedTypeMessage = computed(() => {
             : computedIsFrom.value
             ? `You ${props.request.status == RequestStatusEnum.pending ? 'have ' : ''}asked for a safeguarding exception for ${props.request.safeguardingException?.client?.fullName ?? 'your client'} in "${props.request.for?.name ?? 'a therapy'}".`
             : `A counsellor has asked for a safeguarding exception for ${props.request.safeguardingException?.client?.fullName ?? 'a client'} in "${props.request.for?.name ?? 'a therapy'}".`,
+        // SCRUM-473: the platform asking a recognised counsellor whether they may be featured.
+        [RequestTypeEnum.counsellorRecognition]: `You've been recognised as a Counsellor of the month${recognitionMonthLabel(props.request.recognition?.month)}. Agree to be featured publicly?`,
     }[props.request?.type]
 })
 const computedStatus = computed(() => {
@@ -169,6 +171,15 @@ const computedShowsPartyLine = computed(() => {
 // types) -- falling through to `@${party.username}` for a party with no `username` rendered a
 // literal "@undefined" here before this was ever exercised for a plain member. Mirrors
 // Organization/Partials/RequestQueueSection.vue's own partyLabel() for the org-scoped queues.
+// SCRUM-473: ' for October 2026' from '2026-10' (a UTC month), or nothing when it is missing.
+function recognitionMonthLabel(month) {
+    const match = typeof month === 'string' ? month.match(/^(\d{4})-(\d{2})$/) : null
+    if (!match) return ''
+
+    return ' for ' + new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, 1))
+        .toLocaleString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+}
+
 function partyLabel(party) {
     if (!party) return '--'
     if (party.deleted) return 'deleted'

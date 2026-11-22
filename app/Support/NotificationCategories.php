@@ -53,6 +53,9 @@ class NotificationCategories
         Notifications\RefundSucceededNotification::class => Category::payments,
         Notifications\RefundFailedNotification::class => Category::payments,
         Notifications\RefundRequestRejectedNotification::class => Category::payments,
+
+        // TT-7.11d1/SCRUM-473.
+        Notifications\CounsellorRecognisedNotification::class => Category::recognition,
     ];
 
     // These pop up on the page when they arrive (AuthenticatedLayout): switching off "in the app" stops that live

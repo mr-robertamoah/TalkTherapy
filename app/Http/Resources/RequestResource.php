@@ -7,6 +7,7 @@ use App\Actions\SafeguardingException\EnsureCanManageSafeguardingExceptionAction
 use App\Actions\User\AnonymiseClosedAccountAction;
 use App\Enums\ConstantsEnum;
 use App\Enums\RequestTypeEnum;
+use App\Models\CounsellorRecognition;
 use App\Models\Discussion;
 use App\Models\GroupTherapy;
 use App\Models\Organization;
@@ -23,6 +24,9 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class RequestResource extends JsonResource
 {
+    // TT-7.11d1/SCRUM-473: who a request the platform itself sends is shown as coming from.
+    public const PLATFORM_SENDER = 'TalkTherapy';
+
     /**
      * Transform the resource into an array.
      *
@@ -146,6 +150,11 @@ class RequestResource extends JsonResource
                 $this->type === RequestTypeEnum::safeguardingException->value,
                 fn () => $this->safeguardingException($isRespondent),
             ),
+            // TT-7.11d1/SCRUM-473: a featuring consent request -- the month only (its data), never stars or rank.
+            'recognition' => $this->when(
+                $this->type === RequestTypeEnum::counsellorRecognition->value,
+                fn () => ['month' => $this->data['month'] ?? null],
+            ),
             'round' => $this->when(! is_null($this->round), $this->round),
             'expiresAt' => $this->when(! is_null($this->expires_at), fn () => $this->expires_at?->diffForHumans()),
             'createdAt' => $this->created_at->diffForHumans(),
@@ -205,6 +214,12 @@ class RequestResource extends JsonResource
 
     private function getFrom(?User $viewer)
     {
+        // TT-7.11d1/SCRUM-473 (security review): a featuring consent request is sent by the platform -- which super
+        // administrator approved it is never shown, to anyone (no id, no name, no username).
+        if ($this->type === RequestTypeEnum::counsellorRecognition->value) {
+            return ['fullName' => self::PLATFORM_SENDER, 'isUser' => false];
+        }
+
         // SCRUM-146: from/to being an Organization is only possible for the org-context request
         // types (OrganizationRequestResource, via GetRequestResourceAction, handles those in
         // full elsewhere) -- this generic resource just needs to not throw when one of them
@@ -432,6 +447,12 @@ class RequestResource extends JsonResource
                 'amount' => $this->for?->amount,
                 'currency' => $this->for?->currency,
             ];
+        }
+
+        // TT-7.11d1/SCRUM-473: a featuring consent request is `for` the recognition -- its id only (the month is in
+        // the `recognition` block).
+        if ($this->for_type == CounsellorRecognition::class) {
+            return ['id' => $this->for_id];
         }
 
         return $this->counsellorParty($this->for);
