@@ -18,6 +18,7 @@ export default function useEnums() {
         ageVerification: 'AGE_VERIFICATION_REQUEST',
         safeguardingException: 'SAFEGUARDING_EXCEPTION_REQUEST',
         refund: 'REFUND_REQUEST',
+        counsellorRecognition: 'COUNSELLOR_RECOGNITION_REQUEST',
     }
     const RequestStatusEnum = {
         accepted: 'ACCEPTED',

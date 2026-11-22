@@ -24,6 +24,9 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class RequestResource extends JsonResource
 {
+    // TT-7.11d1/SCRUM-473: who a request the platform itself sends is shown as coming from.
+    public const PLATFORM_SENDER = 'TalkTherapy';
+
     /**
      * Transform the resource into an array.
      *
@@ -211,6 +214,12 @@ class RequestResource extends JsonResource
 
     private function getFrom(?User $viewer)
     {
+        // TT-7.11d1/SCRUM-473 (security review): a featuring consent request is sent by the platform -- which super
+        // administrator approved it is never shown, to anyone (no id, no name, no username).
+        if ($this->type === RequestTypeEnum::counsellorRecognition->value) {
+            return ['fullName' => self::PLATFORM_SENDER, 'isUser' => false];
+        }
+
         // SCRUM-146: from/to being an Organization is only possible for the org-context request
         // types (OrganizationRequestResource, via GetRequestResourceAction, handles those in
         // full elsewhere) -- this generic resource just needs to not throw when one of them
@@ -249,9 +258,7 @@ class RequestResource extends JsonResource
         // and visible to every admin, and `from`/`for` are likewise the same submitting user.
         // SCRUM-387 (security review): a refund request is listed to every administrator too (the
         // admin queue), so its payer is narrowed the same way.
-        // TT-7.11d1/SCRUM-473: a featuring consent request comes from the super administrator who approved it -- the
-        // counsellor sees their name only.
-        if ($this->isNullToAdminOnlyType() || in_array($this->type, [RequestTypeEnum::refund->value, RequestTypeEnum::counsellorRecognition->value], true)) {
+        if ($this->isNullToAdminOnlyType() || $this->type === RequestTypeEnum::refund->value) {
             return NarrowUserProjection::of($this->from);
         }
 
@@ -442,9 +449,10 @@ class RequestResource extends JsonResource
             ];
         }
 
-        // TT-7.11d1/SCRUM-473: a featuring consent request is `for` the recognition -- its id and month only.
+        // TT-7.11d1/SCRUM-473: a featuring consent request is `for` the recognition -- its id only (the month is in
+        // the `recognition` block).
         if ($this->for_type == CounsellorRecognition::class) {
-            return ['id' => $this->for_id, 'month' => $this->data['month'] ?? null];
+            return ['id' => $this->for_id];
         }
 
         return $this->counsellorParty($this->for);
