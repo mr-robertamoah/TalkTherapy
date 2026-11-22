@@ -137,7 +137,8 @@ const more = 'text-sm font-medium text-blue-700 underline'
                     </p>
                     <p v-if="isAvailable" class="mt-2 text-sm text-gray-800">Available until {{ formatWhen(availableUntil) }}. Keep this app open to be rung.</p>
                     <p v-else-if="!dashboard.urgentHelp.canBeAvailable" class="mt-2 text-sm text-amber-800">You can be available while your verification is current.</p>
-                    <div class="mt-3 flex flex-wrap gap-2">
+                    <!-- Only when there is a button: an empty row would still add its top margin above "Alerts on this device". -->
+                    <div v-if="dashboard.urgentHelp.canBeAvailable || isAvailable" class="mt-3 flex flex-wrap gap-2">
                         <PrimaryButton v-if="dashboard.urgentHelp.canBeAvailable" type="button" :disabled="savingAvailability" @click="setAvailable(true)">
                             {{ isAvailable ? `Extend ${dashboard.urgentHelp.hours} hours` : 'Be available now' }}
                         </PrimaryButton>
