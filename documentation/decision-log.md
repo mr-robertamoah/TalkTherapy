@@ -13524,3 +13524,22 @@ Planned with the product-owner, architect and project-manager; split into SCRUM-
   without manual setup, without changing any other demo account's charges or balance. All dated inside/after the
   ended period; each part is skipped once it exists, so the seeder can be run on its own. A waived *invoice line* is not seeded (a line
   needs its own held session and a non-clashing invoice month); it is covered by tests.
+
+## SCRUM-465 — revenue options research (2026-11-22)
+
+- **Research only, no code:** the write-up is `documentation/research/revenue-options.md`. No real database was
+  queried. The baseline defines metrics from `GetPlatformStatsAction` and the money tables (`transactions`,
+  `counsellor_earnings`, `organization_invoices`/lines, breakdown lines, `waived_fee_amount`), and gives an
+  illustrative projection whose assumptions are labelled. No Ghana session prices could be verified, so the prices
+  are assumptions.
+- **Recommendations:** (1) employer and organisation plans: a fixed monthly platform fee per organisation or per
+  covered member, on top of the existing TT-7.3 retainer invoices (which today bill held sessions only, in arrears);
+  (2) an access fund paid for by grants, sponsors and later donations, run as a platform consumer organisation that
+  covers vetted low-income members and minors through the existing organisation-billing paths; (3) optional practice
+  tools for counsellors, later, never paid ranking. Commission and waivers stay as they are for now.
+- **Ruled out or deferred:** paywalled assessments and check-ins (PHQ-9 item 9 is a safety signal), premium client
+  features that touch care or safety, ads and data sales, and insurance/NHIS billing for now (it needs facility
+  accreditation and a claims process; revisit after organisation plans).
+- **Unverified items left as open questions:** the VAT treatment of the platform's own fees under Act 1151, whether
+  an online service needs licensing under the Mental Health Act, Lyra/Spring Health prices, and whether Open Path's
+  amounts are in USD or CAD.
