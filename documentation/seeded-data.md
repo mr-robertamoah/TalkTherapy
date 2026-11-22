@@ -731,3 +731,24 @@ password"** on (Profile, "Set a password" card; the link lands in Mailpit) and t
 there instead of asking for a password; its "Disconnect" is disabled until it has one. `google_2fa_demo` (with its
 password) can **disconnect** Google and connect it again. Any other seeded account with a password (for example
 `john_davis`) can **connect** a Google account from its profile.
+
+## Commission-free periods (SCRUM-468, `CommissionFreePeriodSeeder`)
+
+Local and testing only. Each part is skipped once it exists (a period matched by its reason), so it can be added to an
+existing local database on its own: `docker compose exec -u www-data php php artisan db:seed
+--class=CommissionFreePeriodSeeder`. The dates are relative to the run that first created each period; deleting the
+upcoming one (as the super admin) and running the command again recreates it 20 → 27 days ahead. Never a period
+running now (every payment made while trying other features would otherwise be fee-free). Both created by the super
+admin (`mr_robertamoah`).
+
+| Period (reason) | Dates | Status | What it shows |
+|---|---|---|---|
+| "Demo: launch month thank-you (ended)" | 60 → 30 days ago (00:00 UTC) | ended | Listed on `/administrator/payouts`, "Commission-free periods"; neither End now nor Delete is offered. |
+| "Demo: Mental Health Awareness week (upcoming)" | 20 → 27 days ahead (00:00 UTC) | upcoming | Inside the 30-day notice horizon: counsellors' Payouts section and dashboard Earnings card, and organisations' reconciliation page, show "No platform commission on payments made between … and …". A super admin can Delete it. |
+
+Waived money, made during the ended period, so the labels can be seen:
+
+| Account | Password | Purpose |
+|---|---|---|
+| `commission_free_demo_counsellor` | `password` | Dr. CommissionFree DemoCounsellor. Three pending GHS earnings: from `payout_demo_client`, GHS 100.00 with **no fee** ("Commission-free · GHS 10.00 waived") and GHS 50.00 with the usual GHS 5.00 fee; and GHS 50.00 with no fee (GHS 5.00 waived) from the organisation charge below. Visit their own profile (`/counsellor/{id}`), "Payouts". |
+| `org_demo_admin` | `password` | `/organizations/1/reconciliation`, "Financed Sessions": a "Therapy with Dr. CommissionFree DemoCounsellor" row of GHS 50.00 dated inside the ended period, Platform Fee GHS 0.00 with **"Waived · GHS 5.00 waived"**. It is the seeder's own "Commission-Free Demo Org Therapy" (client `org_demo_payperuse_member`, counsellor `commission_free_demo_counsellor`); no other demo charge or balance changes. |

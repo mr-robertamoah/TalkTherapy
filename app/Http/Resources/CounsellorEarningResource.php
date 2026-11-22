@@ -22,6 +22,10 @@ class CounsellorEarningResource extends JsonResource
             'grossAmount' => $this->gross_amount,
             'feeAmount' => $this->fee_amount,
             'netAmount' => $this->net_amount,
+            // TT-7.10b/SCRUM-468: made during a commission-free period -- no fee taken, waivedFeeAmount is what it would
+            // have been. Never which period, nor its reason.
+            'commissionFree' => $this->platform_fee_waiver_id !== null,
+            'waivedFeeAmount' => (int) $this->waived_fee_amount,
             'currency' => $this->currency,
             'shareBasis' => $this->share_basis,
             'sharePercentage' => $this->share_percentage,

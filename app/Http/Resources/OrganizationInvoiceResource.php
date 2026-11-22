@@ -34,6 +34,8 @@ class OrganizationInvoiceResource extends JsonResource
                 'lines',
                 fn () => (int) $this->lines->sum(fn ($line) => $line->net_amount + $line->fee_amount)
             ),
+            // TT-7.10b/SCRUM-468: the platform fees waived on this invoice's lines (commission-free periods).
+            'waivedFeeAmount' => $this->whenLoaded('lines', fn () => (int) $this->lines->sum('waived_fee_amount')),
             'lines' => OrganizationInvoiceLineResource::collection($this->whenLoaded('lines')),
         ];
     }

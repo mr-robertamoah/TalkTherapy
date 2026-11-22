@@ -7,10 +7,13 @@ use App\DTOs\GetModelsForAdminDTO;
 use App\DTOs\SettingDTO;
 use App\Enums\SettingsEnum;
 use App\Http\Middleware\EnsureUserIsAdmin;
+use App\Http\Requests\StorePlatformFeeWaiverRequest;
 use App\Http\Requests\UpdateMinimumPayoutAmountsRequest;
 use App\Http\Requests\UpdatePlatformFeeRequest;
+use App\Http\Resources\AdminPlatformFeeWaiverResource;
 use App\Models\Counsellor;
 use App\Services\PayoutService;
+use App\Services\PlatformFeeWaiverService;
 use App\Services\SettingsService;
 use App\Support\AdminSearch;
 use Illuminate\Http\Request;
@@ -37,6 +40,11 @@ class AdminPayoutController extends Controller
             'settings' => SettingsService::new()->getSettingsForAdmin(),
             'payoutHistory' => $this->paginatedResource($payouts),
             'search' => $search ?? '',
+            // TT-7.10b/SCRUM-468: platform-wide commission-free periods -- every admin sees them, a super admin changes
+            // them (AdminPlatformFeeWaiverController).
+            'feeWaivers' => AdminPlatformFeeWaiverResource::collection(PlatformFeeWaiverService::new()->getPlatformWideForAdmin())->resolve(),
+            'canManageFeeWaivers' => $user->isSuperAdmin(),
+            'feeWaiverReasonMax' => StorePlatformFeeWaiverRequest::REASON_MAX,
         ]);
     }
 

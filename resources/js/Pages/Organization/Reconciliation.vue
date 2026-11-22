@@ -1,6 +1,8 @@
 <script setup>
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import Pagination from '@/Components/Pagination.vue';
+import CommissionFreeNotice from '@/Components/CommissionFreeNotice.vue';
+import FeeWaivedBadge from '@/Components/FeeWaivedBadge.vue';
 import { Head, Link } from '@inertiajs/vue3';
 import { reactive, ref } from 'vue';
 
@@ -20,6 +22,11 @@ const props = defineProps({
     retainerInvoices: {
         type: Object,
         required: true,
+    },
+    // TT-7.10b/SCRUM-468: a platform-wide commission-free period running or coming up ({ startsAt, endsAt }).
+    commissionFreeNotice: {
+        type: Object,
+        default: null,
     },
 })
 
@@ -105,6 +112,8 @@ function invoiceStatusClass(status) {
                 </div>
             </div>
 
+            <CommissionFreeNotice :notice="commissionFreeNotice" />
+
             <!-- Pay-Per-Use Financed Transactions -->
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg p-6">
                 <div class="text-lg font-medium text-gray-900">Financed Sessions (Pay-Per-Use)</div>
@@ -132,7 +141,16 @@ function invoiceStatusClass(status) {
                                 <td class="py-2 pr-4">{{ transaction.counsellorName ?? '--' }}</td>
                                 <td class="py-2 pr-4">{{ formatMoney(transaction.amount, transaction.currency) }}</td>
                                 <td class="py-2 pr-4">{{ formatMoney(transaction.counsellorShare, transaction.currency) }}</td>
-                                <td class="py-2 pr-4">{{ formatMoney(transaction.platformFee, transaction.currency) }}</td>
+                                <td class="py-2 pr-4">
+                                    {{ formatMoney(transaction.platformFee, transaction.currency) }}
+                                    <FeeWaivedBadge
+                                        v-if="transaction.feeWaived"
+                                        class="ml-1"
+                                        label="Waived"
+                                        :amount="transaction.waivedFeeAmount"
+                                        :currency="transaction.currency"
+                                    />
+                                </td>
                                 <td class="py-2 pr-4">{{ (transaction.payoutStatus ?? 'not yet earned').toLowerCase() }}</td>
                                 <td class="py-2 pr-4">{{ transaction.status.toLowerCase() }}</td>
                                 <td class="py-2 pr-4">{{ formatDate(transaction.createdAt) }}</td>
@@ -188,7 +206,16 @@ function invoiceStatusClass(status) {
                                                     <td class="py-1 pr-4">{{ line.sessionLabel ?? '--' }}</td>
                                                     <td class="py-1 pr-4">{{ line.counsellorName ?? '--' }}</td>
                                                     <td class="py-1 pr-4">{{ formatMoney(line.netAmount, line.currency) }}</td>
-                                                    <td class="py-1 pr-4">{{ formatMoney(line.feeAmount, line.currency) }}</td>
+                                                    <td class="py-1 pr-4">
+                                                        {{ formatMoney(line.feeAmount, line.currency) }}
+                                                        <FeeWaivedBadge
+                                                            v-if="line.feeWaived"
+                                                            class="ml-1"
+                                                            label="Waived"
+                                                            :amount="line.waivedFeeAmount"
+                                                            :currency="line.currency"
+                                                        />
+                                                    </td>
                                                 </tr>
                                                 <tr v-if="!invoice.lines.length">
                                                     <td colspan="4" class="py-2 text-center text-gray-500">No sessions recorded for this period.</td>
