@@ -37,7 +37,7 @@ export function consentPill(consent) {
 const EVENT_LABELS = {
     approved: 'approved',
     skipped: 'skipped',
-    added: 'added (not suggested)',
+    added: 'added by hand',
     consent_accepted: 'agreed to be featured',
     consent_declined: 'declined to be featured',
     consent_withdrawn: 'withdrew consent',
@@ -57,6 +57,7 @@ export const STAR_CAP_FIELDS = [
     { key: 'help_chat', label: 'Help chats', hint: 'stars a day from urgent-help chats' },
     { key: 'discussion', label: 'Discussions', hint: 'stars a day from held discussions' },
     { key: 'post', label: 'Posts', hint: 'stars a day from published posts' },
-    { key: 'session_per_client', label: 'Per client', hint: 'session and help-chat stars a day from one client' },
+    // Security review L3: 0 here stops every star that has a client, not just repeats.
+    { key: 'session_per_client', label: 'Per client', hint: 'session and help-chat stars a day from one client (0 stops every session and help-chat star that has a client)' },
     { key: 'session_per_group', label: 'Per group', hint: 'group-session stars a day from one group' },
 ]

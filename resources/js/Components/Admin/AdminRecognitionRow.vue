@@ -44,7 +44,7 @@ const name = computed(() => props.row.name ?? 'Deleted counsellor')
             <span v-else class="font-medium text-gray-500">{{ name }}</span>
             <div v-if="row.addedManually" class="mt-1"><AdminStatusPill label="added manually" tone="blue" /></div>
         </AdminCell>
-        <AdminCell label="Stars" half>{{ row.stars }}</AdminCell>
+        <AdminCell label="Stars" half>{{ row.stars ?? '--' }}</AdminCell>
         <AdminCell label="First star" half><span class="whitespace-nowrap">{{ row.firstStarAt ? formatUtc(row.firstStarAt) : '--' }}</span></AdminCell>
         <AdminCell label="Alerts">
             <div v-if="alerts.length" class="flex flex-wrap gap-1">
@@ -58,8 +58,6 @@ const name = computed(() => props.row.name ?? 'Deleted counsellor')
                 <AdminStatusPill v-if="consent" :label="consent.label" :tone="consent.tone" />
             </div>
         </AdminCell>
-        <!-- SCRUM-475 slot: the per-counsellor fee waiver given with an approval goes in this column. -->
-        <AdminCell label="Fee waiver" half><span class="text-gray-400">--</span></AdminCell>
         <AdminCell actions>
             <template v-if="confirming">
                 <AdminActionButton

@@ -12,9 +12,9 @@ import TextInput from '@/Components/TextInput.vue'
 import useAlert from '@/Composables/useAlert'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
 import { formatUtc } from '@/Support/commissionFree.js'
-import { recognitionEventLabel, STAR_CAP_FIELDS } from '@/Support/recognition.js'
+import { recognitionAlerts, recognitionEventLabel, STAR_CAP_FIELDS } from '@/Support/recognition.js'
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3'
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { default as _ } from 'lodash'
 
 // TT-7.11d2/SCRUM-474: counsellor recognition for a month (Admin/Recognition). Every administrator sees the
@@ -29,7 +29,8 @@ const props = defineProps({
     recognition: { type: Object, required: true },
     events: { type: Array, default: () => [] },
     caps: { type: Object, required: true },
-    capsMax: { type: Number, default: 100 },
+    // Each cap's name => the most it may be set to.
+    capsMax: { type: Object, required: true },
     canManage: { type: Boolean, default: false },
     ownCounsellorId: { type: Number, default: null },
 })
@@ -54,9 +55,7 @@ function isOwn(row) {
 }
 
 function hasAlerts(row) {
-    const flags = row.flags ?? {}
-
-    return flags.deleted || flags.suspended || flags.openReport || (flags.verificationState && flags.verificationState !== 'verified')
+    return recognitionAlerts(row.flags).length > 0
 }
 
 // A suggestion: approve unless already approved, skip unless already skipped.
@@ -117,20 +116,30 @@ let latestSearch = 0
 
 const debouncedSearch = _.debounce(() => runSearch(), 400)
 
+// Below 2 characters: drop any search still waiting or on its way, so a late answer can't fill the list again.
+function stopSearch() {
+    debouncedSearch.cancel()
+    latestSearch++
+    searching.value = false
+}
+
 watch(search, () => {
     searchError.value = ''
     if (search.value.trim().length < 2) {
+        stopSearch()
         searchResults.value = []
         return
     }
     debouncedSearch()
 })
 
+onBeforeUnmount(() => stopSearch())
+
 async function runSearch() {
     const ticket = ++latestSearch
     searching.value = true
 
-    await axios.get(route('admin.recognition.counsellors', { search: search.value.trim() }))
+    await axios.get(route('admin.recognition.counsellors', { month: props.month, search: search.value.trim() }))
         .then((res) => {
             if (ticket === latestSearch) searchResults.value = res.data.counsellors
         })
@@ -187,7 +196,6 @@ const rowColumns = [
     { label: 'First star (GMT)' },
     { label: 'Alerts' },
     { label: 'Decision and consent' },
-    { label: 'Fee waiver' },
     { label: 'Actions', srOnly: true },
 ]
 
@@ -290,11 +298,11 @@ const eventColumns = [
             <!-- Add a counsellor (super admin) -->
             <section v-if="canManage" aria-labelledby="add-heading" class="bg-white border border-gray-200 shadow-sm rounded-lg p-6">
                 <h2 id="add-heading" class="text-lg font-medium text-gray-900">Add a counsellor</h2>
-                <p class="mt-1 text-sm text-gray-600">Recognise someone who isn't suggested for {{ monthLabel }}. Only counsellors who can be recognised now are found.</p>
+                <p class="mt-1 text-sm text-gray-600">Recognise someone who isn't suggested for {{ monthLabel }}. Only counsellors who can be recognised now, and aren't already listed above, are found.</p>
 
                 <div class="mt-4 max-w-xl">
                     <InputLabel for="recognitionSearch" value="Name or username" />
-                    <TextInput id="recognitionSearch" v-model="search" type="search" autocomplete="off" class="mt-1 block w-full" placeholder="at least 2 characters" />
+                    <TextInput id="recognitionSearch" v-model="search" type="search" autocomplete="off" maxlength="100" class="mt-1 block w-full" placeholder="at least 2 characters" />
                     <p v-if="searching" class="mt-1 text-xs text-gray-500">searching...</p>
                     <InputError class="mt-2" :message="searchError" />
 
@@ -347,7 +355,7 @@ const eventColumns = [
                                 v-model="capsForm.caps[field.key]"
                                 type="number"
                                 min="0"
-                                :max="capsMax"
+                                :max="capsMax[field.key]"
                                 step="1"
                                 required
                                 class="mt-1 block w-full"
@@ -358,7 +366,7 @@ const eventColumns = [
                         </div>
                     </div>
                     <div class="mt-4 flex items-center justify-between gap-4">
-                        <p class="text-xs text-gray-500">Whole numbers from 0 to {{ capsMax }}. 0 stops that source earning stars.</p>
+                        <p class="text-xs text-gray-500">Whole numbers from 0 to {{ capsMax.session }} ({{ capsMax.session_per_client }} for the per-client and per-group limits). 0 stops that source earning stars.</p>
                         <PrimaryButton :class="{ 'opacity-25': capsForm.processing }" :disabled="capsForm.processing">save limits</PrimaryButton>
                     </div>
                 </form>

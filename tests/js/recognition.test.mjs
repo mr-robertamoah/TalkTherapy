@@ -27,8 +27,11 @@ describe('decision and consent pills', () => {
     it('labels an undecided row, and gives consent only once approved', () => {
         assert.equal(decisionPill(null).label, 'not decided')
         assert.equal(decisionPill('approved').tone, 'green')
+        assert.deepEqual(decisionPill('skipped'), { label: 'skipped', tone: 'gray' })
         assert.equal(consentPill(null), null)
         assert.equal(consentPill('pending').label, 'consent pending')
+        assert.deepEqual(consentPill('accepted'), { label: 'consent given', tone: 'green' })
+        assert.deepEqual(consentPill('declined'), { label: 'consent declined', tone: 'gray' })
         assert.equal(consentPill('withdrawn').label, 'consent withdrawn')
     })
 })
@@ -37,7 +40,13 @@ describe('event labels', () => {
     it('says what changed, and from what for a changed decision', () => {
         assert.equal(recognitionEventLabel({ event: 'approved', from: null }), 'approved')
         assert.equal(recognitionEventLabel({ event: 'skipped', from: 'approved' }), 'skipped (was approved)')
+        assert.equal(recognitionEventLabel({ event: 'added', from: 'skipped' }), 'added by hand (was skipped)')
         assert.equal(recognitionEventLabel({ event: 'consent_withdrawn', from: 'accepted' }), 'withdrew consent')
+    })
+
+    it('falls back to the raw name for an event it does not know', () => {
+        assert.equal(recognitionEventLabel({ event: 'something_new', from: 'approved' }), 'something_new')
+        assert.equal(recognitionEventLabel(null), '')
     })
 })
 
