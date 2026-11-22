@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use App\Actions\Star\CountCounsellorStarsAction;
 use App\Enums\ConstantsEnum;
 use App\Enums\CounsellorVerificationStateEnum;
 use App\Enums\FileTagEnum;
@@ -401,18 +400,16 @@ class Counsellor extends Model
         return $this->morphMany(Star::class, 'starred');
     }
 
-    // TT-7.11a/SCRUM-470: every star a profile has always shown -- legacy ones and their User-morph stars included.
+    // SCRUM-470: both profile star counts stay on their old queries (legacy stars and the User-morph stars included)
+    // until SCRUM-476 replaces them; CountCounsellorStarsAction counts only new-rule stars. Note for the month count:
+    // because whereStarredCounsellor() ends in an orWhere, the month filter binds only to the User-morph half --
+    // Counsellor-morph stars count whatever their month. Kept as is so the number a profile shows does not change; see
+    // the SCRUM-464 entry in documentation/decision-log.md.
     public function getOverallStarsCountAttribute()
     {
-        return CountCounsellorStarsAction::new()
-            ->execute([$this->id], null, null, includeLegacy: true)
-            ->get($this->id)['stars'] ?? 0;
+        return Star::query()->whereStarredCounsellor($this)->count();
     }
 
-    // Not moved onto CountCounsellorStarsAction (SCRUM-470): the query below is kept as it is so the number a profile
-    // shows does not change. Because whereStarredCounsellor() ends in an orWhere, the month filter binds only to the
-    // User-morph half -- Counsellor-morph stars count whatever their month. A correctly windowed count would lower
-    // the number on profiles; see the SCRUM-464 entry in documentation/decision-log.md.
     public function getCurrentMonthStarsCountAttribute()
     {
         return Star::query()
