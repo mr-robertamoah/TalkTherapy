@@ -288,6 +288,8 @@ class DatabaseSeeder extends Seeder
         $this->call(GoogleSignInSeeder::class);
         // SCRUM-468: an ended and an upcoming platform-wide commission-free period (never one running now).
         $this->call(CommissionFreePeriodSeeder::class);
+        // SCRUM-473: last month's new-rule stars on the six demo counsellors, and sarah_johnson recognised (consent pending).
+        $this->call(RecognitionSeeder::class);
     }
 
     // SCRUM-32 (TT-4.3a): counsellors' safety flags. Passwords: "password". The feature is off by default:
