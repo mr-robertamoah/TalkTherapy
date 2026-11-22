@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Actions\CounsellorVerification\EnsureCounsellorMayTakeOnClientsAction;
+use App\Actions\Discussion\AfterDiscussionHeldAction;
 use App\Actions\Discussion\ChangeDiscussionStatusAction;
 use App\Actions\Discussion\CreateDiscussionAction;
 use App\Actions\Discussion\CreateDiscussionRequestAction;
@@ -22,18 +23,17 @@ use App\Actions\Discussion\EnsureNotAlreadyPartOfDiscussionAction;
 use App\Actions\Discussion\RemoveCounsellorFromDiscussionAction;
 use App\Actions\Discussion\UpdateDiscussionAction;
 use App\Actions\EnsureAddedbyIsValidAction;
-use App\Actions\Star\CreateStarAction;
+use App\Actions\Star\RevokeCounsellorStarsAction;
 use App\Actions\Suspension\EnsureCanActAsCounsellorAction;
 use App\Actions\Therapy\EnsureIsCounsellorAction;
 use App\Actions\User\EnsureRequestDataIsValidAction;
 use App\Actions\User\EnsureUserExistsAction;
 use App\DTOs\CreateDiscussionDTO;
 use App\DTOs\CreateRequestDTO;
-use App\DTOs\CreateStarDTO;
 use App\DTOs\GetDiscussionsDTO;
 use App\Enums\DiscussionStatusEnum;
 use App\Enums\PaginationEnum;
-use App\Enums\StarTypeEnum;
+use App\Enums\StarSourceEnum;
 use App\Events\DiscussionUpdatedEvent;
 use App\Http\Resources\CounsellorMiniResource;
 use App\Http\Resources\DiscussionMiniResource;
@@ -42,7 +42,9 @@ use App\Models\Discussion;
 use App\Notifications\DiscussionDeletedNotification;
 use App\Notifications\DiscussionStatusChangedNotification;
 use App\Notifications\DiscussionUpdatedNotification;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
+use Throwable;
 
 class DiscussionService extends Service
 {
@@ -92,15 +94,6 @@ class DiscussionService extends Service
 
         $discussion = CreateDiscussionAction::new()->execute($createDiscussionDTO);
 
-        CreateStarAction::new()->execute(
-            CreateStarDTO::fromArray([
-                'starredby' => null,
-                'starred' => $createDiscussionDTO->addedby,
-                'starreable' => $discussion,
-                'type' => StarTypeEnum::participation->value,
-            ])
-        );
-
         return $discussion;
     }
 
@@ -133,6 +126,16 @@ class DiscussionService extends Service
         EnsureCanEndDiscussionAction::new()->execute($createDiscussionDTO);
 
         $discussion = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, DiscussionStatusEnum::held->value);
+
+        // TT-7.11b/SCRUM-471: the star(s) for running it, if it really took place. Never blocks ending it.
+        try {
+            AfterDiscussionHeldAction::new()->execute($discussion);
+        } catch (Throwable $exception) {
+            Log::warning('Unable to award the star for a held discussion.', [
+                'discussion_id' => $discussion->id,
+                'exception' => $exception->getMessage(),
+            ]);
+        }
 
         broadcast(new DiscussionUpdatedEvent($discussion))->toOthers();
 
@@ -172,6 +175,8 @@ class DiscussionService extends Service
 
         $discussion = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, DiscussionStatusEnum::abandoned->value);
 
+        $this->revokeHeldStars($discussion);
+
         broadcast(new DiscussionUpdatedEvent($discussion))->toOthers();
 
         Notification::send(
@@ -190,12 +195,27 @@ class DiscussionService extends Service
 
         $discussion = ChangeDiscussionStatusAction::new()->execute($createDiscussionDTO, DiscussionStatusEnum::failed->value);
 
+        $this->revokeHeldStars($discussion);
+
         Notification::send(
             $createDiscussionDTO->discussion->getOtherUsers($createDiscussionDTO->user),
             new DiscussionStatusChangedNotification($discussion)
         );
 
         return $discussion;
+    }
+
+    // TT-7.11b/SCRUM-471: a discussion that was held and later ends abandoned or failed loses its stars.
+    private function revokeHeldStars(Discussion $discussion): void
+    {
+        try {
+            RevokeCounsellorStarsAction::new()->forStarreable(StarSourceEnum::discussionHeld, $discussion);
+        } catch (Throwable $exception) {
+            Log::warning('Unable to revoke the stars of a discussion that ended abandoned or failed.', [
+                'discussion_id' => $discussion->id,
+                'exception' => $exception->getMessage(),
+            ]);
+        }
     }
 
     public function deleteDiscussion(CreateDiscussionDTO $createDiscussionDTO)
