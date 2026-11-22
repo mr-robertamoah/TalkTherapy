@@ -400,6 +400,11 @@ class Counsellor extends Model
         return $this->morphMany(Star::class, 'starred');
     }
 
+    // SCRUM-470: both profile star counts stay on their old queries (legacy stars and the User-morph stars included)
+    // until SCRUM-476 replaces them; CountCounsellorStarsAction counts only new-rule stars. Note for the month count:
+    // because whereStarredCounsellor() ends in an orWhere, the month filter binds only to the User-morph half --
+    // Counsellor-morph stars count whatever their month. Kept as is so the number a profile shows does not change; see
+    // the SCRUM-464 entry in documentation/decision-log.md.
     public function getOverallStarsCountAttribute()
     {
         return Star::query()->whereStarredCounsellor($this)->count();
