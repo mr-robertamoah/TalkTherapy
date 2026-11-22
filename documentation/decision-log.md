@@ -13597,3 +13597,45 @@ Split into SCRUM-470–476 (TT-7.11a–f); the first, SCRUM-470, is the star fou
 - **`config('recognition.stars_count_from')`:** an optional extra floor on the count window. New-rule stars only exist
   from the release anyway (legacy rows have a NULL source). Only `YYYY-MM-DD` is accepted; anything else is ignored
   with one logged warning per request (review fix) rather than failing the count.
+
+## SCRUM-471 — new star rules (2026-11-22)
+
+TT-7.11b, part 2 of SCRUM-464. Every new star goes through `AwardCounsellorStarAction`; every hook below is a side
+effect that logs a warning on failure and never blocks the action it hangs off.
+
+- **Held sessions:** `AfterSessionHeldAction`, called from `ChangeSessionStatusAction` on the same first-time-held gate
+  as billing, and from `CloseHelpRequestAction` (help calls are set held through `forceFill`, outside that action). A 1:1
+  session (help chats included) stars its therapy's counsellor (not if soft-deleted); a group session stars every
+  counsellor whose group pivot is ACTIVE. Key `session_held:{session}`. Because the award sits behind the first-time
+  gate, a session that was held, reopened, failed (star revoked) and then held again does not earn it back -- the
+  conservative side.
+- **Session gone bad:** ending as failed or abandoned through `ChangeSessionStatusAction` always runs
+  `forStarreable(sessionHeld, session)` (a no-op for a session never held). The other paths that fail sessions
+  (`FailUnheldSessionsAction`, `TherapyTrait::endSessions`) only touch sessions that were never held.
+- **Refunds:** revoked in `RecordRefundStatusAction` on the move to SUCCESS only, inside its transaction, by
+  `RevokeStarsForRefundedTransactionAction`. Org-financed refunds use the same path (reconciliation is called from the
+  same branch), so they're covered. A webhook retry finds the refund already SUCCESS and returns early; deleting is
+  idempotent anyway (tested). Mapping by `transactions.for_type`: a Session -> that session; a Therapy or GroupTherapy
+  (paid per therapy) -> every session of it; an OrganizationInvoice (retainer settlement) -> every session on its
+  lines; anything else -> none. **Group payments revoke too:** one member's refund of a group payment takes the
+  session stars from every group counsellor, as "a refunded session's star is revoked" says; flip this if that proves
+  too harsh.
+- **Partial refunds:** refunds are full-only today (`EnsureTransactionIsRefundEligibleAction`). Defensively, a refund
+  whose amount is below the transaction's keeps the stars (logged at info) -- which sessions a part covers would be a
+  guess.
+- **Held discussions:** `AfterDiscussionHeldAction` from `DiscussionService::endDiscussion`; stars every participant
+  counsellor (creator and added ones, `participantCounsellors()`) with key `discussion_held:{id}`, only if its messages
+  come from at least 2 distinct people. A person writing both as their User and as their Counsellor profile counts once.
+  `abandonDiscussion` and `failDiscussion` revoke with `forStarreable(discussionHeld, discussion)`.
+- **Posts:** `AwardPostPublishedStarAction` from `PostService::createPost`; only a post whose `addedby` is a Counsellor.
+  Inside a transaction it locks the Counsellor row, counts that counsellor's `post_published` stars created in the
+  current UTC day (converted to the app timezone for the query) and awards only under `recognition.posts_per_day` (3).
+  Key `post_published:{post}`. Deleting a post already deletes its stars (`DeletePostAction`), which frees that day's
+  slot -- the cap is on starred posts held, so churn can't exceed it.
+- **Removed:** the `CreateStarAction` calls at AfterSessionCreatedAction, TherapyTopicService, TherapyService,
+  DiscussionService (on create), GroupTherapyService, PostService (replaced), LanguageService, ProfessionService,
+  ReligionService, LicensingAuthorityService and TherapyCaseService. Deleted as dead code: `CreateStarAction`,
+  `StarController` (unrouted), `StarService`, `EnsureStarTypeIsValidAction`, `EnsureMinimumModelsForStarExistsAction`,
+  `CreateStarDTO`, `StarTypeIsInvalidException`, `MinimumModelsForStarDoesNotExistException`. The SCRUM-470 arch test
+  became a test that `CreateStarAction` is gone and that no file under `app/` but `AwardCounsellorStarAction` creates a
+  star (`Star::create`/`new Star`/relation `create`). Legacy stars already written stay as they are.
