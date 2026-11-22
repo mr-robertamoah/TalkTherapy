@@ -1,6 +1,6 @@
 <script setup>
+// SCRUM-476: no star counts on a card any more (the user's decision: no public counts).
 import Avatar from './Avatar.vue';
-import StarBadge from './StarBadge.vue';
 import CounsellorVerificationBadge from './CounsellorVerificationBadge.vue';
 import PreferenceMatchMark from './PreferenceMatchMark.vue';
 import { Link } from '@inertiajs/vue3';
@@ -13,16 +13,12 @@ defineProps({
     position: {
         type: Number
     },
-    showStars: {
-        type: Boolean,
-        default: true
-    }
 })
 
 </script>
 
 <template>
-    <div class="rounded-xl shadow-lg bg-white border border-gray-100 relative overflow-hidden hover:shadow-xl transition-all duration-300" :class="{'mb-6': showStars}">
+    <div class="rounded-xl shadow-lg bg-white border border-gray-100 relative overflow-hidden hover:shadow-xl transition-all duration-300">
         <div class="relative w-full h-[150px]">
             <img 
                 :src="counsellor?.cover ?? ''" 
@@ -67,14 +63,5 @@ defineProps({
                 </div>
             </div>
         </div>
-        
-        <!-- Stars Section -->
-        <div v-if="showStars" class="p-3 bg-white">
-            <StarBadge
-                :overall="counsellor?.overallStars"
-                :month="counsellor?.stars"
-                class="w-full"
-            />
-        </div>
-    </div>
+            </div>
 </template>

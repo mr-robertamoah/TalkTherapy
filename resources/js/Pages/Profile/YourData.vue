@@ -115,6 +115,19 @@ const requestStatus = {
     REJECTED: 'turned down',
 }
 
+// SCRUM-476: a 'YYYY-MM' month, as "November 2026" (a calendar month: never shifted by the viewer's time zone).
+function monthLabel(value) {
+    if (!value) return ''
+    return new Date(`${value}-01T00:00:00Z`).toLocaleDateString(undefined, { year: 'numeric', month: 'long', timeZone: 'UTC' })
+}
+
+const recognitionConsent = {
+    pending: 'waiting for your answer on whether to feature you',
+    accepted: 'you agreed to be featured',
+    declined: 'you chose not to be featured',
+    withdrawn: 'you stopped being featured',
+}
+
 const verification = {
     verified: 'verified',
     unverified: 'not verified yet',
@@ -469,12 +482,25 @@ const counsellor = computed(() => props.data.counsellor)
                                 v-if="counsellor.verification === 'verified' && counsellor.verificationExpiresAt"> until {{ date(counsellor.verificationExpiresAt) }}</template>.
                         </li>
                         <li>{{ plural(counsellor.clients, 'person', 'people') }} you have counselled in individual therapies.</li>
+                        <!-- SCRUM-476 -->
+                        <li v-if="counsellor.recognitions?.length">
+                            Counsellor of the month:
+                            <ul class="ml-5 list-disc">
+                                <li v-for="recognition in counsellor.recognitions" :key="recognition.month">
+                                    {{ monthLabel(recognition.month) }} -- {{ recognitionConsent[recognition.consent] ?? recognition.consent }}
+                                </li>
+                            </ul>
+                        </li>
                     </ul>
                     <template #why>To show your profile to people looking for help, and to verify you.</template>
                     <template #kept>
                         Your profile is removed {{ retentionDays.counsellorProfile }} days after you delete it. Your verification history is kept permanently.
                     </template>
-                    <template #who>Everyone can see your profile. Your verification history is seen only by administrators.</template>
+                    <template #who>
+                        Everyone can see your profile. Your verification history is seen only by administrators. A
+                        recognition is shown on your profile and Home only while you agree to be featured (signed-in
+                        people also see one you haven't answered yet).
+                    </template>
                 </YourDataSection>
 
                 <div class="bg-white shadow-sm border border-gray-200 rounded-lg p-6 text-sm text-gray-700">

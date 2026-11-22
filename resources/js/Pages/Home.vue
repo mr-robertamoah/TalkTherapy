@@ -3,6 +3,7 @@ import MiniTherapyComponent from '@/Components/MiniTherapyComponent.vue';
 import MiniGroupTherapyComponent from '@/Components/MiniGroupTherapyComponent.vue';
 import CreatePostModal from '@/Components/CreatePostModal.vue';
 import StarredCounsellorComponent from '@/Components/StarredCounsellorComponent.vue';
+import RecognisedCounsellorCard from '@/Components/RecognisedCounsellorCard.vue';
 import HelpButton from '@/Components/HelpButton.vue';
 import PostComponent from '@/Components/PostComponent.vue';
 import PostModal from '@/Components/PostModal.vue';
@@ -32,7 +33,8 @@ const props = defineProps({
     recentGroupTherapies: {
         default: []
     },
-    bestCounsellors: {
+    // SCRUM-476: the latest month's Counsellors of the month this viewer may see; Leading is sent to signed-in users only.
+    recognisedCounsellors: {
         default: []
     },
     leadingCounsellors: {
@@ -121,9 +123,11 @@ onBeforeMount(() => {
 provide('onCreatedNewTherapy', { newTherapy, updateNewTherapy })
 provide('onCreatedNewGroupTherapy', { newGroupTherapy, updateNewGroupTherapy })
 
-const computedBestCounsellors = computed(() => {
-    return props.bestCounsellors.data?.length ? props.bestCounsellors.data : props.bestCounsellors
+const computedRecognisedCounsellors = computed(() => {
+    return props.recognisedCounsellors.data ?? props.recognisedCounsellors
 })
+// Every card carries its month; it is the same month for all of them.
+const recognisedMonth = computed(() => computedRecognisedCounsellors.value?.[0]?.month ?? null)
 const computedLeadingCounsellors = computed(() => {
     return props.leadingCounsellors.data?.length ? props.leadingCounsellors.data : props.leadingCounsellors
 })
@@ -353,33 +357,29 @@ function showPost() {
                 class="block space-y-4 relative lg:flex justify-start items-start lg:space-y-0 lg:space-x-0">
                 <div class="w-full lg:w-[50%]">
                     <div id="home-counsellors-id" class="relative"></div>
-                    <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
+                    <!-- SCRUM-476: the public showcase (guests see it too). Server-rendered, so no loader. -->
+                    <div id="home-recognised-counsellors" class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
                         <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                            <div class="p-6 text-gray-900">Starred Counsellors (previous month)</div>
-                            <div v-if="loading" class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center">
-                                <CounsellorCardLoader v-for="i in 3" :key="i" />
+                            <div class="p-6 text-gray-900">
+                                <h2>Counsellors of the month</h2>
+                                <p v-if="recognisedMonth" class="text-sm text-gray-600">{{ recognisedMonth }}</p>
                             </div>
-                            <div v-else-if="computedBestCounsellors?.length" class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center">
-                                <StarredCounsellorComponent
-                                    v-for="(counsellor, idx) in computedBestCounsellors"
+                            <div v-if="computedRecognisedCounsellors?.length" class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-stretch">
+                                <RecognisedCounsellorCard
+                                    v-for="counsellor in computedRecognisedCounsellors"
                                     :key="counsellor.id"
-                                    :position="idx + 1"
                                     :counsellor="counsellor"
-                                    :showStars="false"
                                     class="w-[250px] shrink-0"
                                 />
                             </div>
-                            <div v-else class="text-center text-sm w-full my-4 text-gray-600">there are no best counsellors for the previous month.</div>
+                            <div v-else class="text-center text-sm w-full mb-6 text-gray-600">no counsellors of the month to show yet.</div>
                         </div>
                     </div>
-                    
-                    <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
+
+                    <div v-if="$page.props.auth.user" class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
                         <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                             <div class="p-6 text-gray-900">Leading Counsellors (current month)</div>
-                            <div v-if="loading" class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center">
-                                <CounsellorCardLoader v-for="i in 3" :key="i" />
-                            </div>
-                            <div class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center" v-else-if="computedLeadingCounsellors?.length">
+                            <div class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center" v-if="computedLeadingCounsellors?.length">
                                 <StarredCounsellorComponent
                                     v-for="(counsellor, idx) in computedLeadingCounsellors"
                                     :key="counsellor.id"
@@ -391,7 +391,7 @@ function showPost() {
                             <div v-else class="text-center text-sm w-full my-4 text-gray-600">there are no leading counsellors for this month.</div>
                         </div>
                     </div>
-                    
+
                     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
                         <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                             <div class="p-6 text-gray-900">Counsellors</div>
@@ -403,7 +403,6 @@ function showPost() {
                                     v-for="(counsellor) in randomCounsellors.data"
                                     :key="counsellor.id"
                                     :counsellor="counsellor"
-                                    :showStars="false"
                                     class="w-[250px] shrink-0"
                                 />
                             </div>
