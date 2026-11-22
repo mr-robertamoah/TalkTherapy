@@ -11,10 +11,13 @@ import AdminRow from '@/Components/Admin/AdminRow.vue'
 import AdminCell from '@/Components/Admin/AdminCell.vue'
 import AdminStatusPill from '@/Components/Admin/AdminStatusPill.vue'
 import AdminActionButton from '@/Components/Admin/AdminActionButton.vue'
-import { formatUtc } from '@/Support/commissionFree.js'
-import { consentPill, decisionPill, recognitionAlerts, waiverStatusPill } from '@/Support/recognition.js'
+import { formatUtc, waiverStatusPill } from '@/Support/commissionFree.js'
+import { consentPill, decisionPill, recognitionAlerts } from '@/Support/recognition.js'
 import { Link } from '@inertiajs/vue3'
-import { computed, useSlots } from 'vue'
+import { computed, nextTick, ref, useSlots, watch } from 'vue'
+
+// Two root elements (the row, and the approve panel under it): attributes go on the row.
+defineOptions({ inheritAttrs: false })
 
 const props = defineProps({
     row: { type: Object, required: true },
@@ -24,6 +27,8 @@ const props = defineProps({
     // Which action is waiting for its second click on this row: 'approve' | 'skip' | null.
     confirming: { type: String, default: null },
     busy: { type: Boolean, default: false },
+    // The approve panel's confirm stays disabled while the waiver option has errors (the page checks it).
+    confirmDisabled: { type: Boolean, default: false },
     // The page's feeWaivers entry for this row's recognition, or null. `redacted`: the viewer's own row -- only that
     // one exists.
     waiver: { type: Object, default: null },
@@ -44,10 +49,21 @@ const name = computed(() => props.row.name ?? 'Deleted counsellor')
 const waiverStatus = computed(() => (props.waiver && !props.waiver.redacted ? waiverStatusPill(props.waiver.status) : null))
 // Approving with options: the confirm step moves to the row below.
 const approveBelow = computed(() => props.confirming === 'approve' && !!slots['approve-options'])
+
+// When the panel opens, focus moves into it: to its first checkbox (the waiver option), else its heading.
+const panel = ref(null)
+const panelHeading = ref(null)
+
+watch(approveBelow, async (open) => {
+    if (!open) return
+    await nextTick()
+    const target = panel.value?.querySelector('input[type="checkbox"]:not([disabled])') ?? panelHeading.value
+    target?.focus()
+})
 </script>
 
 <template>
-    <AdminRow>
+    <AdminRow v-bind="$attrs">
         <AdminCell label="Rank" half>
             <span class="font-semibold text-gray-900">{{ row.rank ?? '--' }}</span>
             <AdminStatusPill v-if="row.tiedAtCutoff" class="ml-2" label="tied at cutoff" tone="indigo" />
@@ -107,7 +123,8 @@ const approveBelow = computed(() => props.confirming === 'approve' && !!slots['a
             </div>
         </AdminCell>
         <AdminCell actions>
-            <span v-if="approveBelow" class="text-xs text-gray-500 md:whitespace-nowrap">confirm below</span>
+            <span aria-live="polite" class="text-xs text-gray-500">{{ approveBelow ? 'confirm below' : '' }}</span>
+            <template v-if="approveBelow" />
             <template v-else-if="confirming">
                 <AdminActionButton
                     :tone="confirming === 'skip' ? 'danger' : 'primary'"
@@ -123,12 +140,12 @@ const approveBelow = computed(() => props.confirming === 'approve' && !!slots['a
             </template>
         </AdminCell>
     </AdminRow>
-    <tr v-if="approveBelow" class="block md:table-row bg-gray-50">
-        <td :colspan="columnCount" class="block md:table-cell px-4 py-4">
-            <p class="text-sm font-medium text-gray-900">Approve {{ name }}</p>
+    <tr v-if="approveBelow" class="block md:table-row bg-gray-50 !border-t-0">
+        <td ref="panel" :colspan="columnCount" class="block md:table-cell px-4 py-4">
+            <p ref="panelHeading" tabindex="-1" class="text-sm font-medium text-gray-900 focus:outline-none">Approve {{ name }}</p>
             <div class="mt-3"><slot name="approve-options" /></div>
             <div class="mt-4 flex flex-wrap gap-2">
-                <AdminActionButton tone="primary" :disabled="busy" :aria-label="`Confirm approve ${name}`" @click="emit('confirm', 'approve')">confirm approve</AdminActionButton>
+                <AdminActionButton tone="primary" :disabled="busy || confirmDisabled" :aria-label="`Confirm approve ${name}`" @click="emit('confirm', 'approve')">confirm approve</AdminActionButton>
                 <AdminActionButton :disabled="busy" @click="emit('cancel')">cancel</AdminActionButton>
             </div>
         </td>
