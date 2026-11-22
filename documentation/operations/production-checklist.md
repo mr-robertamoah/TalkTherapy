@@ -234,6 +234,20 @@ Check every item before going live.
     `platform_fee_waivers counsellor_earnings organization_invoice_lines` first, then on the **current** code
     (`php artisan down`) roll back `2026_12_12_100002`, `100001`, `100000` with `--path=` each, never a bare rollback.
     A waiver that any earning or invoice line refers to can't be deleted (restrict) -- end it instead.
+- [ ] **Counsellor star foundation (SCRUM-470):**
+  - The deploy that brings `2026_12_13_100000` adds two nullable columns (`source`, `award_key`) and two indexes to
+    `stars` -- the unique `(starred_type, starred_id, award_key)` and the period-count
+    `(starred_type, created_at, starred_id, source)` -- under maintenance mode. On MySQL 8.0.29+ the columns are
+    instant; on older 8.0 they rebuild the table (online, but needs free disk for one more copy). The index builds are
+    online at about 40 s per million rows (dev machine). Before promoting to `main`, check `SELECT VERSION();` and
+    `SELECT COUNT(*) FROM stars;`.
+  - `RECOGNITION_PER_MONTH` (default 5) and `RECOGNITION_STARS_COUNT_FROM` (default unset) don't need setting at
+    release. The floor must be `YYYY-MM-DD` only; an invalid value is ignored with a warning in the log. After changing
+    either, run `php artisan config:clear` and `php artisan queue:restart`.
+  - Rolling back SCRUM-470: roll back the code, not the migration -- older code ignores the new columns. Rolling the
+    migration back deletes every star's source and award key for good (new-rule stars become indistinguishable from
+    legacy ones), so dump `stars` first, then on the **current** code roll back `2026_12_13_100000` with `--path=`,
+    never a bare rollback.
 
 ## The proxy
 

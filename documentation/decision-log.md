@@ -13543,3 +13543,57 @@ Planned with the product-owner, architect and project-manager; split into SCRUM-
 - **Unverified items left as open questions:** the VAT treatment of the platform's own fees under Act 1151, whether
   an online service needs licensing under the Mental Health Act, Lyra/Spring Health prices, and whether Open Path's
   amounts are in USD or CAD.
+
+## SCRUM-464 — counsellor recognition: plan and decisions (2026-11-22)
+
+Split into SCRUM-470–476 (TT-7.11a–f); the first, SCRUM-470, is the star foundation and changes nothing users see.
+
+- **User decisions:**
+  - No public star counts anywhere new; recognition is what's shown.
+  - The per-counsellor fee waiver is optional, prefilled to the next month, and independent of featuring consent.
+  - No overlapping waivers for the same counsellor.
+  - A recognition is hidden while the counsellor is suspended, has an open report, or their verification has lapsed or
+    been revoked, and comes back once that clears.
+  - Up to 5 recognitions a month; only the latest month is shown.
+  - A declined or withdrawn recognition is visible only to the counsellor.
+  - Home's "Starred" section is replaced; "Leading" is shown only to signed-in users, without counts.
+- **Star rules (the new ones):** held sessions, help calls included; held discussions with 2 or more senders; posts,
+  3 a day; post interactions from verified-email clients. The old award points are removed (SCRUM-471). Old stars stay
+  on profiles but only new-rule stars rank. A refunded session's star is revoked.
+- **Superseded:** the SCRUM-467 note that per-counsellor waivers would go through the Request flow. Waivers are now
+  created directly by the super admin; the Request carries only featuring consent.
+- **Both waivers apply:** when a platform-wide and a per-counsellor waiver are both in force, the platform-wide waiver's
+  id is recorded (the existing `PlatformFeePolicy` behaviour, unchanged).
+- **Award keys are unique per counsellor (review fix):** the unique index is `(starred_type, starred_id, award_key)`,
+  not `award_key` alone. A held group session or discussion can involve several counsellors; a globally unique key
+  would silently star only the first. Keys stay event-shaped (`session_held:42`, `post_interaction:{post}:{user}`)
+  and each counsellor holds at most one star per key. Key length on MySQL is 1020 + 8 + 600 = 1628 bytes (utf8mb4),
+  within InnoDB's 3072. Revoking one counsellor's star is `RevokeCounsellorStarsAction::forCounsellorAndKey()`;
+  `forStarreable()` is the bulk revoke (every counsellor's stars from that rule for that thing).
+- **Re-award after revoke is allowed:** a revoke deletes the star row, so the same counsellor can be awarded the same
+  key again later (a session can earn its star again), while the unique index means never two at once. Awarding is
+  insert-and-catch `UniqueConstraintViolationException` (returns null), so concurrent awards can't both insert.
+- **Home rankings not moved (deviation from the SCRUM-470 text "Home rankings moved onto the count action"):**
+  `CounsellorService::getBestCounsellorsForPreviousMonth`/`getLeadingCounsellorsForCurrentMonth` rank on `User::stars`
+  only. Moving them onto `CountCounsellorStarsAction` (which also counts Counsellor-morph stars) would change who Home
+  shows, and the ticket's "Home looks exactly as before" wins. SCRUM-476 replaces them.
+- **Profile star counts stay on their old queries (review fix):** `overallStarsCount` and `currentMonthStarsCount`
+  keep their pre-SCRUM-470 queries until SCRUM-476 replaces them, and `CountCounsellorStarsAction` is new-rules only
+  (no legacy-included mode -- YAGNI). An earlier version delegated the overall count to a legacy mode, but that query
+  read the whole `stars` table on every profile view (a full scan plus a hash join; `counsellors.user_id` has no
+  index). A test checks the accessors still return the old numbers. Known quirk kept as is: `whereStarredCounsellor()`
+  ends in an `orWhere`, so in the month count the month filter binds only to the User-morph half and Counsellor-morph
+  stars count whatever their month. Correcting it would lower the number many profiles show; left to SCRUM-476
+  (public counts are going away anyway).
+- **Index:** `(starred_type, created_at, starred_id, source)`. The ranking query is equality on `starred_type`, a range
+  on `created_at` (the month), grouped by `starred_id` with `source IS NOT NULL` -- with this order the range scan reads
+  only the month's rows and the count and `MIN(created_at)` come from the index alone. Per-counsellor lookups already
+  have the `(starred_type, starred_id)` morph index.
+- **Type:** new-rule stars reuse the existing `stars.type` enum -- PARTICIPATION for held sessions and discussions,
+  CONTRIBUTION for posts and interactions -- rather than widening it.
+- **Single writer:** `AwardCounsellorStarAction` writes new-rule stars directly (not via `CreateStarAction`, whose DTO
+  can't carry a source or award key). An arch test limits `CreateStarAction` to the 12 legacy call sites; the list
+  shrinks in SCRUM-471.
+- **`config('recognition.stars_count_from')`:** an optional extra floor on the count window. New-rule stars only exist
+  from the release anyway (legacy rows have a NULL source). Only `YYYY-MM-DD` is accepted; anything else is ignored
+  with one logged warning per request (review fix) rather than failing the count.
