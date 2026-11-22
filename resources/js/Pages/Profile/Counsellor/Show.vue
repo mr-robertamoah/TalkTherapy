@@ -428,7 +428,6 @@ function closeModal() {
                         <div class="absolute -bottom-16 left-4 z-20">
                             <Avatar :src="counsellor?.avatar ?? ''" :size="120" class="ring-4 ring-white shadow-lg" :alt="'counsellor avatar'"/>
                         </div>
-
                     </div>
                 </div>
             </div>
