@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\DTOs\PlatformFeeWaiverDTO;
 use App\Http\Requests\ManagePlatformFeeWaiverRequest;
 use App\Http\Requests\StorePlatformFeeWaiverRequest;
+use App\Http\Resources\PlatformFeeWaiverEventResource;
 use App\Services\PlatformFeeWaiverService;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Validation\ValidationException;
@@ -15,6 +16,21 @@ use Throwable;
 // service checks again. A refusal on the period itself (overlap, not running, already started) is a field error.
 class AdminPlatformFeeWaiverController extends Controller
 {
+    // TT-7.11e/SCRUM-475: the platform-wide periods' history (created, ended, deleted -- a deleted one's reason too), as
+    // JSON. Super administrators only.
+    public function events(ManagePlatformFeeWaiverRequest $request)
+    {
+        try {
+            return response()->json([
+                'events' => PlatformFeeWaiverEventResource::collection(
+                    PlatformFeeWaiverService::new()->getPlatformWideEventsForAdmin($this->dto($request, null))
+                )->resolve($request),
+            ]);
+        } catch (Throwable $th) {
+            return $this->failureResponse($request, $th);
+        }
+    }
+
     public function store(StorePlatformFeeWaiverRequest $request)
     {
         try {
@@ -57,7 +73,7 @@ class AdminPlatformFeeWaiverController extends Controller
         }
     }
 
-    private function dto(ManagePlatformFeeWaiverRequest $request, int $waiver): PlatformFeeWaiverDTO
+    private function dto(ManagePlatformFeeWaiverRequest $request, ?int $waiver): PlatformFeeWaiverDTO
     {
         return PlatformFeeWaiverDTO::new()->fromArray([
             'user' => $request->user(),

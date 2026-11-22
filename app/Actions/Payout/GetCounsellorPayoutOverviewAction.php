@@ -45,8 +45,9 @@ class GetCounsellorPayoutOverviewAction extends Action
             'currency' => $currency,
             'minimumPayoutAmount' => $currency ? SettingsService::new()->getMinimumPayoutAmount($currency) : null,
             'payoutHistory' => CounsellorPayoutResource::collection($counsellor->payouts()->latest()->limit(10)->get()),
-            // TT-7.10b/SCRUM-468: a platform-wide commission-free period running or coming up -- its dates only.
-            'commissionFreeNotice' => PlatformFeeWaiverService::new()->getCommissionFreeNotice(),
+            // TT-7.10b/SCRUM-468: a commission-free period running or coming up -- its dates only; TT-7.11e/SCRUM-475:
+            // platform-wide or this counsellor's own (`scope`). Also the dashboard's (GetCounsellorDashboardAction).
+            'commissionFreeNotice' => PlatformFeeWaiverService::new()->getCommissionFreeNotice($counsellor),
         ];
     }
 }

@@ -20,11 +20,14 @@ export function formatUtc(value) {
     return `${utcFormat.format(date)} GMT`
 }
 
-// The one-line notice for a period running or coming up ({ startsAt, endsAt }, ISO strings); null without one.
+// The one-line notice for a period running or coming up ({ startsAt, endsAt, scope }, ISO strings); null without one.
+// TT-7.11e/SCRUM-475: scope 'personal' is the counsellor's own period (only they see it); anything else is platform-wide.
 export function commissionFreeNoticeText(notice) {
     if (!notice?.startsAt) return null
 
+    const payments = notice.scope === 'personal' ? 'your payments' : 'payments made'
+
     return notice.endsAt
-        ? `No platform commission on payments made between ${formatUtc(notice.startsAt)} and ${formatUtc(notice.endsAt)}`
-        : `No platform commission on payments made from ${formatUtc(notice.startsAt)}`
+        ? `No platform commission on ${payments} between ${formatUtc(notice.startsAt)} and ${formatUtc(notice.endsAt)}`
+        : `No platform commission on ${payments} from ${formatUtc(notice.startsAt)}`
 }

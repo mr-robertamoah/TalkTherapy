@@ -41,7 +41,7 @@ enum NotificationCategoryEnum: string
             self::discussions => 'Being added to, and changes to, case discussions with other counsellors.',
             self::organisations => 'Proposed, accepted and expiring changes to what an organisation pays you.',
             self::payments => 'A refund going through, failing, or being turned down.',
-            self::recognition => 'Being recognised as a Counsellor of the month. Your answer stays on your dashboard either way.',
+            self::recognition => 'Being recognised as a Counsellor of the month, and a commission-free period given to you. A recognition\'s answer stays on your dashboard either way.',
         };
     }
 }

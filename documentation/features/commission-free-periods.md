@@ -30,7 +30,8 @@ A new card on `/administrator/payouts`, under "Platform Settings":
   - **Delete** (upcoming periods only, two clicks): removes a period that hasn't started and that no payment refers to.
   - There is no edit: a period's start never changes once set.
 
-Per-counsellor waivers (the same table, with a counsellor) are SCRUM-464's and aren't shown or managed here.
+Per-counsellor periods (the same table, with a counsellor) aren't shown or managed here -- see "One counsellor's own
+periods" below (SCRUM-475).
 
 ### Labels on waived money
 
@@ -60,6 +61,7 @@ Only the start and end are sent to the page.
 | POST | `/administrator/settings/platform-fee-waivers` | `admin.settings.platform-fee-waivers.store` | super admin |
 | POST | `/administrator/settings/platform-fee-waivers/{waiver}/end` | `admin.settings.platform-fee-waivers.end` | super admin |
 | POST | `/administrator/settings/platform-fee-waivers/{waiver}/delete` | `admin.settings.platform-fee-waivers.delete` | super admin |
+| GET | `/administrator/settings/platform-fee-waivers/events` | `admin.settings.platform-fee-waivers.events` | super admin (JSON history) |
 
 All three changes are throttled at 10 a minute (`throttle:10,1,<route name>`), like the other `admin.settings.*`
 routes.
@@ -124,3 +126,35 @@ appears only while a period is running or starts within 30 days, showing only it
   the seeder command above afterwards puts the upcoming period back, 20 → 27 days from then.
 - Design decisions (cancelled vs ended, the 30-day horizon, validation limits, the delete guard) are in
   `documentation/decision-log.md`, "SCRUM-468 — commission-free periods: admin, labels, notices".
+
+## One counsellor's own periods (SCRUM-475, backend)
+
+A super admin can give one counsellor a commission-free period of their own -- optionally for an approved recognition
+(SCRUM-473). The page for it is SCRUM-474's recognition page; until then the routes below are JSON endpoints.
+
+- Same field rules as platform-wide (UTC, no backdating, end after the start and now, within 2 years, reason up to
+  500). A counsellor's periods can't overlap each other; they may overlap a platform-wide one (whose id is then
+  recorded on payments). Only a counsellor who is verified, not suspended, not deleted and not the subject of an open
+  or under-review report can be given one, and never the super admin's own counsellor profile. With
+  `counsellor_recognition_id` (an approved recognition of theirs, not already linked) the period is linked to it.
+- The counsellor is told by a notification (Recognition kind; dates only) and sees "No platform commission on your
+  payments between … and …" on their Payouts section and dashboard Earnings card. Nobody else sees it.
+- Periods aren't ended automatically if the counsellor is later suspended, loses verification, is reported, or their
+  recognition is skipped; every response flags them (`needsReview`, plus `recognitionDecision`) for the admin to
+  decide. Ending or deleting a period sends the counsellor nothing; their notice just stops showing it.
+- Every create, end and delete, platform-wide or per-counsellor, is recorded in `platform_fee_waiver_events` (a
+  deleted period's event keeps its dates and reason).
+
+| Method | URL | Name |
+|---|---|---|
+| GET | `/administrator/counsellors/{counsellor}/fee-waivers` | `admin.counsellors.fee-waivers.index` (JSON: `counsellor` flags, `waivers`, `events`) |
+| POST | `/administrator/counsellors/{counsellor}/fee-waivers` | `admin.counsellors.fee-waivers.store` (`starts_at`, `ends_at`, `reason`, optional `counsellor_recognition_id`) |
+| POST | `/administrator/counsellors/{counsellor}/fee-waivers/{waiver}/end` | `admin.counsellors.fee-waivers.end` |
+| POST | `/administrator/counsellors/{counsellor}/fee-waivers/{waiver}/delete` | `admin.counsellors.fee-waivers.delete` |
+
+Super admin only (a 403 before validation for anyone else); the POSTs are throttled at 10 a minute, the GET at 60.
+
+**Test data:** `sarah_johnson` has a period for next month linked to her seeded recognition (`RecognitionSeeder`; see
+`documentation/seeded-data.md`, "Her own commission-free period"). Log in as the super admin `mr_robertamoah` and
+`GET /administrator/counsellors/{her counsellor id}/fee-waivers` to see it; log in as `sarah_johnson` to see the
+personal notice on `/counsellor/dashboard`.

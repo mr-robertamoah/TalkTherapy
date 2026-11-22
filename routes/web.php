@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AboutController;
 use App\Http\Controllers\AdminContentAccessController;
+use App\Http\Controllers\AdminCounsellorFeeWaiverController;
 use App\Http\Controllers\AdminCounsellorRecognitionController;
 use App\Http\Controllers\AdminEmergencyNumberController;
 use App\Http\Controllers\AdminHelpRequestController;
@@ -225,6 +226,13 @@ Route::middleware('auth')->group(function () {
     Route::post('/administrator/settings/platform-fee-waivers', [AdminPlatformFeeWaiverController::class, 'store'])->name('admin.settings.platform-fee-waivers.store')->middleware(['admin', 'throttle:10,1,admin.settings.platform-fee-waivers.store']);
     Route::post('/administrator/settings/platform-fee-waivers/{waiver}/end', [AdminPlatformFeeWaiverController::class, 'end'])->name('admin.settings.platform-fee-waivers.end')->whereNumber('waiver')->middleware(['admin', 'throttle:10,1,admin.settings.platform-fee-waivers.end']);
     Route::post('/administrator/settings/platform-fee-waivers/{waiver}/delete', [AdminPlatformFeeWaiverController::class, 'destroy'])->name('admin.settings.platform-fee-waivers.delete')->whereNumber('waiver')->middleware(['admin', 'throttle:10,1,admin.settings.platform-fee-waivers.delete']);
+    // TT-7.11e/SCRUM-475: the platform-wide periods' history, and one counsellor's own periods (JSON list for the
+    // SCRUM-474 recognition page; create, end now, delete) -- a super administrator only, a 403 before validation.
+    Route::get('/administrator/settings/platform-fee-waivers/events', [AdminPlatformFeeWaiverController::class, 'events'])->name('admin.settings.platform-fee-waivers.events')->middleware(['admin', 'throttle:60,1,admin.settings.platform-fee-waivers.events']);
+    Route::get('/administrator/counsellors/{counsellor}/fee-waivers', [AdminCounsellorFeeWaiverController::class, 'index'])->name('admin.counsellors.fee-waivers.index')->whereNumber('counsellor')->middleware(['admin', 'throttle:60,1,admin.counsellors.fee-waivers.index']);
+    Route::post('/administrator/counsellors/{counsellor}/fee-waivers', [AdminCounsellorFeeWaiverController::class, 'store'])->name('admin.counsellors.fee-waivers.store')->whereNumber('counsellor')->middleware(['admin', 'throttle:10,1,admin.counsellors.fee-waivers.store']);
+    Route::post('/administrator/counsellors/{counsellor}/fee-waivers/{waiver}/end', [AdminCounsellorFeeWaiverController::class, 'end'])->name('admin.counsellors.fee-waivers.end')->whereNumber(['counsellor', 'waiver'])->middleware(['admin', 'throttle:10,1,admin.counsellors.fee-waivers.end']);
+    Route::post('/administrator/counsellors/{counsellor}/fee-waivers/{waiver}/delete', [AdminCounsellorFeeWaiverController::class, 'destroy'])->name('admin.counsellors.fee-waivers.delete')->whereNumber(['counsellor', 'waiver'])->middleware(['admin', 'throttle:10,1,admin.counsellors.fee-waivers.delete']);
     // TT-7.11d1/SCRUM-473: counsellor recognition -- decisions by a super administrator only (the FormRequests answer
     // 403 first); every decision is throttled. TT-7.11d2/SCRUM-474: the page and the suggestions JSON are for any
     // administrator; the "add a counsellor" search and the daily star caps are super-admin only.

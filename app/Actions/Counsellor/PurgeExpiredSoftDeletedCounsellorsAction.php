@@ -6,6 +6,8 @@ use App\Actions\Action;
 use App\Actions\License\PurgeLicenseDocumentsAction;
 use App\Models\Counsellor;
 use App\Models\License;
+use App\Services\PlatformFeeWaiverService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -34,7 +36,12 @@ class PurgeExpiredSoftDeletedCounsellorsAction extends Action
                         clearNumber: $license->isNationalId(),
                     ));
 
-                    $counsellor->forceDelete();
+                    // SCRUM-475: their commission-free periods go with them (the foreign key cascades) -- each gets
+                    // a `deleted` event first, in the same transaction, so the history outlives them.
+                    DB::transaction(function () use ($counsellor) {
+                        PlatformFeeWaiverService::new()->recordPurgedForCounsellor($counsellor);
+                        $counsellor->forceDelete();
+                    });
                 } catch (Throwable $th) {
                     Log::error('Could not purge a soft-deleted counsellor.', ['counsellor' => $counsellor->id, 'error' => $th->getMessage()]);
                 }
