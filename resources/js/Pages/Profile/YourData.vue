@@ -11,6 +11,7 @@ import PrimaryButton from '@/Components/PrimaryButton.vue'
 import SecondaryButton from '@/Components/SecondaryButton.vue'
 import TextInput from '@/Components/TextInput.vue'
 import YourDataSection from './Partials/YourDataSection.vue'
+import { consentSummary } from '@/Support/recognitionConsent.js'
 
 const props = defineProps({
     data: { type: Object, required: true },
@@ -113,19 +114,6 @@ const requestStatus = {
     PENDING: 'waiting for a check',
     ACCEPTED: 'accepted',
     REJECTED: 'turned down',
-}
-
-// SCRUM-476: a 'YYYY-MM' month, as "November 2026" (a calendar month: never shifted by the viewer's time zone).
-function monthLabel(value) {
-    if (!value) return ''
-    return new Date(`${value}-01T00:00:00Z`).toLocaleDateString(undefined, { year: 'numeric', month: 'long', timeZone: 'UTC' })
-}
-
-const recognitionConsent = {
-    pending: 'waiting for your answer on whether to feature you',
-    accepted: 'you agreed to be featured',
-    declined: 'you chose not to be featured',
-    withdrawn: 'you stopped being featured',
 }
 
 const verification = {
@@ -487,7 +475,7 @@ const counsellor = computed(() => props.data.counsellor)
                             Counsellor of the month:
                             <ul class="ml-5 list-disc">
                                 <li v-for="recognition in counsellor.recognitions" :key="recognition.month">
-                                    {{ monthLabel(recognition.month) }} -- {{ recognitionConsent[recognition.consent] ?? recognition.consent }}
+                                    {{ recognition.monthLabel }}: {{ consentSummary(recognition.consent) || recognition.consent }}
                                 </li>
                             </ul>
                         </li>

@@ -22,6 +22,7 @@ use App\Actions\CounsellorVerification\EnsureCounsellorCanRequestVerificationAct
 use App\Actions\EnsureNameStaysRetrievableAction;
 use App\Actions\Payout\GetCounsellorPayoutOverviewAction;
 use App\Actions\Recognition\GetRecognitionSuggestionsAction;
+use App\Actions\Star\CountCounsellorStarsAction;
 use App\Actions\Suspension\EnsureCanDeleteOwnAccountWhileSuspendedAction;
 use App\DTOs\CheckNameRetrievabilityDTO;
 use App\DTOs\CreateCounsellorDTO;
@@ -32,7 +33,6 @@ use App\DTOs\GetModelsForAdminDTO;
 use App\DTOs\UpdateCounsellorDTO;
 use App\DTOs\VerifyCounsellorDTO;
 use App\Enums\ConstantsEnum;
-use App\Enums\CounsellorRecognitionDecisionEnum;
 use App\Enums\PaginationEnum;
 use App\Enums\RequestTypeEnum;
 use App\Http\Resources\AdminCounsellorResource;
@@ -46,10 +46,18 @@ use App\Support\PreferenceMatch;
 use App\Support\PreferenceRanking;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 
 class CounsellorService extends Service
 {
     public const LEADING_LIMIT = 5;
+
+    // How many ranked counsellors Leading considers (some may be hidden by a report), and how long the ranking is cached.
+    public const LEADING_CANDIDATES = 50;
+
+    public const LEADING_CACHE_SECONDS = 300;
+
+    public const LEADING_CACHE_KEY = 'home.leading.';
 
     public function verifyEmail(UpdateCounsellorDTO $updateCounsellorDTO)
     {
@@ -107,7 +115,7 @@ class CounsellorService extends Service
             // TT-7.11f/SCRUM-476: every approved recognition of theirs, whatever its consent and whether or not it is
             // shown right now, for the consent controls. Nothing says why one isn't shown.
             'recognitions' => OwnCounsellorRecognitionResource::collection($counsellor->recognitions()
-                ->where('decision', CounsellorRecognitionDecisionEnum::approved->value)
+                ->approved()
                 ->with(['consentRequests' => fn ($query) => $query->wherePending()->where('type', RequestTypeEnum::counsellorRecognition->value)->latest('id')])
                 ->orderByDesc('month')
                 ->get())->resolve(),
@@ -237,16 +245,36 @@ class CounsellorService extends Service
         return new AdminCounsellorStatsResource($getCounsellorStatsForAdminDTO->counsellor);
     }
 
-    // TT-7.11f/SCRUM-476: Home's "Leading (current month)" -- the counsellors with the most new-rule stars this UTC
-    // month, ranked and filtered exactly as the recognition suggestions are (GetRecognitionSuggestionsAction::ranking():
-    // CountCounsellorStarsAction among those eligible now, with no open report of any kind). Legacy stars never count.
-    // In rank order; the counts themselves are never sent, and only signed-in users get the list (HomeController).
-    public function getLeadingCounsellorsForCurrentMonth(int $limit = self::LEADING_LIMIT): Collection
+    // TT-7.11f/SCRUM-476: Home's "Leading (current month)", step 1 -- who could lead: counsellors ranked on the new-rule
+    // stars they earned this UTC month (CountCounsellorStarsAction; legacy stars never count; most stars, then the
+    // earliest first star, then the lowest id -- GetRecognitionSuggestionsAction::rank()), the first LEADING_CANDIDATES.
+    // The ranking is cached for LEADING_CACHE_SECONDS (security M2: it groups the whole month's stars); who is
+    // recognisable now (verified, not suspended, not deleted) is checked live on every request. Open reports are left
+    // to step 2, so Home reads them once for the showcase and Leading together (GetHomeCounsellorsAction).
+    /** @return array<int, int> */
+    public function getLeadingCandidateIds(): array
     {
-        $ids = GetRecognitionSuggestionsAction::new()->ranking(CarbonImmutable::now('UTC'))['ranked']
-            ->keys()
-            ->take($limit)
-            ->all();
+        $month = CarbonImmutable::now('UTC')->startOfMonth();
+
+        $ranked = Cache::remember(self::LEADING_CACHE_KEY.$month->format('Y-m'), self::LEADING_CACHE_SECONDS, fn () => GetRecognitionSuggestionsAction::rank(
+            CountCounsellorStarsAction::new()->execute(null, $month, $month->addMonth())
+        )->keys()->take(self::LEADING_CANDIDATES)->all());
+
+        if ($ranked === []) {
+            return [];
+        }
+
+        $recognisable = Counsellor::query()->whereIn('id', $ranked)->whereRecognisableNow()->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+        return array_values(array_intersect($ranked, $recognisable));
+    }
+
+    // Step 2: the first LEADING_LIMIT of $candidateIds (in order) not in $hiddenIds
+    // (GetVisibleRecognitionsAction::publiclyHiddenIds() -- the same reports that hide a recognition), as cards. Their
+    // counts are never sent, and only signed-in users get the list (HomeController).
+    public function getLeadingCounsellors(array $candidateIds, array $hiddenIds): Collection
+    {
+        $ids = array_slice(array_values(array_diff($candidateIds, $hiddenIds)), 0, self::LEADING_LIMIT);
 
         if ($ids === []) {
             return collect();

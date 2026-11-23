@@ -3,9 +3,11 @@ import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
 import {
     badgeLabel,
+    consentActionLabel,
     consentActions,
     consentDoneMessage,
     consentStateText,
+    consentSummary,
 } from '../../resources/js/Support/recognitionConsent.js'
 
 const keys = (recognition) => consentActions(recognition).map((action) => action.key)
@@ -52,5 +54,19 @@ describe('texts', () => {
         assert.equal(consentStateText('nonsense'), '')
         assert.match(consentDoneMessage({ key: 'restore' }), /featured again/)
         assert.equal(consentDoneMessage(null), 'Saved.')
+        assert.match(consentStateText('accepted'), /verified and in good standing/)
+    })
+
+    it('names the month on each button for screen readers', () => {
+        const [withdraw] = consentActions({ consent: 'accepted' })
+        assert.equal(consentActionLabel(withdraw, 'October 2026'), 'Stop featuring me for October 2026')
+        assert.equal(consentActionLabel(withdraw, null), 'Stop featuring me')
+        assert.equal(consentActionLabel(null, 'October 2026'), '')
+    })
+
+    it('summarises each state for Your Data', () => {
+        assert.equal(consentSummary('accepted'), 'you agreed to be featured')
+        assert.equal(consentSummary('withdrawn'), 'you stopped being featured')
+        assert.equal(consentSummary('nonsense'), '')
     })
 })

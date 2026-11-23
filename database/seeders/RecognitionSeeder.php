@@ -189,10 +189,10 @@ class RecognitionSeeder extends Seeder
     private function recogniseSuspended(User $superAdmin, CarbonImmutable $month): void
     {
         $counsellor = User::query()->where('username', 'suspended_counsellor_demo')->first()?->counsellor;
-        $rows = CounsellorRecognition::query()->forMonth($month)->get();
+        $decided = CounsellorRecognition::query()->forMonth($month);
 
-        if (! $counsellor || $rows->contains('counsellor_id', $counsellor->id)
-            || $rows->filter(fn (CounsellorRecognition $row) => $row->isApproved())->count() >= GetRecognitionSuggestionsAction::perMonth()) {
+        if (! $counsellor || (clone $decided)->where('counsellor_id', $counsellor->id)->exists()
+            || (clone $decided)->approved()->count() >= GetRecognitionSuggestionsAction::perMonth()) {
             return;
         }
 

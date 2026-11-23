@@ -11,7 +11,7 @@ export function badgeLabel(month) {
 
 const STATES = {
     pending: 'Waiting for your answer. Signed-in people can already see it.',
-    accepted: 'Featured on Home and on your profile.',
+    accepted: 'Featured on Home and on your profile while your profile is verified and in good standing.',
     declined: 'You chose not to be featured. Only you see it.',
     withdrawn: 'You stopped being featured. Only you see it.',
 }
@@ -41,6 +41,23 @@ export function consentActions(recognition) {
         default:
             return []
     }
+}
+
+// For screen readers: which month a button is about ("Stop featuring me for October 2026").
+export function consentActionLabel(action, month) {
+    if (!action) return ''
+
+    return month ? `${action.label} for ${month}` : action.label
+}
+
+// Your Data's wording for each state (the counsellor's own page of what we hold).
+export function consentSummary(consent) {
+    return {
+        pending: 'waiting for your answer on whether to feature you',
+        accepted: 'you agreed to be featured',
+        declined: 'you chose not to be featured',
+        withdrawn: 'you stopped being featured',
+    }[consent] ?? ''
 }
 
 export function consentDoneMessage(action) {

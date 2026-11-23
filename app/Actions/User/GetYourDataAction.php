@@ -6,7 +6,6 @@ use App\Actions\Action;
 use App\Actions\Notification\PruneNotificationsAction;
 use App\Actions\Request\DeleteExpiredIdentityDocumentsAction;
 use App\Enums\CounsellorPayoutStatusEnum;
-use App\Enums\CounsellorRecognitionDecisionEnum;
 use App\Enums\NotificationCategoryEnum;
 use App\Enums\RequestTypeEnum;
 use App\Enums\TherapyStatusEnum;
@@ -315,12 +314,13 @@ class GetYourDataAction extends Action
             // consent. Approved ones only (a month an administrator skipped them is the team's deliberation, as the
             // stars and rank behind any recognition are). One query.
             'recognitions' => $counsellor->recognitions()
-                ->where('decision', CounsellorRecognitionDecisionEnum::approved->value)
+                ->approved()
                 ->orderByDesc('month')
                 ->limit(self::LIST_LIMIT)
                 ->get(['id', 'month', 'consent'])
                 ->map(fn (CounsellorRecognition $recognition) => [
                     'month' => $recognition->monthStart()->format('Y-m'),
+                    'monthLabel' => $recognition->monthLabel(),
                     'consent' => $recognition->consent?->value,
                 ])
                 ->all(),

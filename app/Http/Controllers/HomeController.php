@@ -2,14 +2,13 @@
 
 namespace App\Http\Controllers;
 
-use App\Actions\Recognition\GetVisibleRecognitionsAction;
+use App\Actions\Recognition\GetHomeCounsellorsAction;
 use App\Actions\User\GetCounsellorCreationStepOfUserAction;
 use App\Http\Resources\CounsellorCardResource;
 use App\Http\Resources\PostResource;
 use App\Http\Resources\RecognisedCounsellorResource;
 use App\Http\Resources\TherapyMiniResource;
 use App\Models\Post;
-use App\Services\CounsellorService;
 use App\Services\GroupTherapyService;
 use App\Services\TherapyService;
 use Illuminate\Http\Request;
@@ -25,17 +24,17 @@ class HomeController extends Controller
         // of the generic red "failed" toast every other exception's flashed message triggers.
         $paymentRequired = session()->has('paymentRequired');
 
+        $counsellors = GetHomeCounsellorsAction::new()->execute($request->user());
+
         $page = Inertia::render('Home', [
             'counsellorCreationStep' => GetCounsellorCreationStepOfUserAction::new()->execute($request->user()),
             'recentTherapies' => TherapyMiniResource::collection(TherapyService::new()->getRecentTherapies($request->user())),
             'recentGroupTherapies' => TherapyMiniResource::collection(GroupTherapyService::new()->getRecentGroupTherapies($request->user())),
             // TT-7.11f/SCRUM-476: the latest month's Counsellors of the month, as this viewer may see them (guests too --
             // this is the public showcase); and, for signed-in users only, who leads this month. Neither carries a star
-            // count.
-            'recognisedCounsellors' => RecognisedCounsellorResource::collection(GetVisibleRecognitionsAction::new()->execute($request->user())),
-            'leadingCounsellors' => $request->user()
-                ? CounsellorCardResource::collection(CounsellorService::new()->getLeadingCounsellorsForCurrentMonth())
-                : [],
+            // count. Plain arrays (resolve()), the same shape for guests and signed-in users.
+            'recognisedCounsellors' => RecognisedCounsellorResource::collection($counsellors['recognised'])->resolve($request),
+            'leadingCounsellors' => CounsellorCardResource::collection($counsellors['leading'])->resolve($request),
             'post' => session()->has('postId') ? new PostResource(Post::find(session('postId'))) : null,
             'alert' => session()->has('alert') ? session('alert') : null,
             'paymentRequired' => $paymentRequired,

@@ -13,7 +13,7 @@ defineProps({
 <template>
     <div class="flex flex-col rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
         <div class="flex items-center gap-3">
-            <Avatar :size="56" :src="counsellor.avatar ?? ''" :alt="counsellor.name" class="shrink-0" />
+            <Avatar :size="56" :src="counsellor.avatar ?? ''" alt="" class="shrink-0" />
             <div class="min-w-0">
                 <div class="truncate font-semibold text-gray-900 capitalize">{{ counsellor.name }}</div>
                 <div class="truncate text-sm text-gray-600 capitalize">{{ counsellor.profession ?? 'Counsellor' }}</div>
@@ -30,9 +30,10 @@ defineProps({
             >{{ name }}</li>
         </ul>
 
-        <!-- Plain Link, not StyledLink (see StarredCounsellorComponent.vue). -->
+        <!-- Plain Link, not StyledLink (see CounsellorCard.vue). -->
         <Link
             :href="route('counsellor.show', { counsellorId: counsellor.id })"
+            :aria-label="`View ${counsellor.name}'s profile`"
             class="mt-4 inline-block self-start rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50"
         >View profile</Link>
     </div>

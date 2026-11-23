@@ -2,7 +2,7 @@
 import MiniTherapyComponent from '@/Components/MiniTherapyComponent.vue';
 import MiniGroupTherapyComponent from '@/Components/MiniGroupTherapyComponent.vue';
 import CreatePostModal from '@/Components/CreatePostModal.vue';
-import StarredCounsellorComponent from '@/Components/StarredCounsellorComponent.vue';
+import CounsellorCard from '@/Components/CounsellorCard.vue';
 import RecognisedCounsellorCard from '@/Components/RecognisedCounsellorCard.vue';
 import HelpButton from '@/Components/HelpButton.vue';
 import PostComponent from '@/Components/PostComponent.vue';
@@ -123,14 +123,8 @@ onBeforeMount(() => {
 provide('onCreatedNewTherapy', { newTherapy, updateNewTherapy })
 provide('onCreatedNewGroupTherapy', { newGroupTherapy, updateNewGroupTherapy })
 
-const computedRecognisedCounsellors = computed(() => {
-    return props.recognisedCounsellors.data ?? props.recognisedCounsellors
-})
 // Every card carries its month; it is the same month for all of them.
-const recognisedMonth = computed(() => computedRecognisedCounsellors.value?.[0]?.month ?? null)
-const computedLeadingCounsellors = computed(() => {
-    return props.leadingCounsellors.data?.length ? props.leadingCounsellors.data : props.leadingCounsellors
-})
+const recognisedMonth = computed(() => props.recognisedCounsellors?.[0]?.month ?? null)
 const computedCanCreatePost = computed(() => {
     const user = usePage().props.auth.user
 
@@ -364,9 +358,9 @@ function showPost() {
                                 <h2>Counsellors of the month</h2>
                                 <p v-if="recognisedMonth" class="text-sm text-gray-600">{{ recognisedMonth }}</p>
                             </div>
-                            <div v-if="computedRecognisedCounsellors?.length" class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-stretch">
+                            <div v-if="recognisedCounsellors?.length" class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-stretch">
                                 <RecognisedCounsellorCard
-                                    v-for="counsellor in computedRecognisedCounsellors"
+                                    v-for="counsellor in recognisedCounsellors"
                                     :key="counsellor.id"
                                     :counsellor="counsellor"
                                     class="w-[250px] shrink-0"
@@ -378,10 +372,10 @@ function showPost() {
 
                     <div v-if="$page.props.auth.user" class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
                         <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                            <div class="p-6 text-gray-900">Leading Counsellors (current month)</div>
-                            <div class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center" v-if="computedLeadingCounsellors?.length">
-                                <StarredCounsellorComponent
-                                    v-for="(counsellor, idx) in computedLeadingCounsellors"
+                            <h2 class="p-6 text-gray-900">Leading Counsellors (current month)</h2>
+                            <div class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center" v-if="leadingCounsellors?.length">
+                                <CounsellorCard
+                                    v-for="(counsellor, idx) in leadingCounsellors"
                                     :key="counsellor.id"
                                     :position="idx + 1"
                                     :counsellor="counsellor"
@@ -394,12 +388,12 @@ function showPost() {
 
                     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
                         <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                            <div class="p-6 text-gray-900">Counsellors</div>
+                            <h2 class="p-6 text-gray-900">Counsellors</h2>
                             <div v-if="loading" class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center">
                                 <CounsellorCardLoader v-for="i in 3" :key="i" />
                             </div>
                             <div class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-4 flex justify-start items-center" v-else-if="randomCounsellors.data?.length">
-                                <StarredCounsellorComponent
+                                <CounsellorCard
                                     v-for="(counsellor) in randomCounsellors.data"
                                     :key="counsellor.id"
                                     :counsellor="counsellor"
@@ -419,7 +413,7 @@ function showPost() {
                     <div id="home-therapies-id" class="relative"></div>
                     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8" v-if="$page.props.auth.user">
                         <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                            <div class="p-6 text-gray-900">Your Recent Therapies</div>
+                            <h2 class="p-6 text-gray-900">Your Recent Therapies</h2>
                             <div v-if="loading" class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-5 flex justify-start items-center">
                                 <TherapyCardLoader v-for="i in 3" :key="i" />
                             </div>
@@ -437,7 +431,7 @@ function showPost() {
                     
                     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4" v-if="$page.props.auth.user">
                         <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                            <div class="p-6 text-gray-900">Your Recent Group Therapies</div>
+                            <h2 class="p-6 text-gray-900">Your Recent Group Therapies</h2>
                             <div v-if="loading" class="m-2 px-4 pb-6 overflow-hidden overflow-x-auto space-x-5 flex justify-start items-center">
                                 <TherapyCardLoader v-for="i in 3" :key="i" />
                             </div>
@@ -456,7 +450,7 @@ function showPost() {
                     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-8">
                         <div class="bg-white shadow-sm sm:rounded-lg">
                             <div class="p-6 text-gray-900 flex justify-between items-center">
-                                <span>Public Therapies</span>
+                                <h2>Public Therapies</h2>
                                 <a :href="route('public.therapies')" class="text-blue-600 hover:text-blue-800 text-sm font-medium">View All →</a>
                             </div>
                             <div class="px-6 flex min-h-[100px] justify-start py-4 items-start overflow-hidden overflow-x-auto space-x-5">
@@ -485,7 +479,7 @@ function showPost() {
                     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8 mt-4">
                         <div class="bg-white shadow-sm sm:rounded-lg">
                             <div class="p-6 text-gray-900 flex justify-between items-center">
-                                <span>Public Group Therapies</span>
+                                <h2>Public Group Therapies</h2>
                                 <a :href="route('public.therapies')" class="text-blue-600 hover:text-blue-800 text-sm font-medium">View All →</a>
                             </div>
                             <div class="px-6 flex min-h-[100px] justify-start py-4 items-start overflow-hidden overflow-x-auto space-x-5">
@@ -519,7 +513,7 @@ function showPost() {
                     <div class="mx-auto sm:px-6 lg:px-8 mt-4">
                         <div class="bg-white w-full shadow-sm sm:rounded-lg">
                             <div class="p-6 text-gray-900 flex justify-between items-center">
-                                <div>Posts</div>
+                                <h2>Posts</h2>
                                 <PrimaryButton
                                     v-if="computedCanCreatePost"
                                     @click="() => showModal('create post')">create post</PrimaryButton>

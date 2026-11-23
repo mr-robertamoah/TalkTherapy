@@ -86,6 +86,12 @@ class CounsellorRecognition extends Model
         return $this->decision === CounsellorRecognitionDecisionEnum::approved;
     }
 
+    // TT-7.11f/SCRUM-476.
+    public function scopeApproved(Builder $query): Builder
+    {
+        return $query->where('decision', CounsellorRecognitionDecisionEnum::approved->value);
+    }
+
     public function scopeForMonth(Builder $query, CarbonInterface $month): Builder
     {
         return $query->where('month', self::monthKey($month));
