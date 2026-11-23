@@ -12,8 +12,9 @@ const label = computed(() => badgeLabel(props.month))
 </script>
 
 <template>
-    <span class="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-900 whitespace-nowrap">
-        <svg class="h-3.5 w-3.5 shrink-0 text-amber-600" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+    <!-- Wraps rather than overflowing a narrow showcase card (browser QA, SCRUM-476). -->
+    <span class="inline-flex max-w-full items-start gap-1.5 rounded-2xl border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-900">
+        <svg class="mt-px h-3.5 w-3.5 shrink-0 text-amber-600" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
             <path d="M10 1.5l2.47 5.01 5.53.8-4 3.9.94 5.5L10 14.1l-4.94 2.6.94-5.5-4-3.9 5.53-.8L10 1.5z" />
         </svg>
         {{ label }}
