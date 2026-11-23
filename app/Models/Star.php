@@ -32,22 +32,4 @@ class Star extends Model
     {
         return $this->morphTo();
     }
-
-    public function scopeWhereStarredUser($query, ?User $user)
-    {
-        return $query->where(function ($query) use ($user) {
-            $query
-                ->where('starred_type', User::class)
-                ->where('starred_id', $user?->id);
-        });
-    }
-
-    public function scopeWhereStarreable($query, ?Model $model)
-    {
-        return $query->where(function ($query) use ($model) {
-            $query
-                ->where('starreable_type', Model::class)
-                ->where('starreable_id', $model?->id);
-        });
-    }
 }
