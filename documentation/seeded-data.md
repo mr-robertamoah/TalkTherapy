@@ -780,7 +780,7 @@ counsellor has a decision for the month. All passwords are `password`.
 | `sarah_johnson` | approved, consent **pending** (above) | to signed-in users only |
 | `michael_chen` | approved, **accepted** (he answered the consent request) | to everyone, guests included |
 | `emma_williams` | approved, **declined** | to Emma only |
-| `james_wilson` | added by hand, **accepted**, then an **open report** about him: "[Recognition demo: open report] …", by `john_davis` on "Recognition Demo Therapy (reported counsellor)" | to nobody, until the report is resolved or dismissed |
+| `james_wilson` | added by hand, **accepted**, then an **open report** about him: "[Recognition demo: open report] …", filed by `john_davis` on "Recognition Demo Therapy (reported counsellor)" -- a therapy the seeder adds to `john_davis`'s account (an in-session, free therapy with James) | to nobody, until the report is resolved or dismissed |
 | `suspended_counsellor_demo` | **accepted**, but their counsellor role is suspended (SCRUM-359's demo) | to nobody, until the suspension is lifted |
 
 The suspended counsellor's row is written directly, because the service refuses to recognise a suspended counsellor;

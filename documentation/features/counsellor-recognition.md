@@ -125,10 +125,12 @@ One rule, `GetVisibleRecognitionsAction`, decides it for Home, the profile badge
 - a **guest** sees those the counsellor **accepted**;
 - a **signed-in** user also sees those still **pending** an answer;
 - the **counsellor** also sees their own **declined** and **withdrawn** ones;
-- **nobody** sees any while the counsellor is suspended, has an open or under-review report of any kind (an urgent
-  help request's report included), has a lapsed or revoked verification, or has deleted their profile or account. It
-  comes back as soon as that clears. Nothing on the page says why a recognition isn't shown, or what kind of report
-  there is.
+- **nobody** sees any while the counsellor is suspended, has an open or under-review report about them, has a lapsed
+  or revoked verification, or has deleted their profile or account. It comes back as soon as that clears. Nothing on
+  the page says why a recognition isn't shown.
+- a report about an **urgent help request** never hides anyone publicly (the user's decision, 2026-11-23): someone who
+  reported a help request could otherwise watch Home and see who disappeared, and so learn who asked for help. Such a
+  report still stops a new recognition or a new fee waiver on the admin side.
 
 No star counts or ranks are shown anywhere public, to anyone, and neither is anything about consent or fee waivers.
 
@@ -149,9 +151,12 @@ show yet". This guest Home section is the public showcase; `/about` is unchanged
 ### Home: "Leading Counsellors (current month)"
 
 Signed-in users only; a guest doesn't get the section, or its data. The 5 counsellors with the most **new-rule** stars
-so far this UTC month, among those who could be recognised now (verified, not suspended or deleted, no open report).
-Legacy stars never count. Ranked like the admin suggestions: most stars, then the earliest first star, then the lowest
-id. The cards show the position but no counts.
+so far this UTC month, among those who could be recognised now (verified, not suspended or deleted) and not hidden by
+an open report (the same reports that hide a recognition). Legacy stars never count. Ranked like the admin
+suggestions: most stars, then the earliest first star, then the lowest id. The cards show the position but no counts.
+The star ranking is cached for 5 minutes, so a newly earned star can take that long to show; who is suspended,
+unverified or reported is checked on every request. Home reads the open reports once for both rows, and only those
+that could be about the counsellors on them.
 
 The "Counsellors" row and `GET /api/counsellors/random` no longer send star counts, and no longer load every star row
 of every counsellor on the page.
@@ -171,6 +176,14 @@ of every counsellor on the page.
 
   It doesn't say whether a recognition is shown to others right now, only that it is shown "while your profile is
   verified and in good standing".
+
+### Reporting (SCRUM-476 hardening)
+
+Because an open report hides a counsellor, `POST /api/reports` is limited to 10 a minute per person, and a person can
+have only one open (or under-review) report on the same therapy, session, group or post naming the same person at a
+time: a second one is
+refused with "You have already reported this, and that report is still open." Once the first is closed, they can
+report it again.
 
 ### What we hold about you
 
@@ -246,7 +259,8 @@ Accounts (the demo password for all but the super admin; see `documentation/seed
    in either: his open report hides him. Open Emma's profile: no badge (she declined).
 3. **The counsellor:**
    - Sign in as `sarah_johnson` and open your profile (`/counsellor/{her id}`). The "Counsellor of the month" card lists
-     last month, "Waiting for your answer". Click **Agree to be featured**: "Featured on Home and on your profile". A
+     last month, "Waiting for your answer". Click **Agree to be featured**: "Featured on Home and on your profile while your profile is verified and
+     in good standing". A
      guest now sees her on Home too.
    - Click **Stop featuring me**: she disappears from Home for everyone (her own badge stays, for her). Click
      **Feature me**: she is back.
