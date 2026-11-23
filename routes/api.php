@@ -206,7 +206,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/admin/reports/{report}/messages/{message}/attachments/{file}', [AdminReportController::class, 'attachment'])->name('admin.reports.attachments.show')->whereNumber(['report', 'message', 'file'])->middleware(['admin', 'throttle:120,1,admin.reports.attachments.show']);
     Route::get('/reports', [ReportController::class, 'getReports'])->name('api.reports');
     Route::get('/reports/{reportId}', [ReportController::class, 'getReport'])->name('api.reports.get');
-    Route::post('/reports', [ReportController::class, 'createReport'])->name('api.reports.create');
+    Route::post('/reports', [ReportController::class, 'createReport'])->name('api.reports.create')->middleware('throttle:10,1,api.reports.create');
     Route::post('/reports/{reportId}', [ReportController::class, 'updateReport'])->name('api.reports.update');
     Route::delete('/reports/{reportId}', [ReportController::class, 'deleteReport'])->name('api.reports.delete');
 

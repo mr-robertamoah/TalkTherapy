@@ -11,6 +11,7 @@ use App\Actions\Report\EnsureAdminCanViewReportedAttachmentAction;
 use App\Actions\Report\EnsureCanCreateReportAction;
 use App\Actions\Report\EnsureCanReportReportableAction;
 use App\Actions\Report\EnsureCanUpdateReportAction;
+use App\Actions\Report\EnsureNoOpenReportByUserAction;
 use App\Actions\Report\EnsureReportDataIsValidAction;
 use App\Actions\Report\EnsureReportExistsAction;
 use App\Actions\Report\ResolveReportUnlockScopeAction;
@@ -53,6 +54,8 @@ class ReportService extends Service
         DefaultReportedPartyAction::new()->execute($createReportDTO);
 
         EnsureReportDataIsValidAction::new()->execute($createReportDTO);
+
+        EnsureNoOpenReportByUserAction::new()->execute($createReportDTO);
 
         $report = CreateReportAction::new()->execute($createReportDTO);
 
