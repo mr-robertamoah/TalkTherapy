@@ -1,6 +1,9 @@
 <?php
 
+use App\Actions\Recognition\GetCounsellorIdsWithOpenReportsAction;
+use App\Actions\Recognition\GetRecognitionEligibleCounsellorIdsAction;
 use App\Actions\Recognition\GetVisibleRecognitionsAction;
+use App\Actions\Report\EnsureNoOpenReportByUserAction;
 use App\Actions\Suspension\ApplySuspensionAction;
 use App\Actions\User\GetYourDataAction;
 use App\DTOs\CounsellorRecognitionDTO;
@@ -26,6 +29,7 @@ use App\Services\CounsellorRecognitionService;
 use Database\Seeders\RecognitionSeeder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Inertia\Testing\AssertableInertia;
@@ -190,15 +194,7 @@ function rscHomeProps($test, ?User $viewer = null): array
         $props = $page->toArray()['props'];
     });
 
-    $props = json_decode(json_encode($props), true);
-
-    // A resource collection prop is {data: [...]}, or the bare list once HandleInertiaRequestsV2 has switched
-    // JsonResource wrapping off (process-wide) for a signed-in request -- Home.vue reads both.
-    foreach (['recognisedCounsellors', 'leadingCounsellors'] as $key) {
-        $props[$key] = $props[$key]['data'] ?? $props[$key];
-    }
-
-    return $props;
+    return json_decode(json_encode($props), true);
 }
 
 function rscProfileProps($test, Counsellor $counsellor, ?User $viewer = null): array
@@ -221,7 +217,8 @@ test('who sees a recognition, by viewer, consent and the counsellor\'s standing'
     rscApplyCondition($counsellor, $condition);
     $who = rscViewer($viewer, $counsellor);
 
-    $expected = $condition === 'none' && match ($consent) {
+    // A report about an urgent help request never hides anyone publicly (the user's decision, 2026-11-23).
+    $expected = in_array($condition, ['none', 'reported via help request'], true) && match ($consent) {
         Consent::accepted => true,
         Consent::pending => $viewer !== 'guest',
         Consent::declined, Consent::withdrawn => $viewer === 'owner',
@@ -380,7 +377,7 @@ test('Leading ranks this month\'s new-rule stars among counsellors eligible now'
     rscStars($suspended, 9);
     rscSuspend($suspended);
     rscStars($reported, 9);
-    rscReport(HelpRequest::create(['user_id' => $reported->user_id, 'status' => HelpRequestStatusEnum::ended->value]), rscCounsellor(), []);
+    rscReport($reported->user, rscCounsellor(), ['counsellorId' => $reported->id]);
     rscStars($lastMonth, 9, '2026-10-30 10:00:00');
 
     $leading = rscHomeProps($this, User::factory()->adult()->create())['leadingCounsellors'];
@@ -466,6 +463,7 @@ test('Home\'s query count doesn\'t grow with the recognised or leading counsello
 
     $count = function () use ($viewer) {
         $this->app['auth']->forgetGuards();
+        Cache::flush(); // Leading's cached ranking: each request reads it afresh.
         DB::flushQueryLog();
         DB::enableQueryLog();
         rscHomeProps($this, $viewer);
@@ -503,8 +501,8 @@ test('Your Data lists the counsellor\'s recognitions: the month and their consen
     rscRecognition($counsellor, null, '2026-11-01', Decision::skipped);
 
     expect(GetYourDataAction::new()->execute($counsellor->user)['counsellor']['recognitions'])->toBe([
-        ['month' => '2026-10', 'consent' => 'accepted'],
-        ['month' => '2026-09', 'consent' => 'withdrawn'],
+        ['month' => '2026-10', 'monthLabel' => 'October 2026', 'consent' => 'accepted'],
+        ['month' => '2026-09', 'monthLabel' => 'September 2026', 'consent' => 'withdrawn'],
     ])
         ->and(GetYourDataAction::new()->execute(User::factory()->adult()->create())['counsellor'])->toBeNull();
 });
@@ -549,4 +547,153 @@ test('the seeder makes each showcase state once, and running it again adds nothi
     // Leading: this month's stars, without the reported James.
     $leading = rscHomeProps($this, User::factory()->adult()->create())['leadingCounsellors'];
     expect(array_column($leading, 'id'))->toBe(array_map($counsellorId, ['lisa_anderson', 'david_brown', 'michael_chen']));
+});
+
+// ---- Review and security fixes ----
+
+test('a report about an urgent help request hides nobody publicly: Home, Leading and the badge are unchanged', function () {
+    $counsellor = rscCounsellor();
+    rscRecognition($counsellor);
+    rscStars($counsellor, 4);
+    $signedIn = User::factory()->adult()->create();
+
+    $before = [
+        'guest' => rscHomeProps($this)['recognisedCounsellors'],
+        'signed in' => rscHomeProps($this, $signedIn),
+        'badge' => rscProfileProps($this, $counsellor)['recognitionBadges'],
+    ];
+
+    rscReport(HelpRequest::create(['user_id' => $counsellor->user_id, 'status' => HelpRequestStatusEnum::ended->value]), rscCounsellor(), []);
+    Cache::flush();
+    $this->app['auth']->forgetGuards();
+
+    $after = rscHomeProps($this, $signedIn);
+
+    expect($before['guest'])->toHaveCount(1)
+        ->and(array_column($before['signed in']['leadingCounsellors'], 'id'))->toBe([$counsellor->id])
+        ->and(rscHomeProps($this)['recognisedCounsellors'])->toBe($before['guest']);
+
+    expect($after['recognisedCounsellors'])->toBe($before['signed in']['recognisedCounsellors'])
+        ->and($after['leadingCounsellors'])->toBe($before['signed in']['leadingCounsellors'])
+        ->and(rscProfileProps($this, $counsellor)['recognitionBadges'])->toBe($before['badge'])
+        ->and(rscProfileProps($this, $counsellor, $signedIn)['recognitionBadges'])->toBe(['October 2026'])
+        // ...while the admin side still keeps them from a new recognition or waiver.
+        ->and(GetRecognitionEligibleCounsellorIdsAction::new()->execute([$counsellor->id]))->toBe([]);
+});
+
+test('Home sends both rows as plain arrays, to guests and signed-in users alike', function () {
+    $counsellor = rscCounsellor();
+    rscRecognition($counsellor);
+    rscStars($counsellor, 2);
+
+    foreach ([null, User::factory()->adult()->create()] as $viewer) {
+        $props = rscHomeProps($this, $viewer);
+
+        expect(array_is_list($props['recognisedCounsellors']))->toBeTrue()
+            ->and($props['recognisedCounsellors'][0]['id'])->toBe($counsellor->id)
+            ->and(array_is_list($props['leadingCounsellors']))->toBeTrue();
+    }
+
+    expect(rscHomeProps($this, User::factory()->adult()->create())['leadingCounsellors'][0]['id'])->toBe($counsellor->id);
+});
+
+test('the showcase shows at most recognition.per_month cards', function () {
+    config(['recognition.per_month' => 2]);
+    foreach (range(1, 4) as $i) {
+        rscRecognition(rscCounsellor());
+    }
+
+    expect(GetVisibleRecognitionsAction::new()->execute(null))->toHaveCount(2)
+        ->and(rscHomeProps($this)['recognisedCounsellors'])->toHaveCount(2);
+});
+
+test('Home\'s query count doesn\'t grow with unrelated open reports', function () {
+    $counsellor = rscCounsellor();
+    rscRecognition($counsellor);
+    rscStars($counsellor, 2);
+    $viewer = User::factory()->adult()->create();
+
+    $count = function () use ($viewer) {
+        Cache::flush();
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        rscHomeProps($this, $viewer);
+        $queries = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        return $queries;
+    };
+
+    $count();
+    $none = $count();
+
+    foreach (range(1, 6) as $i) {
+        $other = rscCounsellor();
+        rscReport($other->user, rscCounsellor(), ['counsellorId' => $other->id]);
+        rscReport(HelpRequest::create(['user_id' => $other->user_id, 'status' => HelpRequestStatusEnum::ended->value]), rscCounsellor(), []);
+    }
+
+    expect($count())->toBe($none);
+});
+
+test('the scoped report pass finds what the full pass finds for its counsellors', function () {
+    $byData = rscCounsellor();
+    $byAccount = rscCounsellor();
+    $byHelp = rscCounsellor();
+    $clean = rscCounsellor();
+    rscReport($byData->user, rscCounsellor(), ['counsellorId' => (string) $byData->id]);
+    rscReport($byAccount->user, rscCounsellor(), ['userId' => $byAccount->user_id]);
+    rscReport(HelpRequest::create(['user_id' => $byHelp->user_id, 'status' => HelpRequestStatusEnum::ended->value]), rscCounsellor(), [], 'under_review');
+    rscReport($clean->user, rscCounsellor(), ['counsellorId' => $clean->id], 'dismissed');
+
+    $ids = [$byData->id, $byAccount->id, $byHelp->id, $clean->id];
+    $scoped = GetCounsellorIdsWithOpenReportsAction::new()->execute($ids);
+    $full = GetCounsellorIdsWithOpenReportsAction::new()->execute($ids, countUnattributed: true);
+
+    expect($scoped['counsellorIds'])->toBe($full['counsellorIds'])
+        ->and($scoped['counsellorIds'])->toBe([$byData->id, $byAccount->id, $byHelp->id])
+        ->and($scoped['flaggableCounsellorIds'])->toBe([$byData->id, $byAccount->id])
+        ->and($scoped['unattributed'])->toBeNull()
+        ->and($full['unattributed'])->toBe(1);
+});
+
+test('a second open report by the same person on the same thing is refused, and reporting is throttled', function () {
+    $client = User::factory()->adult()->create();
+    $counsellor = rscCounsellor();
+    $therapy = Therapy::factory()->create(['addedby_type' => User::class, 'addedby_id' => $client->id, 'counsellor_id' => $counsellor->id]);
+    $report = fn () => $this->actingAs($client)->postJson(route('api.reports.create'), [
+        'addedbyType' => 'user', 'addedbyId' => $client->id,
+        'reportableType' => 'Therapy', 'reportableId' => $therapy->id,
+        'description' => 'My counsellor kept missing our sessions.',
+        'data' => ['counsellorId' => $counsellor->id],
+    ]);
+
+    $report()->assertSuccessful();
+    $report()->assertStatus(422)->assertJsonFragment([EnsureNoOpenReportByUserAction::ALREADY_OPEN]);
+
+    Report::query()->update(['status' => 'dismissed']);
+    $report()->assertSuccessful();
+
+    expect(Report::query()->count())->toBe(2)
+        ->and(app('router')->getRoutes()->getByName('api.reports.create')->gatherMiddleware())->toContain('throttle:10,1,api.reports.create');
+});
+
+test('Leading re-checks who is recognisable on every request, though its ranking is cached', function () {
+    $first = rscCounsellor();
+    $second = rscCounsellor();
+    rscStars($first, 3);
+    rscStars($second, 2);
+    $viewer = User::factory()->adult()->create();
+
+    expect(array_column(rscHomeProps($this, $viewer)['leadingCounsellors'], 'id'))->toBe([$first->id, $second->id]);
+
+    rscSuspend($first);
+    $late = rscCounsellor();
+    rscStars($late, 9);
+
+    // The suspension shows at once; the newcomer waits for the cached ranking to expire.
+    expect(array_column(rscHomeProps($this, $viewer)['leadingCounsellors'], 'id'))->toBe([$second->id]);
+
+    Cache::flush();
+    expect(array_column(rscHomeProps($this, $viewer)['leadingCounsellors'], 'id'))->toBe([$late->id, $second->id]);
 });
