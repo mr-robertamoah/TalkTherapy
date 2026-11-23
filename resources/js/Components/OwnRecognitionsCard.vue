@@ -5,7 +5,7 @@
 import { ref } from 'vue'
 import { router } from '@inertiajs/vue3'
 import RecognitionBadge from './RecognitionBadge.vue'
-import { consentActions, consentDoneMessage, consentStateText } from '@/Support/recognitionConsent.js'
+import { consentActionLabel, consentActions, consentDoneMessage, consentStateText } from '@/Support/recognitionConsent.js'
 
 defineProps({
     recognitions: { type: Array, default: () => [] },
@@ -47,7 +47,9 @@ async function act(recognition, action) {
                 recognition is shown to others only while your profile is verified and in good standing.
             </p>
 
-            <ul class="divide-y divide-gray-100">
+            <p class="sr-only" role="status" aria-live="polite">{{ busyId !== null ? 'Saving your choice...' : '' }}</p>
+
+            <ul class="divide-y divide-gray-100" :aria-busy="busyId !== null">
                 <li
                     v-for="recognition in recognitions"
                     :key="recognition.id"
@@ -63,6 +65,7 @@ async function act(recognition, action) {
                             :key="action.key"
                             type="button"
                             :disabled="busyId !== null"
+                            :aria-label="consentActionLabel(action, recognition.month)"
                             class="rounded-md px-3 py-1.5 text-sm font-medium disabled:opacity-50"
                             :class="action.primary
                                 ? 'bg-gray-800 text-white hover:bg-gray-700'
