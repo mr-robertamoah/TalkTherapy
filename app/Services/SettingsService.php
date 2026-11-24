@@ -27,6 +27,7 @@ class SettingsService extends Service
         'session_per_group' => SettingsEnum::recognitionCapSessionPerGroup,
         'interaction_per_post' => SettingsEnum::recognitionCapInteractionPerPost,
         'interaction_per_day' => SettingsEnum::recognitionCapInteractionPerDay,
+        'interaction_per_client' => SettingsEnum::recognitionCapInteractionPerClient,
     ];
 
     public function get(SettingsEnum $key, mixed $default = null): mixed

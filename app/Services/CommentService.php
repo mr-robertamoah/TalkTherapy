@@ -53,8 +53,8 @@ class CommentService extends Service
 
         $deleted = DeleteCommentAction::new()->execute($createCommentDTO);
 
-        // SCRUM-472: the star stays while the user still has a like or a comment on the post.
-        SyncPostInteractionStarAction::afterCommit($createCommentDTO->comment->commentable, $createCommentDTO->user);
+        // SCRUM-472: the comment's author's star stays while they still have a like or a comment on the post.
+        SyncPostInteractionStarAction::afterCommit($createCommentDTO->comment->commentable, $createCommentDTO->comment->user);
 
         return $deleted;
     }

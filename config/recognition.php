@@ -16,9 +16,10 @@ return [
         // SCRUM-471 (security re-check): a group has no single client, so group-session stars are capped per group.
         'session_per_group' => 1,
         // SCRUM-472: stars from clients' likes and comments on a counsellor's posts -- at most this many per post (ever),
-        // and per counsellor per UTC day.
+        // per counsellor per UTC day, and from one client to one counsellor per UTC day.
         'interaction_per_post' => 10,
         'interaction_per_day' => 20,
+        'interaction_per_client' => 1,
     ],
 
     // SCRUM-471: a help chat earns a star only if it lasted at least this long.

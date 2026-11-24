@@ -34,4 +34,5 @@ enum SettingsEnum: string
     // SCRUM-472: stars from likes and comments on a counsellor's posts.
     case recognitionCapInteractionPerPost = 'RECOGNITION_CAP_INTERACTION_PER_POST';
     case recognitionCapInteractionPerDay = 'RECOGNITION_CAP_INTERACTION_PER_DAY';
+    case recognitionCapInteractionPerClient = 'RECOGNITION_CAP_INTERACTION_PER_CLIENT';
 }
