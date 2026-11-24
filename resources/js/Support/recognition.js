@@ -63,7 +63,9 @@ export const STAR_CAP_FIELDS = [
     { key: 'session_per_group', label: 'Per group', hint: 'group-session stars a day from one group' },
     // TT-7.11c/SCRUM-472
     { key: 'interaction_per_day', label: 'Likes and comments', hint: 'stars a day from clients liking or commenting on posts (one per client per post)' },
-    { key: 'interaction_per_post', label: 'Per post', hint: 'stars in total from likes and comments on one post (a place freed by an unlike is not refilled)' },
+    // Security review H1: what one client's likes and comments can give a counsellor in a day.
+    { key: 'interaction_per_client', label: 'Likes and comments per client', hint: 'like-and-comment stars a day from one client' },
+    { key: 'interaction_per_post', label: 'Per post (ever)', hint: 'stars in total from likes and comments on one post; once reached, more interactions earn nothing' },
 ]
 
 // TT-7.11e2/SCRUM-477: the optional fee waiver offered when approving -- prefilled with the next calendar month in UTC
