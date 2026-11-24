@@ -130,7 +130,11 @@ appears only while a period is running or starts within 30 days, showing only it
 ## One counsellor's own periods (SCRUM-475, backend)
 
 A super admin can give one counsellor a commission-free period of their own -- optionally for an approved recognition
-(SCRUM-473). The page for it is SCRUM-474's recognition page; until then the routes below are JSON endpoints.
+(SCRUM-473). In the UI this is on the admin recognition page, `/administrator/recognition` (SCRUM-477): "Also waive
+the platform fee" when approving or adding, and a Fee waiver column with **end now** / **delete** for the periods
+linked to that month's recognitions (see `counsellor-recognition.md`, "Fee waiver"). Every administrator sees that
+column's dates, status and `needsReview`; only a super admin sees the reason and the buttons. A period not linked to a
+recognition only shows through the JSON routes below.
 
 - Same field rules as platform-wide (UTC, no backdating, end after the start and now, within 2 years, reason up to
   500). A counsellor's periods can't overlap each other; they may overlap a platform-wide one (whose id is then

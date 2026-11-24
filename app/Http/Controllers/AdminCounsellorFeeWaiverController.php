@@ -31,7 +31,9 @@ class AdminCounsellorFeeWaiverController extends Controller
                 'counsellor' => [
                     'id' => $model->id,
                     // False once they lose verification, are suspended, deleted or the subject of an open report:
-                    // their periods are not ended automatically, so the page alerts on any still applying.
+                    // their periods are not ended automatically, so the page alerts on any still applying. A report
+                    // about an urgent help request doesn't show here (security review M1), though it still blocks a
+                    // new period.
                     'eligible' => $result['eligible'],
                     'verificationState' => $model->verificationState()->value,
                     'suspended' => $model->isSuspended(),
@@ -78,7 +80,7 @@ class AdminCounsellorFeeWaiverController extends Controller
             $counsellor = Counsellor::withTrashed()->find($waiver->counsellor_id);
 
             return $this->successResponse($request, [
-                'waiver' => (new AdminCounsellorFeeWaiverResource($waiver, $counsellor !== null && $service->isEligible($counsellor)))->resolve($request),
+                'waiver' => (new AdminCounsellorFeeWaiverResource($waiver, $counsellor !== null && $service->looksEligible($counsellor)))->resolve($request),
             ]);
         } catch (ValidationException $e) {
             throw $e;

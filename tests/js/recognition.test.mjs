@@ -7,6 +7,8 @@ import {
     recognitionAlerts,
     recognitionEventLabel,
     STAR_CAP_FIELDS,
+    waiverOptionErrors,
+    waiverPrefill,
 } from '../../resources/js/Support/recognition.js'
 
 describe('recognition alerts', () => {
@@ -56,5 +58,60 @@ describe('star cap fields', () => {
             STAR_CAP_FIELDS.map((field) => field.key),
             ['session', 'help_chat', 'discussion', 'post', 'session_per_client', 'session_per_group'],
         )
+    })
+})
+
+// TT-7.11e2/SCRUM-477
+describe('waiver prefill', () => {
+    it('covers the next calendar month in UTC, with a reason naming the recognition month', () => {
+        assert.deepEqual(waiverPrefill('October 2026', new Date('2026-11-22T09:30:00Z')), {
+            starts_at: '2026-12-01T00:00',
+            ends_at: '2027-01-01T00:00',
+            reason: 'Counsellor of the month, October 2026',
+        })
+    })
+
+    it('rolls December over into January of the next year', () => {
+        const prefill = waiverPrefill('December 2026', new Date('2026-12-15T12:00:00Z'))
+
+        assert.equal(prefill.starts_at, '2027-01-01T00:00')
+        assert.equal(prefill.ends_at, '2027-02-01T00:00')
+        assert.equal(prefill.reason, 'Counsellor of the month, December 2026')
+    })
+
+    it('goes by the UTC date, not the browser\'s', () => {
+        // 23:30 on 31 January UTC is already 1 February in a UTC+1 browser -- still January in UTC.
+        assert.equal(waiverPrefill('January 2027', new Date('2027-01-31T23:30:00Z')).starts_at, '2027-02-01T00:00')
+        assert.equal(waiverPrefill('January 2027', new Date('2027-02-01T00:00:00Z')).starts_at, '2027-03-01T00:00')
+    })
+})
+
+describe('waiver option errors', () => {
+    const now = new Date('2026-11-22T09:30:00Z')
+    const valid = { enabled: true, starts_at: '2026-12-01T00:00', ends_at: '2027-01-01T00:00', reason: 'Counsellor of the month, October 2026' }
+
+    it('passes the prefill, and anything when the option is off', () => {
+        assert.deepEqual(waiverOptionErrors(valid, 500, now), {})
+        assert.deepEqual(waiverOptionErrors({ ...valid, enabled: false, starts_at: '' }, 500, now), {})
+        assert.deepEqual(waiverOptionErrors({ enabled: true, ...waiverPrefill('October 2026', now) }, 500, now), {})
+    })
+
+    it('needs both dates and a reason', () => {
+        assert.deepEqual(Object.keys(waiverOptionErrors({ enabled: true, starts_at: '', ends_at: 'nope', reason: '   ' }, 500, now)), ['starts_at', 'ends_at', 'reason'])
+    })
+
+    it('needs the end after the start, and in the future', () => {
+        assert.equal(waiverOptionErrors({ ...valid, ends_at: '2026-12-01T00:00' }, 500, now).ends_at, 'The end must be after the start.')
+        assert.equal(waiverOptionErrors({ ...valid, starts_at: '', ends_at: '2026-11-01T00:00' }, 500, now).ends_at, 'The end must be in the future.')
+    })
+
+    it('refuses a start in the past, allowing the server\'s minute', () => {
+        assert.equal(waiverOptionErrors({ ...valid, starts_at: '2026-11-01T00:00' }, 500, now).starts_at, 'The start cannot be in the past.')
+        assert.deepEqual(waiverOptionErrors({ ...valid, starts_at: '2026-11-22T09:30' }, 500, now), {})
+        assert.equal(waiverOptionErrors({ ...valid, starts_at: '2026-11-22T09:28' }, 500, now).starts_at, 'The start cannot be in the past.')
+    })
+
+    it('limits the reason to the server\'s maximum', () => {
+        assert.equal(waiverOptionErrors({ ...valid, reason: 'x'.repeat(11) }, 10, now).reason, 'The reason can be up to 10 characters.')
     })
 })

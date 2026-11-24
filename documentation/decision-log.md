@@ -14027,3 +14027,71 @@ the security review and browser QA.
 - **SCRUM-475:** the empty "Fee waiver" column was removed. SCRUM-475 is in PR #377, and the waiver UI comes in a
   follow-up once both have merged. `decide()` in `Recognition.vue` still marks where the waiver fields will join the
   approve request and its confirm step.
+
+## SCRUM-477 — waiver on the recognition page (TT-7.11e2, 2026-11-22)
+
+TT-7.11e2: the SCRUM-475 waiver on `/administrator/recognition` -- "Also waive the platform fee" when approving, and the
+Fee waiver column.
+
+- **Column data in the page props, not a JSON call per row:**
+  - `feeWaivers` comes from `PlatformFeeWaiverService::getLinkedToRecognitionMonthForAdmin()`: one query for the
+    periods linked to the month's recognitions (a subquery on `counsellor_recognitions.platform_fee_waiver_id`), their
+    `createdBy`/`endedBy`/`recognition` eager-loaded, and one `GetRecognitionEligibleCounsellorIdsAction` pass for
+    `needsReview`. The query count doesn't grow with the rows (tested).
+  - Any admin can read it; anyone else gets a 403 from the service. The per-counsellor JSON index stays super-admin
+    only, as the ticket asked.
+  - Only periods linked to that month's recognitions are listed. A counsellor's other periods (unlinked, or another
+    month's) don't show in the column; they're on the JSON route.
+- **What an ordinary admin sees:** `AdminRecognitionFeeWaiverResource` extends SCRUM-475's
+  `AdminCounsellorFeeWaiverResource` and, for anyone but a super admin, drops `reason`, `createdBy`, `endedBy`,
+  `canEnd` and `canDelete`. They keep the dates, the status, `needsReview` and the recognition link. The reason and
+  who created a period are money decisions for the super admins who make them; the status and `needsReview` are what
+  every admin needs to spot a period that should be looked at.
+- **Own row:** for every admin, super or not, the viewer's own counsellor row gets only `{counsellorId,
+  recognitionId, redacted: true}`, shown as "waiver given". The ticket allowed "whether one exists"; the dates are
+  dropped too, and in particular `needsReview`, which would tell an admin they are under an open report (the same
+  leak security review L1 closed for the row's flags).
+- **Approve, then waive:**
+  - The waiver fields are on the confirm step of approve and add (suggestions, "Also decided" re-approvals, and the
+    add search). For a row they open in a full-width row under it, with the confirm and cancel buttons, so the
+    checkbox comes before the confirm button in tab order. The row's action cell reads "confirm below".
+  - The approval is posted first (an Inertia visit, as before). On success, the new recognition's id is read from the
+    reloaded `recognition` props (the redirect back carries no body; the flashed JSON isn't shared), and the period is
+    posted with axios to `admin.counsellors.fee-waivers.store` with `counsellor_recognition_id`. Then only
+    `feeWaivers` is reloaded.
+  - A refused period leaves the approval in place. The error shows as an alert and as a red notice above the
+    suggestions ("Approved without a fee waiver."), kept until dismissed.
+  - Not added: an "add a waiver" button on an already-approved row without one. The acceptance criteria name "--" for
+    those rows, so a refused waiver can only be retried by skipping and re-approving, or through the JSON route.
+    Flagged as a possible follow-up.
+- **Prefill:** `waiverPrefill()` in `recognition.js` is the next calendar month **from today (UTC)**, not from the
+  recognition's month: deciding last month on 22 November prefills 1 December to 1 January. A period can't start in
+  the past, so a month-after-the-recognition rule would often be refused. The reason names the **recognition's**
+  month ("Counsellor of the month, October 2026"), since that's what the counsellor is recognised for. The fields are
+  `datetime-local`, labelled UTC/GMT and sent with no offset, which the server reads as UTC (as on Payouts).
+- **Status pill:** `waiverStatusPill()` uses Payouts' tones (upcoming blue, active green, ended gray, cancelled amber);
+  "needs review" is a red pill. End now is offered only while active and delete only while upcoming, as the resource's
+  `canEnd`/`canDelete` already say.
+- **Review and security fixes:**
+  - **needsReview and help-request reports (security review M1):** a report about an urgent help request hides who
+    asked for help, so a period flagged for review with no visible reason would reveal one. The displayed
+    eligibility (`PlatformFeeWaiverService::displayEligibleIds()` / `looksEligible()`) takes
+    `GetCounsellorIdsWithOpenReportsAction`'s `flaggableCounsellorIds` as the reported ids. It feeds this page's
+    `needsReview`, and also SCRUM-475's JSON (`eligible`, and `needsReview` on the list and on every create, end and
+    delete response). Creating a period still goes through `isEligible()` on every open report, so such a report
+    still refuses one. Accepted residual, as in SCRUM-474: that refusal itself says "not eligible" without a
+    visible reason.
+  - **Checked before the approval is posted:** `waiverOptionErrors()` checks both dates and the reason (up to the
+    `waiverReasonMax` prop), that the end is after the start and in the future, and that the start isn't more than
+    the server's minute in the past. Errors show inline under each field and confirm stays disabled, so an approval
+    isn't saved with a period that can only be refused. Overlap and eligibility are still only known to the server.
+  - **No option on a row with a linked period:** the slot is only given when `!waiverFor(row)`. A recognition links
+    to one period at most (the service refuses a second), so offering it there could only fail after the approval.
+  - **One refusal message:** a refused period shows only in the notice (not also as an alert), headed "<Name>
+    approved without a fee waiver." or "added" on the add path, followed by the server's reason. While the period is
+    being posted, every confirm is disabled (`waiverSaving`).
+  - **Shared helpers:** `waiverStatusPill()` and `utcInputValue()` moved to `commissionFree.js`. Payouts' commission-
+    free list uses the same pill.
+  - **Table width:** `AdminTable`'s card is `overflow-x-auto` instead of `overflow-hidden`, for every admin table. A
+    table wider than the window (this page's eight columns at about 1580px) now scrolls instead of clipping its last
+    column. Narrower tables look the same.
