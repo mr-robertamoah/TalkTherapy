@@ -1,6 +1,9 @@
 <?php
 
+use App\Actions\Like\CreateLikeAction;
 use App\Actions\Post\SyncPostInteractionStarAction;
+use App\Actions\Suspension\ApplySuspensionAction;
+use App\Actions\User\AnonymiseClosedAccountAction;
 use App\Enums\AdministratorTypeEnum;
 use App\Enums\SettingsEnum;
 use App\Enums\StarSourceEnum;
@@ -11,6 +14,7 @@ use App\Models\GroupTherapy;
 use App\Models\Like;
 use App\Models\PlatformSetting;
 use App\Models\Post;
+use App\Models\PostInteractionAward;
 use App\Models\Report;
 use App\Models\Star;
 use App\Models\Suspension;
@@ -18,9 +22,11 @@ use App\Models\User;
 use App\Services\SettingsService;
 use Database\Seeders\PostInteractionStarSeeder;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Route;
 use Inertia\Testing\AssertableInertia;
 
 // TT-7.11c/SCRUM-472: a counsellor's post earns them one star per qualifying user who likes or comments on it
@@ -172,12 +178,18 @@ test('a like and a comment from the same client are one star', function () {
     expect(pisStars($post)->count())->toBe(1);
 });
 
-test('duplicate likes count once, and the star stays until the last one goes', function () {
+test('a second like by the same person is refused; duplicate rows from before still count once', function () {
     $post = pisPost(pisCounsellor());
     $client = pisClient();
 
     pisLike($this, $client, $post);
-    pisLike($this, $client, $post);
+    $this->actingAs($client)->postJson(route('api.likes.create'), ['likeableType' => 'Post', 'likeableId' => $post->id])
+        ->assertStatus(422)
+        ->assertJsonFragment(['message' => CreateLikeAction::ALREADY_LIKED]);
+
+    // A duplicate written before the check existed.
+    $duplicate = $client->likes()->create();
+    $duplicate->likeable()->associate($post)->save();
 
     expect(Like::query()->where('user_id', $client->id)->count())->toBe(2)
         ->and(pisStars($post)->count())->toBe(1);
@@ -189,7 +201,7 @@ test('duplicate likes count once, and the star stays until the last one goes', f
     expect(pisStars($post)->count())->toBe(0);
 });
 
-test('unliking while a comment remains keeps the star; removing both takes it back; interacting again earns it again', function () {
+test('unliking while a comment remains keeps the star; removing both takes it back; interacting again gives nothing new', function () {
     $post = pisPost(pisCounsellor());
     $client = pisClient();
 
@@ -202,8 +214,26 @@ test('unliking while a comment remains keeps the star; removing both takes it ba
     pisUncomment($this, $client, $commentId);
     expect(pisStars($post)->count())->toBe(0);
 
+    // Security review M1: the award is on record, so the same person's likes never earn it again.
     pisComment($this, $client, $post);
-    expect(pisStars($post)->count())->toBe(1);
+    pisLike($this, $client, $post);
+    expect(pisStars($post)->count())->toBe(0)
+        ->and(PostInteractionAward::query()->where('post_id', $post->id)->where('user_id', $client->id)->count())->toBe(1);
+});
+
+test('unliking and liking again can\'t move a star into a new month', function () {
+    $post = pisPost(pisCounsellor());
+    $client = pisClient();
+
+    pisLike($this, $client, $post);
+    $first = pisStars($post)->sole();
+    pisUnlike($this, $client, $post);
+
+    Carbon::setTestNow(Carbon::parse('2027-01-02 09:00:00', 'UTC'));
+    pisLike($this, $client, $post);
+
+    expect(pisStars($post)->count())->toBe(0)
+        ->and(PostInteractionAward::query()->sole()->awarded_at->equalTo($first->created_at))->toBeTrue();
 });
 
 test('a comment alone earns the star, and deleting it takes the star back', function () {
@@ -276,6 +306,7 @@ test('a user who doesn\'t qualify gives nothing', function (Closure $makeUser) {
 
         return $user;
     }],
+    'an anonymised (not deleted) account' => [fn () => pisClient(['anonymised_at' => now()])],
 ]);
 
 test('an account exactly the minimum age qualifies, and the minimum comes from config', function () {
@@ -308,8 +339,7 @@ test('a client who stops qualifying loses the star at their next like or comment
 
     pisLike($this, $client, $post);
     pisSuspend($client, SuspensionScopeEnum::counsellor);
-    $this->actingAs($client)->postJson(route('api.comments.create'), ['commentableType' => 'Post', 'commentableId' => $post->id, 'content' => 'Hi']);
-    SyncPostInteractionStarAction::new()->execute($post, $client);
+    pisComment($this, $client, $post);
 
     expect(pisStars($post)->count())->toBe(0);
 });
@@ -337,19 +367,33 @@ test('a suspended counsellor earns nothing from their post', function () {
     expect(pisStars()->count())->toBe(0);
 });
 
-test('deleting the post deletes its interaction stars', function () {
+test('an unlike on a deleted counsellor\'s post still takes the star back', function () {
     $counsellor = pisCounsellor();
     $post = pisPost($counsellor);
-    pisLike($this, pisClient(), $post);
+    $client = pisClient();
+    pisLike($this, $client, $post);
+    $counsellor->delete();
 
-    $this->actingAs($counsellor->user)->deleteJson(route('api.posts.delete', ['postId' => $post->id]))->assertSuccessful();
+    pisUnlike($this, $client, $post);
 
     expect(pisStars()->count())->toBe(0);
 });
 
+test('deleting the post deletes its interaction stars and its award records', function () {
+    $counsellor = pisCounsellor();
+    $post = pisPost($counsellor);
+    pisLike($this, pisClient(), $post);
+    expect(PostInteractionAward::query()->count())->toBe(1);
+
+    $this->actingAs($counsellor->user)->deleteJson(route('api.posts.delete', ['postId' => $post->id]))->assertSuccessful();
+
+    expect(pisStars()->count())->toBe(0)
+        ->and(PostInteractionAward::query()->count())->toBe(0);
+});
+
 // ---- Caps ----
 
-test('at most interaction_per_post stars per post; a freed place is not refilled', function () {
+test('at most interaction_per_post stars per post, ever: unliking never frees a place', function () {
     pisSetting(SettingsEnum::recognitionCapInteractionPerPost, 2);
     $counsellor = pisCounsellor();
     $post = pisPost($counsellor);
@@ -361,22 +405,20 @@ test('at most interaction_per_post stars per post; a freed place is not refilled
 
     expect(pisStars($post)->pluck('starredby_id')->sort()->values()->all())->toBe([$first->id, $second->id]);
 
-    // The first unlikes: their place is free, but the third client's earlier like isn't looked at again.
+    // The first unlikes: their star goes, but their award still counts, so the post stays full.
     pisUnlike($this, $first, $post);
+    pisComment($this, $third, $post);
+    pisLike($this, pisClient(), $post);
     expect(pisStars($post)->pluck('starredby_id')->all())->toBe([$second->id]);
 
-    // A new interaction takes the free place -- the third client's own next interaction, or anyone's.
-    pisComment($this, $third, $post);
-    expect(pisStars($post)->pluck('starredby_id')->sort()->values()->all())->toBe([$second->id, $third->id]);
-
-    // The per-post cap isn't per day.
+    // Not per day.
     Carbon::setTestNow(now()->addDay());
     pisLike($this, pisClient(), $post);
-    expect(pisStars($post)->count())->toBe(2);
+    expect(pisStars($post)->count())->toBe(1);
 
     // Another post has its own places.
     pisLike($this, pisClient(), pisPost($counsellor));
-    expect(pisStars()->count())->toBe(3);
+    expect(pisStars()->count())->toBe(2);
 });
 
 test('the per-post default is 10', function () {
@@ -424,6 +466,43 @@ test('a super admin\'s setting overrides the config default for both caps', func
         ->and(SettingsService::new()->getRecognitionCaps())->toMatchArray(['interaction_per_day' => 3, 'interaction_per_post' => 2]);
 });
 
+test('one client gives a counsellor at most interaction_per_client stars a UTC day, the default 1', function () {
+    Carbon::setTestNow('2026-12-10 23:00:00');
+    $counsellor = pisCounsellor();
+    $client = pisClient();
+    [$one, $two, $three, $four] = collect(range(1, 4))->map(fn () => pisPost($counsellor))->all();
+
+    pisLike($this, $client, $one);
+    pisLike($this, $client, $two);
+    expect(pisStars()->count())->toBe(1);
+
+    // Unliking doesn't hand the day's place back.
+    pisUnlike($this, $client, $one);
+    pisLike($this, $client, $three);
+    expect(pisStars()->count())->toBe(0);
+
+    // Another counsellor's post is another allowance.
+    pisLike($this, $client, pisPost(pisCounsellor()));
+    expect(pisStars()->count())->toBe(1);
+
+    // A new UTC day, a new allowance.
+    Carbon::setTestNow('2026-12-11 00:00:01');
+    pisLike($this, $client, $four);
+    expect(pisStars()->count())->toBe(2);
+});
+
+test('a super admin raises the per-client cap', function () {
+    pisSetting(SettingsEnum::recognitionCapInteractionPerClient, 2);
+    $counsellor = pisCounsellor();
+    $client = pisClient();
+
+    foreach (range(1, 3) as $i) {
+        pisLike($this, $client, pisPost($counsellor));
+    }
+
+    expect(pisStars()->count())->toBe(2);
+});
+
 test('a cap of 0 stops interaction stars', function () {
     pisSetting(SettingsEnum::recognitionCapInteractionPerDay, 0);
     pisLike($this, pisClient(), pisPost(pisCounsellor()));
@@ -433,25 +512,113 @@ test('a cap of 0 stops interaction stars', function () {
 
 // ---- Never in the way ----
 
-test('a failing star sync never blocks the like, the unlike, the comment or its delete', function () {
+test('a failing star award never blocks the like or the comment', function () {
     Exceptions::fake();
     Event::listen('eloquent.creating: '.Star::class, fn () => throw new RuntimeException('star store down'));
     $post = pisPost(pisCounsellor());
-    $client = pisClient();
 
-    pisLike($this, $client, $post);
-    $commentId = pisComment($this, $client, $post);
+    pisLike($this, $liker = pisClient(), $post);
+    pisComment($this, $commenter = pisClient(), $post);
 
-    expect($post->likes()->count())->toBe(1)
-        ->and($post->comments()->count())->toBe(1)
+    expect($post->likes()->where('user_id', $liker->id)->exists())->toBeTrue()
+        ->and($post->comments()->where('user_id', $commenter->id)->exists())->toBeTrue()
         ->and(pisStars()->count())->toBe(0);
     Exceptions::assertReported(fn (RuntimeException $e) => $e->getMessage() === 'star store down');
+});
 
-    Event::listen('eloquent.deleting: '.Star::class, fn () => throw new RuntimeException('never reached'));
-    pisUnlike($this, $client, $post);
-    pisUncomment($this, $client, $commentId);
+test('a failing star revoke never blocks the unlike or the comment delete', function () {
+    $post = pisPost(pisCounsellor());
+    pisLike($this, $liker = pisClient(), $post);
+    $commentId = pisComment($this, $commenter = pisClient(), $post);
+    expect(pisStars($post)->count())->toBe(2);
 
-    expect($post->likes()->count())->toBe(0)->and($post->comments()->count())->toBe(0);
+    Exceptions::fake();
+    // The revoke's DELETE fails (its transaction rolls back, so the stars stay).
+    DB::listen(function ($query) {
+        if (preg_match('/^delete from [`"]stars[`"]/i', $query->sql)) {
+            throw new RuntimeException('revoke failed');
+        }
+    });
+
+    pisUnlike($this, $liker, $post);
+    pisUncomment($this, $commenter, $commentId);
+
+    expect($post->likes()->count())->toBe(0)
+        ->and($post->comments()->count())->toBe(0)
+        ->and(pisStars($post)->count())->toBe(2);
+    Exceptions::assertReported(fn (RuntimeException $e) => $e->getMessage() === 'revoke failed');
+});
+
+test('the like and comment routes are throttled, 30 a minute each', function (string $name) {
+    expect(Route::getRoutes()->getByName($name)->gatherMiddleware())->toContain("throttle:30,1,{$name}");
+})->with(['api.likes.create', 'api.likes.delete', 'api.comments.create', 'api.comments.delete']);
+
+// ---- When the person giving stars goes ----
+
+test('suspending someone takes back this month\'s stars they gave by liking and commenting', function (SuspensionScopeEnum $scope) {
+    $counsellor = pisCounsellor();
+    $client = $scope === SuspensionScopeEnum::counsellor ? pisCounsellor()->user : pisClient();
+    $thisMonth = pisPost($counsellor);
+    $lastMonth = pisPost($counsellor);
+
+    // Written directly: the sweep is about who gave a star, not whether they could earn one now.
+    $star = function (Post $post, string $at) use ($counsellor, $client): Star {
+        $star = (new Star)->forceFill([
+            'type' => StarSourceEnum::postInteraction->starType()->value,
+            'source' => StarSourceEnum::postInteraction,
+            'award_key' => "post_interaction:{$post->id}:{$client->id}",
+        ]);
+        $star->starred()->associate($counsellor);
+        $star->starreable()->associate($post);
+        $star->starredby()->associate($client);
+        $star->save();
+        $star->forceFill(['created_at' => Carbon::parse($at, 'UTC')])->save();
+
+        return $star;
+    };
+    $star($thisMonth, '2026-12-02 10:00:00');
+    $kept = $star($lastMonth, '2026-11-28 10:00:00');
+    pisLike($this, $other = pisClient(), $thisMonth);
+
+    $report = new Report(['description' => 'Something happened', 'data' => ['userId' => $client->id]]);
+    $report->addedby()->associate(pisClient());
+    $report->reportable()->associate(GroupTherapy::factory()->create());
+    $report->save();
+    $report->forceFill(['status' => 'resolved', 'outcome' => 'suspension_recommended', 'resolution_note' => 'Serious'])->save();
+    ApplySuspensionAction::new()->execute(pisSuperAdmin(), $report, $scope, 30, 'Repeated abusive messages to others.');
+
+    expect(pisStars()->where('starredby_id', $client->id)->pluck('id')->all())->toBe([$kept->id])
+        ->and(pisStars()->where('starredby_id', $other->id)->count())->toBe(1);
+})->with([SuspensionScopeEnum::account, SuspensionScopeEnum::counsellor]);
+
+test('closing an account deletes the interaction stars it gave and takes its name off the others', function () {
+    $counsellor = pisCounsellor();
+    $client = pisClient();
+    pisLike($this, $client, pisPost($counsellor));
+    $session = (new Star)->forceFill(['type' => StarSourceEnum::sessionHeld->starType()->value, 'source' => StarSourceEnum::sessionHeld, 'award_key' => 'session_held:pis1']);
+    $session->starred()->associate($counsellor);
+    $session->starreable()->associate($counsellor->user);
+    $session->starredby()->associate($client);
+    $session->save();
+
+    $client->delete();
+
+    expect(pisStars()->count())->toBe(0)
+        ->and($session->fresh()->starredby_id)->toBeNull()
+        ->and($session->fresh()->starredby_type)->toBeNull();
+});
+
+test('anonymising a closed account sweeps its stars too (accounts closed before this release)', function () {
+    $counsellor = pisCounsellor();
+    $client = pisClient();
+    pisLike($this, $client, pisPost($counsellor));
+    // Closed without the model events, as an account closed before the sweep existed.
+    User::withoutEvents(fn () => $client->delete());
+    expect(pisStars()->count())->toBe(1);
+
+    AnonymiseClosedAccountAction::new()->execute(User::withTrashed()->find($client->id));
+
+    expect(pisStars()->count())->toBe(0);
 });
 
 // ---- The admin caps card ----
@@ -464,20 +631,23 @@ test('the caps card shows the interaction caps and a super admin saves them', fu
             ->where('caps.interaction_per_post', 10)
             ->where('caps.interaction_per_day', 20)
             ->where('capsMax.interaction_per_post', 100)
-            ->where('capsMax.interaction_per_day', 100));
+            ->where('capsMax.interaction_per_day', 100)
+            ->where('caps.interaction_per_client', 1)
+            ->where('capsMax.interaction_per_client', 10));
 
-    $caps = array_merge(SettingsService::new()->getRecognitionCaps(), ['interaction_per_post' => 4, 'interaction_per_day' => 7]);
+    $caps = array_merge(SettingsService::new()->getRecognitionCaps(), ['interaction_per_post' => 4, 'interaction_per_day' => 7, 'interaction_per_client' => 3]);
     $this->actingAs($super)->postJson(route('admin.settings.recognition-caps.update'), ['caps' => $caps])
         ->assertOk()
         ->assertJsonPath('caps.interaction_per_post', 4)
-        ->assertJsonPath('caps.interaction_per_day', 7);
+        ->assertJsonPath('caps.interaction_per_day', 7)
+        ->assertJsonPath('caps.interaction_per_client', 3);
 
     expect(PlatformSetting::query()->where('key', SettingsEnum::recognitionCapInteractionPerPost->value)->value('value'))->toBe('4')
         ->and(PlatformSetting::query()->where('key', SettingsEnum::recognitionCapInteractionPerDay->value)->value('value'))->toBe('7');
 
-    $this->actingAs($super)->postJson(route('admin.settings.recognition-caps.update'), ['caps' => array_merge($caps, ['interaction_per_post' => 101])])
+    $this->actingAs($super)->postJson(route('admin.settings.recognition-caps.update'), ['caps' => array_merge($caps, ['interaction_per_post' => 101, 'interaction_per_client' => 11])])
         ->assertUnprocessable()
-        ->assertJsonValidationErrors('caps.interaction_per_post');
+        ->assertJsonValidationErrors(['caps.interaction_per_post', 'caps.interaction_per_client']);
 });
 
 // ---- Privacy ----
@@ -541,5 +711,5 @@ test('the seeder gives lisa_anderson two stars from her demo post, once', functi
         ->and(pisStars($post)->pluck('starredby_id')->sort()->values()->all())->toBe([$fan('post_fan_ama'), $fan('post_fan_kofi')])
         ->and($post->likes()->count())->toBe(3)
         ->and($post->comments()->count())->toBe(1)
-        ->and(SyncPostInteractionStarAction::qualifies($counsellor, User::query()->where('username', 'post_fan_esi')->sole()))->toBeTrue();
+        ->and(SyncPostInteractionStarAction::qualifies(User::query()->where('username', 'post_fan_esi')->sole()))->toBeTrue();
 });

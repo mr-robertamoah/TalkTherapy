@@ -97,7 +97,7 @@ function rapCaps(array $overrides = []): array
 {
     return array_merge([
         'session' => 8, 'help_chat' => 5, 'discussion' => 2, 'post' => 3, 'session_per_client' => 1, 'session_per_group' => 1,
-        'interaction_per_post' => 10, 'interaction_per_day' => 20,
+        'interaction_per_post' => 10, 'interaction_per_day' => 20, 'interaction_per_client' => 1,
     ], $overrides);
 }
 
@@ -123,7 +123,7 @@ test('any admin opens the page for last month by default, with the suggestions, 
             ->has('recognition.unattributedOpenReportsNote')
             ->where('events', [])
             ->where('caps', rapCaps())
-            ->where('capsMax', rapCaps(['session' => 100, 'help_chat' => 100, 'discussion' => 100, 'post' => 100, 'session_per_client' => 10, 'session_per_group' => 10, 'interaction_per_post' => 100, 'interaction_per_day' => 100]))
+            ->where('capsMax', rapCaps(['session' => 100, 'help_chat' => 100, 'discussion' => 100, 'post' => 100, 'session_per_client' => 10, 'session_per_group' => 10, 'interaction_per_post' => 100, 'interaction_per_day' => 100, 'interaction_per_client' => 10]))
             ->has('adminNavigation'));
 
     $super = rapAdmin();
@@ -285,6 +285,7 @@ test('every cap must be a whole number from 0 to its maximum, all of them at onc
     // SCRUM-472
     'per post over 100' => [rapCaps(['interaction_per_post' => 101]), 'caps.interaction_per_post'],
     'interactions a day negative' => [rapCaps(['interaction_per_day' => -1]), 'caps.interaction_per_day'],
+    'interactions per client over 10' => [rapCaps(['interaction_per_client' => 11]), 'caps.interaction_per_client'],
     'missing an interaction cap' => [array_diff_key(rapCaps(), ['interaction_per_day' => true]), 'caps.interaction_per_day'],
     'an unknown key' => [rapCaps(['interaction' => 3]), 'caps'],
 ]);
