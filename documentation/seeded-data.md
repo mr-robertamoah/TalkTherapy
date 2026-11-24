@@ -810,3 +810,24 @@ Skipped once she has any period of her own.
   (GMT) and *upcoming*. As the super admin it also shows the reason and **delete** (two clicks). As the ordinary
   admin `suspension_demo_normal_admin`, just the dates and status. Her row has no "Also waive the platform fee"
   option, since a period is already linked.
+
+### Stars from post interactions (SCRUM-472, `PostInteractionStarSeeder`)
+
+Local and testing only; `DatabaseSeeder` calls it after `RecognitionSeeder`. `lisa_anderson` gets a post published
+as a counsellor, starting "[Recognition demo: post] Small routines help on hard days" (near the top of Home's posts
+list on a fresh seed). Four demo clients, all with a verified email and the password `password`; the likes and the
+comment go through the real `LikeService`/`CommentService`, so the stars are the real rule's:
+
+| Username | Account age | On the post | Star for Lisa |
+|---|---|---|---|
+| `post_fan_ama` | 30 days | liked and commented | one |
+| `post_fan_kofi` | 30 days | liked | one |
+| `post_fan_new` | 2 days | liked | none (under the 7-day minimum) |
+| `post_fan_esi` | 30 days | nothing yet | qualifies -- use this account to try it out |
+
+Ages are counted from the seed run, so `post_fan_new` qualifies once the seed is 5 days old; Lisa's two stars are
+dated the day of the run. The post is found by its prefix and each account by its username, so running it again adds
+nothing. Add it to an
+existing local database with
+`docker compose exec -u www-data php php artisan db:seed --class=PostInteractionStarSeeder`.
+See `documentation/features/counsellor-recognition.md`, "Stars from likes and comments".

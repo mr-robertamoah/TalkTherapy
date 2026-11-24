@@ -14224,3 +14224,60 @@ controls, and Home's "Leading" on new-rule stars.
     the counsellor picker) still orders by the legacy `stars_count` (a `withCount('stars')` on all stars, ascending).
     It sends no count, but the order still reflects legacy stars. Changing the directory's order is its own product
     decision; to be ticketed.
+
+## SCRUM-472 — stars from post interactions (TT-7.11c, 2026-11-24)
+
+TT-7.11c, part 3 of 7 of SCRUM-464, the last one built. A qualifying user who likes or comments on a counsellor's post
+gives that counsellor one star, key `post_interaction:{post}:{user}`, `starredby` the user, starreable the post.
+
+- **Recompute, not increment:** `SyncPostInteractionStarAction(Post, User)` works the star out from scratch: if the
+  user has at least one like or comment on the post and qualifies, the star is made sure of (through
+  `AwardCounsellorStarAction` and its caps); otherwise it is revoked (`forCounsellorAndKey`). `LikeService::like`/
+  `dislike` and `CommentService::createComment`/`deleteComment` call it through `BestEffortAfterCommit`, so a failure
+  is reported and never blocks or undoes the like or comment. Anything but a Post (a therapy, a counsellor's profile)
+  is ignored. Duplicate likes (the `likes` table has no unique index, and the like route doesn't refuse a second
+  one) are one interaction; the star stays until the last like goes, matching the `isLiked` the page shows.
+- **Lock:** the sync takes the post's counsellor's row lock (`lockForUpdate`, soft-deleted rows included) before
+  reading anything, then the award re-enters the same lock (`AwardCounsellorStarAction` locks the same row in a
+  nested transaction). One lock, always the counsellor row, so there is no lock order to get wrong; concurrent
+  syncs for one counsellor run one at a time and the last one sees the final likes and comments. (Locking the Post
+  row as well would add a second lock to order against the award's, for no gain: the counsellor lock already
+  serialises every post of theirs.)
+- **Who qualifies** (`SyncPostInteractionStarAction::qualifies()`, read fresh): not the author's user; no counsellor
+  profile at all -- **judgment call:** a soft-deleted counsellor profile still counts as one (`withTrashed`), so a
+  counsellor can't delete their profile to farm stars for friends; verified email; account at least
+  `recognition.interaction_min_account_age_days` (7) old, inclusive; not suspended in either scope
+  (`anyActiveSuspension()`); not soft-deleted and not anonymised. The ticket's "not the counsellor's profile" needs
+  no separate check: likes and comments are always by a user.
+- **Qualification is checked at each sync (judgment call):** a user who stops qualifying (suspended, say) keeps the
+  star until their next like, unlike, comment or delete on that post, which then takes it back. Suspending or
+  deleting an account doesn't sweep their interaction stars -- like every other rule, stars are evaluated at the
+  event, and closed months are snapshotted anyway. A user who becomes eligible later (verifies their email, ages
+  past 7 days) gets nothing for old likes until they interact again.
+- **Caps** (`StarCapPolicy`, under the same counsellor lock): at most `interaction_per_day` (20) post-interaction
+  stars per counsellor per UTC day, and at most `interaction_per_post` (10) per post, ever (**judgment call:** the
+  ticket says "per post", not "per post per day"; a lifetime cap bounds what one viral or farmed post can earn).
+  The policy refuses a post-interaction star whose starreable isn't a Post (`StarFoundationTest`'s bulk-revoke test
+  now uses a post-published star for its "other rule" fixture).
+- **A freed slot is not backfilled (from the ticket):** when a star is revoked under a full post, nobody turned away
+  earlier gets it automatically; the next like or comment by anyone qualifying (including a turned-away user's own
+  next interaction) takes the place. Backfilling would mean re-syncing every past interactor on every unlike.
+- **Admin caps:** config moved from `recognition.interaction_per_post`/`interaction_per_day` into `recognition.cap`
+  (`cap.interaction_per_post`, `cap.interaction_per_day`), so `SettingsService::getRecognitionCaps()` reads them like
+  the rest. New `SettingsEnum` keys `RECOGNITION_CAP_INTERACTION_PER_POST` and `RECOGNITION_CAP_INTERACTION_PER_DAY`
+  in `RECOGNITION_CAP_KEYS`; `UpdateRecognitionCapsRequest` allows 0–100 for both (the per-source 0–10 is for the
+  caps that stop one client or group farming; the per-client role here is already the one-star-per-user rule). The
+  card (`STAR_CAP_FIELDS`) lists "Likes and comments" and "Per post" with hints; its intro now says the per-post
+  limit isn't daily. `interaction_min_account_age_days` stays config-only (the ticket didn't ask for it on the card).
+- **Privacy:** no resource or Inertia prop sends `starredby` (none did; tests now hold it): a test snapshots the keys of
+  `PostResource` (`api.posts` and Home's `post` prop), `CounsellorResource` (the profile) and Home's props, and walks
+  every key of Home and the profile for a guest, the liking client and the counsellor.
+- **Seed data:** `PostInteractionStarSeeder` (local and testing only, idempotent): a counsellor post by
+  `lisa_anderson`, liked by `post_fan_ama` (and commented) and `post_fan_kofi` (2 stars), liked by `post_fan_new`
+  (2-day-old account, no star), and `post_fan_esi` left to try it. Lisa leads Home's "Leading" already, so the extra
+  stars don't change its order or the showcase seeder test.
+- **Tests:** `tests/Feature/PostInteractionStarsTest.php` (prefix `pis`): earning, like + comment, duplicates, unlike
+  with a comment left, removing both, anonymous comments, every qualification rule, a user post and a profile like,
+  a suspended counsellor, post delete, both caps with a freed place not refilled, the defaults, a settings override
+  of config, a cap of 0, a failing sync not blocking any of the four routes, the caps card, no `starredby`, and the
+  seeder. Existing caps tests updated for the two new keys.
