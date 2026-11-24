@@ -22,24 +22,35 @@ always goes to the counsellor's profile, and only while the counsellor is verifi
 - **Likes and comments on a counsellor's post (SCRUM-472).** Each person who likes it, comments on it, or both gives
   the counsellor **one** star for that post. Liking twice, or liking and commenting, is still one star. Anonymous
   comments count and stay anonymous. The person must:
-  - not be the post's author, and not be a counsellor at all (a deleted counsellor profile still counts as one);
+  - not be a counsellor at all, which also rules out the post's author (a deleted counsellor profile still counts
+    as one);
   - have a verified email;
   - have an account at least 7 days old (`recognition.interaction_min_account_age_days`);
-  - not be suspended (either kind) and not be deleted.
+  - not be suspended (either kind), deleted or anonymised.
 
-  The star is worked out again after every like, unlike, comment and comment delete. It stays while the person still
-  has a like or a comment on the post, and goes once they have neither (or no longer qualify). A post made as a user,
-  not as a counsellor, earns nothing. Deleting the post deletes its stars. Who liked or commented is never shown to
-  anyone: no page or API sends who a star came from.
+  The star is worked out again after every like, unlike, comment and comment delete (a deleted comment counts for
+  its author). It stays while the person still has a like or a comment on the post, and goes once they have neither
+  (or no longer qualify). **A post earns a star from each person once, ever:** every award is recorded for good
+  (`post_interaction_awards`), so unliking and liking again gives nothing new, and can't move a star into a later
+  month. A post made as a user, not as a counsellor, earns nothing. Deleting the post deletes its stars and its
+  award records. An unlike on a deleted counsellor's post still takes the star back.
 
-Every rule has a limit; see "Daily star limits" below.
+  When the person goes, so do their stars: suspending them (either kind) deletes the post-interaction stars they gave
+  this UTC month; closing their account deletes every post-interaction star they gave and takes their name off any
+  other star (anonymising a closed account does the same again, for accounts closed earlier).
+
+  Liking the same thing twice is refused ("You already like this.", 422). Liking, unliking, commenting and deleting a
+  comment are each limited to 30 a minute per person. Who liked or commented is never shown to anyone: no page or
+  API sends who a star came from.
+
+Every rule has a limit; see "Star limits" below.
 
 ## The admin page: `/administrator/recognition`
 
 In the admin sidebar under **Money**, next to Payouts, as **Counsellor recognition**.
 
 - **Every administrator** can open it and see everything on it: the suggestions, the decided rows, the audit and the
-  daily star limits.
+  star limits.
 - **Only a super administrator** sees the controls: approve, skip, add a counsellor and save the limits. The server
   enforces the same rule. An ordinary admin who posts to any of those routes directly gets a **403**, and so does a
   call to the counsellor search.
@@ -170,7 +181,7 @@ Every decision and consent change on the month's recognitions, most recent first
 counsellor, what happened (for example "skipped (was approved)" or "agreed to be featured"), and who did it. The
 actor's name is shown to administrators only, and never on the viewer's own recognition. The consent request itself always comes from "TalkTherapy".
 
-### Daily star limits
+### Star limits
 
 The most stars a counsellor can earn in a UTC day:
 
@@ -182,20 +193,21 @@ The most stars a counsellor can earn in a UTC day:
   client);
 - **per group** (group-session stars from one group);
 - from **likes and comments** on their posts (SCRUM-472);
+- **likes and comments per client** (like-and-comment stars from one client, SCRUM-472);
 
-and, not per day, **per post**: the most stars one post can ever earn from likes and comments (SCRUM-472). When a
-star from a post is taken back (an unlike), its place is free for the next like or comment, but people turned away
-earlier by the limit don't get a star until they like or comment again.
+and, not per day, **per post (ever)**: the most stars one post can ever earn from likes and comments (SCRUM-472).
+The three like-and-comment limits count awards, not current stars, so a star taken back by an unlike never frees a
+place: once a post's limit is reached, more interactions earn nothing.
 
-A super administrator edits all eight at once and clicks **save limits**. Each limit must be a whole number:
+A super administrator edits all nine at once and clicks **save limits**. Each limit must be a whole number:
 
 - from 0 to 100;
-- from 0 to 10 for the per-client and per-group limits.
+- from 0 to 10 for the per-client and per-group limits (likes and comments per client included).
 
-0 stops that source from earning stars. A save changes all eight or none. Every change is logged (`Daily star caps
+0 stops that source from earning stars. A save changes all nine or none. Every change is logged (`Daily star caps
 changed.`), with who made it and the old and new values. The new values apply to the next star awarded. Ordinary admins see
 the values read-only. Until a limit is saved, it shows the defaults from `config/recognition.php` (8, 5, 2, 3, 1, 1,
-then 20 likes and comments a day and 10 per post).
+then 20 likes and comments a day, 1 per client a day and 10 per post).
 
 ## The showcase (SCRUM-476)
 
@@ -342,7 +354,7 @@ Accounts (the demo password for all but the super admin; see `documentation/seed
 4. Click **skip** on Sarah, then **confirm skip**. Her row reads *skipped* and her dashboard request is closed. Her
    period is not ended; its column now also shows **needs review**. Click **delete**, then **confirm delete**: the
    column reads **--**.
-5. Under **Daily star limits**, set Posts to `101` and save; the field shows an error. Set it to `4` and save; the
+5. Under **Star limits**, set Posts to `101` and save; the field shows an error. Set it to `4` and save; the
    value persists after a reload.
 6. Switch to this month; it's empty (nobody has been decided for it).
 7. Sign in as `suspension_demo_normal_admin` and open the same page. Everything is visible, but there are no buttons,
@@ -356,12 +368,14 @@ Accounts (the demo password for all but the super admin; see `documentation/seed
 2. In another browser, sign in as `post_fan_esi` and open Home. In the posts list, find Lisa's post starting
    "[Recognition demo: post] Small routines help on hard days". Like it, then add a comment.
 3. Reload the admin page: Lisa has **one** more star (7), not two.
-4. As `post_fan_esi`, unlike the post: still 7 (the comment remains). Delete the comment: back to 6.
+4. As `post_fan_esi`, unlike the post: still 7 (the comment remains). Delete the comment: back to 6. Like it
+   again: still 6 (each person earns a post its star once, ever).
 5. Sign in as `post_fan_new` and like the post: no change (the account is 2 days old). As `lisa_anderson`, like your
    own post: no change.
-6. Under **Daily star limits**, the card lists **Likes and comments** (20) and **Per post** (10) with their hints. Set
-   Per post to `101` and save: the field shows an error. Set it to `2` and save: after a reload it reads 2. As
-   `post_fan_esi`, like the post again: no new star (the post already has 2). Put it back to 10.
+6. Under **Star limits**, the card lists **Likes and comments** (20), **Likes and comments per client** (1) and
+   **Per post (ever)** (10) with their hints. Set Per post (ever) to `101` and Likes and comments per client to `11`
+   and save: both fields show an error. Set Per post (ever) to `2` and save: after a reload it reads 2. Put it back
+   to 10.
 7. Nowhere -- the post, Lisa's profile, Home -- shows who liked or commented beyond the existing counts.
 
 ### The showcase (on a fresh seed, before the admin steps above)

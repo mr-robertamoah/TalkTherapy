@@ -14238,30 +14238,31 @@ gives that counsellor one star, key `post_interaction:{post}:{user}`, `starredby
   is ignored. Duplicate likes (the `likes` table has no unique index, and the like route doesn't refuse a second
   one) are one interaction; the star stays until the last like goes, matching the `isLiked` the page shows.
 - **Lock:** the sync takes the post's counsellor's row lock (`lockForUpdate`, soft-deleted rows included) before
-  reading anything, then the award re-enters the same lock (`AwardCounsellorStarAction` locks the same row in a
+  changing anything (see the review section for the checks it now answers without the lock), then the award re-enters
+  the same lock (`AwardCounsellorStarAction` locks the same row in a
   nested transaction). One lock, always the counsellor row, so there is no lock order to get wrong; concurrent
   syncs for one counsellor run one at a time and the last one sees the final likes and comments. (Locking the Post
   row as well would add a second lock to order against the award's, for no gain: the counsellor lock already
   serialises every post of theirs.)
-- **Who qualifies** (`SyncPostInteractionStarAction::qualifies()`, read fresh): not the author's user; no counsellor
-  profile at all -- **judgment call:** a soft-deleted counsellor profile still counts as one (`withTrashed`), so a
+- **Who qualifies** (`SyncPostInteractionStarAction::qualifies()`, read fresh): no counsellor profile at all (which
+  covers the author; the separate author check was dropped in review) -- **judgment call:** a soft-deleted counsellor profile still counts as one (`withTrashed`), so a
   counsellor can't delete their profile to farm stars for friends; verified email; account at least
   `recognition.interaction_min_account_age_days` (7) old, inclusive; not suspended in either scope
   (`anyActiveSuspension()`); not soft-deleted and not anonymised. The ticket's "not the counsellor's profile" needs
   no separate check: likes and comments are always by a user.
-- **Qualification is checked at each sync (judgment call):** a user who stops qualifying (suspended, say) keeps the
-  star until their next like, unlike, comment or delete on that post, which then takes it back. Suspending or
-  deleting an account doesn't sweep their interaction stars -- like every other rule, stars are evaluated at the
-  event, and closed months are snapshotted anyway. A user who becomes eligible later (verifies their email, ages
+- **Qualification is checked at each sync (judgment call):** a user who stops qualifying keeps the star until their
+  next like, unlike, comment or delete on that post, which then takes it back -- except that suspension and account
+  closure now sweep their stars (review fix L1/L2, below). A user who becomes eligible later (verifies their email, ages
   past 7 days) gets nothing for old likes until they interact again.
 - **Caps** (`StarCapPolicy`, under the same counsellor lock): at most `interaction_per_day` (20) post-interaction
-  stars per counsellor per UTC day, and at most `interaction_per_post` (10) per post, ever (**judgment call:** the
+  stars per counsellor per UTC day, and at most `interaction_per_post` (10) per post, ever (both now counted on award
+  records, and a per-client cap added -- see the review section) (**judgment call:** the
   ticket says "per post", not "per post per day"; a lifetime cap bounds what one viral or farmed post can earn).
   The policy refuses a post-interaction star whose starreable isn't a Post (`StarFoundationTest`'s bulk-revoke test
   now uses a post-published star for its "other rule" fixture).
-- **A freed slot is not backfilled (from the ticket):** when a star is revoked under a full post, nobody turned away
-  earlier gets it automatically; the next like or comment by anyone qualifying (including a turned-away user's own
-  next interaction) takes the place. Backfilling would mean re-syncing every past interactor on every unlike.
+- **A freed slot is not backfilled (from the ticket):** nobody turned away earlier gets a star automatically.
+  Superseded in review (M1): a revoked star no longer frees a place at all, since the per-post cap counts award
+  records.
 - **Admin caps:** config moved from `recognition.interaction_per_post`/`interaction_per_day` into `recognition.cap`
   (`cap.interaction_per_post`, `cap.interaction_per_day`), so `SettingsService::getRecognitionCaps()` reads them like
   the rest. New `SettingsEnum` keys `RECOGNITION_CAP_INTERACTION_PER_POST` and `RECOGNITION_CAP_INTERACTION_PER_DAY`
@@ -14281,3 +14282,39 @@ gives that counsellor one star, key `post_interaction:{post}:{user}`, `starredby
   a suspended counsellor, post delete, both caps with a freed place not refilled, the defaults, a settings override
   of config, a cap of 0, a failing sync not blocking any of the four routes, the caps card, no `starredby`, and the
   seeder. Existing caps tests updated for the two new keys.
+- **Review and security fixes (2026-11-24):**
+  - **H1, one fan farming a counsellor:** new per-client cap `interaction_per_client` (default 1; setting
+    `RECOGNITION_CAP_INTERACTION_PER_CLIENT`, config `recognition.cap.interaction_per_client`, 0–10 like the other
+    per-client caps, on the card as "Likes and comments per client"): one user gives one counsellor at most N
+    interaction stars per UTC day, in `StarCapPolicy` under the counsellor lock.
+  - **M1, churn:** new reversible table `post_interaction_awards` (post_id, user_id, counsellor_id, awarded_at;
+    unique on post + user; cascades on post, user and counsellor delete), written in the award's transaction. The
+    approved rule stands -- the star goes once the person has neither a like nor a comment -- but a post + user pair
+    with an award record is never awarded again, so unliking and re-liking gives nothing new and can't re-date a star
+    into a new month. **Judgment call:** all three interaction caps (per post, per day, per client) count award
+    records rather than live stars, so a revoked star never frees a place; the per-post cap is a true lifetime cap.
+  - **M2, lock amplification:** `api.likes.create`, `api.likes.delete`, `api.comments.create` and
+    `api.comments.delete` are throttled `30,1` with their own named buckets. The sync answers without the lock when
+    the user doesn't qualify and holds no star for the key, and when the user qualifies, still interacts and already
+    has an award record (returning the current star). A user with an award who still interacts but no longer
+    qualifies still goes through the lock, so the star is revoked. `CreateLikeAction` refuses a second like by the
+    same person on the same thing (422, "You already like this."). No unique index: existing rows may hold
+    duplicates -- **follow-up:** deduplicate `likes` and add a unique `(user_id, likeable_type, likeable_id)` index.
+  - **L1/L2, sweeps** (`RevokeStarsGivenByUserAction`): `ApplySuspensionAction` (either scope; after commit, best
+    effort) deletes the post-interaction stars the person gave in the current UTC month. Closing an account
+    (`User::deleting`, so self-deletion and `DeleteUserAction` alike) deletes every post-interaction star they gave
+    and nulls `starredby` on their other stars; `AnonymiseClosedAccountAction` repeats it for accounts closed before
+    this. Award records stay, so the same likes never earn again.
+  - **L3:** `SimpleStarResource` was unused and is deleted.
+  - **Comment deletes** sync for the comment's author (`$comment->user`), not the person deleting.
+  - **Deleted counsellors (reviewer):** the post's counsellor is resolved with `withTrashed`
+    (`SyncPostInteractionStarAction::counsellorOf`), so an unlike on a deleted counsellor's post still revokes;
+    `AwardCounsellorStarAction` still gives a deleted counsellor nothing.
+  - **Card:** renamed "Star limits" (not all limits are daily); "Per post (ever)", hint "stars in total from likes and
+    comments on one post; once reached, more interactions earn nothing".
+  - **Tests:** a second like refused; unlike then like gives nothing new, nor in a new month; churn frees no per-post
+    place; per-client cap (default, unlike, other counsellor, next day, setting); post delete cascades award records;
+    an unlike on a deleted counsellor's post revokes; a failing revoke (its DELETE made to throw) doesn't block the
+    unlike or the comment delete and leaves the stars; the four throttles; the suspension sweep (both scopes, this
+    month only); account closure and anonymisation sweeps; an anonymised account in the qualification dataset; the
+    "stops qualifying" test goes through the comment route only.

@@ -765,7 +765,7 @@ share rank 3).
 featuring consent request is pending under "Needs your action" on `/counsellor/dashboard`, and she has a
 "You've been recognised as a Counsellor of the month for <Month Year>" notification. Skipped if that month already has
 a decision. SCRUM-474: see it at `/administrator/recognition` -- the super admin (`mr_robertamoah`) approves, skips
-or adds (`james_wilson`, rank 6, isn't suggested, so he can be added) and sets the daily star limits; the normal admin
+or adds (`james_wilson`, rank 6, isn't suggested, so he can be added) and sets the star limits; the normal admin
 `suspension_demo_normal_admin` sees the same page read-only. See `documentation/features/counsellor-recognition.md`.
 Add it to an existing local database with
 `docker compose exec -u www-data php php artisan db:seed --class=RecognitionSeeder`.
