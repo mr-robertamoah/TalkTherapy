@@ -52,7 +52,7 @@ export function recognitionEventLabel(event) {
     return event?.from && ['approved', 'skipped', 'added'].includes(event.event) ? `${label} (was ${event.from})` : label
 }
 
-// The daily star caps, in the order the card lists them, with what each limits.
+// The star caps, in the order the card lists them, with what each limits. All are per UTC day except the per-post one.
 export const STAR_CAP_FIELDS = [
     { key: 'session', label: 'Held sessions', hint: 'stars a day from held sessions' },
     { key: 'help_chat', label: 'Help chats', hint: 'stars a day from urgent-help chats' },
@@ -61,6 +61,9 @@ export const STAR_CAP_FIELDS = [
     // Security review L3: 0 here stops every star that has a client, not just repeats.
     { key: 'session_per_client', label: 'Per client', hint: 'session and help-chat stars a day from one client (0 stops every session and help-chat star that has a client)' },
     { key: 'session_per_group', label: 'Per group', hint: 'group-session stars a day from one group' },
+    // TT-7.11c/SCRUM-472
+    { key: 'interaction_per_day', label: 'Likes and comments', hint: 'stars a day from clients liking or commenting on posts (one per client per post)' },
+    { key: 'interaction_per_post', label: 'Per post', hint: 'stars in total from likes and comments on one post (a place freed by an unlike is not refilled)' },
 ]
 
 // TT-7.11e2/SCRUM-477: the optional fee waiver offered when approving -- prefilled with the next calendar month in UTC

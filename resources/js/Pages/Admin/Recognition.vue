@@ -501,7 +501,7 @@ const eventColumns = [
             <section aria-labelledby="caps-heading" class="bg-white border border-gray-200 shadow-sm rounded-lg p-6">
                 <h2 id="caps-heading" class="text-lg font-medium text-gray-900">Daily star limits</h2>
                 <p class="mt-1 text-sm text-gray-600">
-                    The most stars a counsellor can earn in a UTC day from each source.
+                    The most stars a counsellor can earn in a UTC day from each source, and from any one post's likes and comments.
                     <template v-if="!canManage">Only a super administrator can change them.</template>
                 </p>
 
