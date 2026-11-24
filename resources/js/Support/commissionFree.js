@@ -31,3 +31,22 @@ export function commissionFreeNoticeText(notice) {
         ? `No platform commission on ${payments} between ${formatUtc(notice.startsAt)} and ${formatUtc(notice.endsAt)}`
         : `No platform commission on ${payments} from ${formatUtc(notice.startsAt)}`
 }
+
+// TT-7.11e2/SCRUM-477: 'YYYY-MM-DDTHH:mm' in UTC, for a datetime-local input labelled UTC/GMT (the server reads a value
+// with no offset as UTC).
+export function utcInputValue(date) {
+    const pad = (value) => String(value).padStart(2, '0')
+
+    return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}T${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`
+}
+
+// A period's status (PlatformFeeWaiver::status()) as a pill -- on Payouts and the recognition page. Cancelled: ended
+// early with "End now".
+export function waiverStatusPill(status) {
+    return {
+        upcoming: { label: 'upcoming', tone: 'blue' },
+        active: { label: 'active', tone: 'green' },
+        ended: { label: 'ended', tone: 'gray' },
+        cancelled: { label: 'cancelled', tone: 'amber' },
+    }[status] ?? { label: status ?? 'unknown', tone: 'gray' }
+}

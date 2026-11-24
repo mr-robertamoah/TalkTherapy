@@ -6,7 +6,8 @@ stars under the new star rules. A recognised counsellor is asked whether they ag
 - the stars (SCRUM-470, SCRUM-471);
 - the recognition backend (SCRUM-473);
 - the admin page (SCRUM-474);
-- the per-counsellor fee waiver backend (SCRUM-475);
+- the per-counsellor fee waiver backend (SCRUM-475), and its place on the admin page (SCRUM-477): an optional
+  "Also waive the platform fee" when approving, and a **Fee waiver** column;
 - the public showcase, the profile badge and the counsellor's consent controls (SCRUM-476, below).
 
 ## The admin page: `/administrator/recognition`
@@ -56,7 +57,7 @@ Each row shows:
   *consent given*, *consent declined*, *consent withdrawn*);
 - an *added manually* pill for a counsellor who was added rather than suggested.
 
-There is no fee-waiver column yet. It comes in a follow-up once SCRUM-475 (PR #377) and this page have both merged.
+- the **fee waiver** linked to the recognition, if any (see below).
 
 Star counts and ranks are shown to every administrator, except on their own row. An administrator who is also a
 counsellor sees their own row without stars, first star, rank or report flag, and the audit doesn't show them who
@@ -80,6 +81,57 @@ acted on their own recognition. Counsellors never see star counts or ranks.
   - "You can't decide your own recognition.";
   - the counsellor is (or isn't) among the suggestions, so use approve (or add) instead;
   - a month that isn't this one or last one.
+
+### Fee waiver (SCRUM-477)
+
+**When approving** (a suggestion, an "Also decided" row, or **add**), a super administrator gets an optional
+**"Also waive the platform fee"** checkbox, off by default. Ticking it shows:
+
+- **Starts (UTC/GMT)** and **Ends (UTC/GMT)**, prefilled with the next calendar month: the 1st of next month 00:00
+  UTC to the 1st of the month after (in December, January 1st to February 1st of the next year);
+- a **Reason**, prefilled "Counsellor of the month, <Month Year>" (the recognition's month). Administrators only;
+  the counsellor is told the dates, never the reason.
+
+Focus moves to the checkbox when the panel opens. The option isn't offered on a row whose recognition already has a
+linked period (a recognition links to one period at most).
+
+The fields are checked before anything is posted: both dates and a reason (up to 500 characters), the end after the
+start, and the start not in the past (a minute's leeway, as on the server). Each problem shows under its field, and
+**confirm approve** / **confirm add** stays disabled until they pass.
+
+**confirm approve** (or **confirm add**) saves the approval first. Only if that succeeds is the period created, as a
+commission-free period of this counsellor's own linked to the new recognition (`POST
+/administrator/counsellors/{id}/fee-waivers` with `counsellor_recognition_id`). If the server refuses the period, the
+approval stays, and a red notice above the suggestions (kept until dismissed) says **"<Name> approved without a fee
+waiver."** (or **"added"**), followed by the reason. Reasons the page can't check itself include:
+
+- it overlaps another of the counsellor's own periods;
+- the counsellor isn't eligible now (an open report, suspended, verification lapsed).
+
+No other decision can be confirmed until the period has been saved or refused.
+
+There is no "add a waiver" for a row already approved without one; a super admin who needs one later can skip and
+re-approve the row, or use the JSON route directly (see `commission-free-periods.md`).
+
+**The Fee waiver column**, on suggestions and "Also decided" rows alike, shows the period linked to that row's
+recognition:
+
+- its start and end (GMT) and its status: *upcoming*, *active*, *ended* or *cancelled* (ended early with "End now");
+- a red **needs review** pill while it is upcoming or active but the counsellor is no longer eligible, or the
+  recognition is no longer approved. Periods are never ended automatically; the administrator decides. A report
+  about an urgent help request (which hides who asked for help) never shows here, though it still stops a new
+  period;
+- for a **super administrator**, its reason, plus **end now** (while active) or **delete** (while upcoming), each with
+  a confirm click;
+- **--** for a row without a linked period.
+
+An **ordinary administrator** sees the dates, the status and *needs review*, but not the reason and no buttons. On
+the viewer's **own** row (an administrator who is also a counsellor) the column only says **waiver given**: no dates,
+status or *needs review*, which could reveal an open report about them.
+
+The column comes in the page props (`feeWaivers`), read in a fixed number of queries for the month; the
+per-counsellor JSON list stays super-admin only. When the table is wider than the window, it scrolls sideways rather
+than clipping the last column.
 
 ### Consent
 
@@ -199,6 +251,8 @@ featured", "you chose not to be featured", ...). A month an administrator skippe
 | `POST /administrator/recognition/{approve,skip,add}` | super admin, throttled | `month`, `counsellor_id` |
 | `GET /administrator/recognition/counsellors?search=&month=` | super admin, 60/min | `{counsellors: [{id, name, username}]}` |
 | `POST /administrator/settings/recognition-caps` | super admin, 10/min | `caps[session, help_chat, discussion, post, session_per_client, session_per_group]` |
+| `POST /administrator/counsellors/{counsellor}/fee-waivers` | super admin, 10/min | `starts_at`, `ends_at`, `reason`, `counsellor_recognition_id` (the page posts it after an approval) |
+| `POST /administrator/counsellors/{counsellor}/fee-waivers/{waiver}/{end,delete}` | super admin, 10/min | the column's **end now** / **delete** |
 | `GET /` (`home`) | anyone | `recognisedCounsellors` (`id, name, avatar, profession, cases, month`); `leadingCounsellors` (signed-in only) |
 | `GET /counsellor/{id}` (`counsellor.show`) | anyone | `recognitionBadges` (month labels); `recognitions` for the counsellor only |
 | `POST /counsellor/recognitions/{id}/consent` | the counsellor, 10/min | `action`: `withdraw` or `restore` |
@@ -209,7 +263,8 @@ featured", "you chose not to be featured", ...). A month an administrator skippe
 From `RecognitionSeeder`, which `DatabaseSeeder` calls; see `documentation/seeded-data.md`, "Counsellor
 recognition". It stars the six demo counsellors for **last month (UTC)**, counted from when the seeder ran:
 
-- `sarah_johnson`: 6 stars, **approved** with her consent **pending**;
+- `sarah_johnson`: 6 stars, **approved** with her consent **pending**, and her own commission-free period for the
+  whole of next month (UTC) linked to it (*upcoming* in the Fee waiver column);
 - `michael_chen`: 5 stars, approved and **accepted**;
 - `emma_williams`: 4 stars, approved and **declined**; `david_brown`: 4 stars, tied with her at rank 3;
 - `lisa_anderson`: 3 stars;
@@ -237,16 +292,24 @@ Accounts (the demo password for all but the super admin; see `documentation/seed
 ### The admin page
 
 1. As the super admin, open http://localhost:8000/administrator/recognition. Last month is selected and shows
-   "5 of 5 approved". Sarah is rank 1 (*approved*, *consent pending*), Michael *consent given*, Emma *consent
-   declined*. Under "Also decided" are James (*added manually*, *open report*) and the suspended demo counsellor
-   (*suspended*).
+   "5 of 5 approved". Sarah is rank 1 (*approved*, *consent pending*) and her Fee waiver column shows her seeded
+   period (*upcoming*) with **delete**. Michael is *consent given*, Emma *consent declined*. Under "Also decided" are
+   James (*added manually*, *open report*) and the suspended demo counsellor (*suspended*).
 2. Click **skip** on Emma, then **confirm skip**. It reads "4 of 5 approved" and the audit "skipped (was approved)".
-   Click **approve** on David Brown, then **confirm approve**: "5 of 5" again.
-3. Under **Daily star limits**, set Posts to `101` and save; the field shows an error. Set it to `4` and save; the
+3. Click **approve** on David Brown. A grey panel opens under his row. Tick **Also waive the platform fee**: the
+   dates read the 1st of next month 00:00 to the 1st of the month after, and the reason "Counsellor of the month,
+   <last month>". Set the start to a time in the past: "The start cannot be in the past." shows under it and
+   **confirm approve** is disabled. Put the start back, then click **confirm approve**. It reads "5 of 5 approved",
+   the success alert says the fee was waived, and his Fee waiver column shows the dates and *upcoming*.
+4. Click **skip** on Sarah, then **confirm skip**. Her row reads *skipped* and her dashboard request is closed. Her
+   period is not ended; its column now also shows **needs review**. Click **delete**, then **confirm delete**: the
+   column reads **--**.
+5. Under **Daily star limits**, set Posts to `101` and save; the field shows an error. Set it to `4` and save; the
    value persists after a reload.
-4. Switch to this month; it's empty (nobody has been decided for it).
-5. Sign in as `suspension_demo_normal_admin` and open the same page. Everything is visible, but there are no buttons,
-   no search, and the limits are read-only.
+6. Switch to this month; it's empty (nobody has been decided for it).
+7. Sign in as `suspension_demo_normal_admin` and open the same page. Everything is visible, but there are no buttons,
+   no search, and the limits are read-only. David's Fee waiver column shows the dates and *upcoming*, but no reason
+   and no buttons.
 
 ### The showcase (on a fresh seed, before the admin steps above)
 

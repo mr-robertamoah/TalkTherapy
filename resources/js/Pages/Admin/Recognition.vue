@@ -3,6 +3,7 @@ import AdminTable from '@/Components/Admin/AdminTable.vue'
 import AdminRow from '@/Components/Admin/AdminRow.vue'
 import AdminCell from '@/Components/Admin/AdminCell.vue'
 import AdminRecognitionRow from '@/Components/Admin/AdminRecognitionRow.vue'
+import AdminRecognitionWaiverOption from '@/Components/Admin/AdminRecognitionWaiverOption.vue'
 import Alert from '@/Components/Alert.vue'
 import InputError from '@/Components/InputError.vue'
 import InputLabel from '@/Components/InputLabel.vue'
@@ -12,14 +13,18 @@ import TextInput from '@/Components/TextInput.vue'
 import useAlert from '@/Composables/useAlert'
 import AdminLayout from '@/Layouts/AdminLayout.vue'
 import { formatUtc } from '@/Support/commissionFree.js'
-import { recognitionAlerts, recognitionEventLabel, STAR_CAP_FIELDS } from '@/Support/recognition.js'
+import { recognitionAlerts, recognitionEventLabel, STAR_CAP_FIELDS, waiverOptionErrors, waiverPrefill } from '@/Support/recognition.js'
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3'
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { default as _ } from 'lodash'
 
 // TT-7.11d2/SCRUM-474: counsellor recognition for a month (Admin/Recognition). Every administrator sees the
 // suggestions, the month's audit and the daily star limits; only a super administrator (canManage) approves, skips,
 // adds or changes a limit -- the server refuses anyone else (403) whatever this page shows.
+//
+// TT-7.11e2/SCRUM-477: approving (or adding) can also give the counsellor a commission-free period for the next month,
+// linked to the recognition; the "Fee waiver" column shows the month's linked periods (feeWaivers, cut down by the
+// server for an ordinary administrator and for the viewer's own row).
 defineOptions({ layout: AdminLayout })
 
 const props = defineProps({
@@ -33,6 +38,10 @@ const props = defineProps({
     capsMax: { type: Object, required: true },
     canManage: { type: Boolean, default: false },
     ownCounsellorId: { type: Number, default: null },
+    // AdminRecognitionFeeWaiverResource: the periods linked to this month's recognitions.
+    feeWaivers: { type: Array, default: () => [] },
+    // PlatformFeeWaiver::REASON_MAX.
+    waiverReasonMax: { type: Number, required: true },
 })
 
 const { alertData, clearAlertData, setFailedAlertData, setSuccessAlertData } = useAlert()
@@ -77,16 +86,89 @@ function confirmingFor(row) {
     return confirming.value?.counsellorId === row.counsellorId ? confirming.value.action : null
 }
 
-// SCRUM-475 slot: approving will also carry the optional per-counsellor fee waiver (prefilled to the next month); its
-// fields go into this request and the confirm step.
-function decide(name, counsellorId, label, { onSuccess } = {}) {
+// ---- The optional fee waiver when approving (TT-7.11e2/SCRUM-477) ----
+
+// Only one approval is confirmed at a time (a row's, or an "add"), so one set of fields; reset on every ask.
+const waiverOption = ref(newWaiverOption())
+// A refused period after a saved approval: { heading, reason }, shown until dismissed, as the approval went through.
+const waiverError = ref(null)
+// The counsellor whose period is being posted after their approval: no other decision goes until it settles.
+const waiverSaving = ref(null)
+// Checked before the approval is posted (the confirm buttons stay disabled until it passes); the server checks again.
+const waiverErrors = computed(() => waiverOptionErrors(waiverOption.value, props.waiverReasonMax))
+const waiverInvalid = computed(() => Object.keys(waiverErrors.value).length > 0)
+
+function newWaiverOption() {
+    return { enabled: false, ...waiverPrefill(monthLabel.value) }
+}
+
+function ask(row, action) {
+    if (action === 'approve') waiverOption.value = newWaiverOption()
+    confirming.value = { counsellorId: row.counsellorId, action }
+}
+
+// The recognition just approved, from the reloaded props (the redirect back carries no body).
+function recognitionIdFrom(page, counsellorId) {
+    const recognition = page?.props?.recognition ?? props.recognition
+    const row = [...recognition.suggestions, ...recognition.others].find((item) => item.counsellorId === counsellorId)
+
+    return row?.decision === 'approved' ? row.recognitionId : null
+}
+
+// The first message of a refusal: a field error (422), or the service's message (403/404).
+function waiverRefusal(error) {
+    const data = error.response?.data
+    const fieldMessage = data?.errors ? Object.values(data.errors).flat()[0] : null
+
+    return fieldMessage ?? data?.message ?? 'The commission-free period could not be saved.'
+}
+
+// After the approval is saved: the period, linked to it. A refusal leaves the approval as it is, and is shown once, in
+// the notice above the suggestions.
+async function createWaiver(counsellorId, recognitionId, label, refusedHeading, option) {
+    if (!recognitionId) {
+        waiverError.value = { heading: refusedHeading, reason: 'The approved recognition could not be found. Reload the page and try again.' }
+        return
+    }
+
+    waiverSaving.value = counsellorId
+
+    await axios.post(route('admin.counsellors.fee-waivers.store', { counsellor: counsellorId }), {
+        starts_at: option.starts_at,
+        ends_at: option.ends_at,
+        reason: option.reason,
+        counsellor_recognition_id: recognitionId,
+    })
+        .then(() => {
+            setSuccessAlertData({ message: `${label}, and the platform fee waived.` })
+            router.reload({ only: ['feeWaivers'], preserveScroll: true })
+        })
+        .catch((error) => {
+            waiverError.value = { heading: refusedHeading, reason: waiverRefusal(error) }
+        })
+        .finally(() => {
+            waiverSaving.value = null
+        })
+}
+
+// `refusedHeading`: the notice's heading if the period is then refused ("Ama approved without a fee waiver.").
+function decide(name, counsellorId, label, { onSuccess, refusedHeading = 'Approved without a fee waiver.' } = {}) {
+    // Read now: the option is reset by the next ask.
+    const option = name !== 'skip' && waiverOption.value.enabled ? { ...waiverOption.value } : null
+    // Never post an approval with a period that can only be refused, nor while the last period is being saved.
+    if ((option && waiverInvalid.value) || waiverSaving.value !== null) return
     busyId.value = counsellorId
+    waiverError.value = null
 
     router.post(route(`admin.recognition.${name}`), { month: props.month, counsellor_id: counsellorId }, {
         preserveScroll: true,
-        onSuccess: () => {
-            setSuccessAlertData({ message: `${label}.` })
+        onSuccess: (page) => {
             onSuccess?.()
+            if (option) {
+                createWaiver(counsellorId, recognitionIdFrom(page, counsellorId), label, refusedHeading, option)
+            } else {
+                setSuccessAlertData({ message: `${label}.` })
+            }
         },
         onError: (errors) => setFailedAlertData({
             message: errors.counsellor_id ?? errors.month ?? errors.alert ?? 'Could not save this decision.',
@@ -98,11 +180,48 @@ function decide(name, counsellorId, label, { onSuccess } = {}) {
     })
 }
 
+// ---- The fee waiver column: end now / delete (super admin) ----
+
+const waiverByRecognition = computed(() => new Map(props.feeWaivers.map((waiver) => [waiver.recognitionId, waiver])))
+// The waiver waiting for its second click: { id, kind }.
+const confirmingWaiver = ref(null)
+const waiverBusyId = ref(null)
+
+function waiverFor(row) {
+    return row.recognitionId ? (waiverByRecognition.value.get(row.recognitionId) ?? null) : null
+}
+
+function waiverConfirmingFor(row) {
+    const waiver = waiverFor(row)
+
+    return waiver && confirmingWaiver.value?.id === waiver.id ? confirmingWaiver.value.kind : null
+}
+
+function actOnWaiver(row, kind) {
+    const waiver = waiverFor(row)
+    if (!waiver) return
+    const name = kind === 'end' ? 'admin.counsellors.fee-waivers.end' : 'admin.counsellors.fee-waivers.delete'
+    const who = row.name ?? 'the counsellor'
+    waiverBusyId.value = waiver.id
+
+    router.post(route(name, { counsellor: waiver.counsellorId, waiver: waiver.id }), {}, {
+        preserveScroll: true,
+        onSuccess: () => setSuccessAlertData({ message: kind === 'end' ? `The fee waiver for ${who} ended now.` : `The fee waiver for ${who} deleted.` }),
+        onError: (errors) => setFailedAlertData({ message: errors.waiver ?? errors.alert ?? 'Could not change this fee waiver.' }),
+        onFinish: () => {
+            waiverBusyId.value = null
+            confirmingWaiver.value = null
+        },
+    })
+}
+
 function confirmAction(row, action, isSuggestion) {
     const name = action === 'skip' ? 'skip' : (isSuggestion ? 'approve' : 'add')
     const who = row.name ?? 'The counsellor'
 
-    decide(name, row.counsellorId, action === 'skip' ? `${who} skipped for ${monthLabel.value}` : `${who} approved for ${monthLabel.value}`)
+    decide(name, row.counsellorId, action === 'skip' ? `${who} skipped for ${monthLabel.value}` : `${who} approved for ${monthLabel.value}`, {
+        refusedHeading: `${who} approved without a fee waiver.`,
+    })
 }
 
 // ---- Add a counsellor (super admin) ----
@@ -153,14 +272,21 @@ async function runSearch() {
         })
 }
 
-function askToAdd(counsellor) {
+// The add panel's waiver option (one at a time), to move focus into it when it opens.
+let addOption = null
+
+async function askToAdd(counsellor) {
+    waiverOption.value = newWaiverOption()
     adding.value = counsellor
+    await nextTick()
+    addOption?.focus()
 }
 
 function confirmAdd() {
     const counsellor = adding.value
 
     decide('add', counsellor.id, `${counsellor.name} added for ${monthLabel.value}`, {
+        refusedHeading: `${counsellor.name} added without a fee waiver.`,
         onSuccess: () => {
             adding.value = null
             search.value = ''
@@ -196,6 +322,7 @@ const rowColumns = [
     { label: 'First star (GMT)' },
     { label: 'Alerts' },
     { label: 'Decision and consent' },
+    { label: 'Fee waiver' },
     { label: 'Actions', srOnly: true },
 ]
 
@@ -254,6 +381,12 @@ const eventColumns = [
                 </div>
             </section>
 
+            <!-- A period refused after its approval was saved (TT-7.11e2/SCRUM-477) -->
+            <div v-if="waiverError" role="alert" class="flex items-start justify-between gap-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+                <p><span class="font-medium">{{ waiverError.heading }}</span> {{ waiverError.reason }}</p>
+                <button type="button" class="shrink-0 min-h-[44px] md:min-h-0 rounded-md border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500" @click="waiverError = null">dismiss</button>
+            </div>
+
             <!-- Suggestions -->
             <section aria-labelledby="suggestions-heading" class="space-y-3">
                 <h2 id="suggestions-heading" class="text-lg font-medium text-gray-900">Suggestions for {{ monthLabel }}</h2>
@@ -265,11 +398,23 @@ const eventColumns = [
                         :can-approve="suggestionActions(row).approve"
                         :can-skip="suggestionActions(row).skip"
                         :confirming="confirmingFor(row)"
-                        :busy="busyId === row.counsellorId"
-                        @ask="(action) => confirming = { counsellorId: row.counsellorId, action }"
+                        :busy="busyId === row.counsellorId || waiverSaving !== null"
+                        :confirm-disabled="waiverInvalid"
+                        :waiver="waiverFor(row)"
+                        :waiver-confirming="waiverConfirmingFor(row)"
+                        :waiver-busy="waiverBusyId !== null && waiverBusyId === waiverFor(row)?.id"
+                        :column-count="rowColumns.length"
+                        @ask="(action) => ask(row, action)"
                         @confirm="(action) => confirmAction(row, action, true)"
                         @cancel="confirming = null"
-                    />
+                        @waiver-ask="(kind) => confirmingWaiver = { id: waiverFor(row).id, kind }"
+                        @waiver-confirm="(kind) => actOnWaiver(row, kind)"
+                        @waiver-cancel="confirmingWaiver = null"
+                    >
+                        <template v-if="canManage && !waiverFor(row)" #approve-options>
+                            <AdminRecognitionWaiverOption v-model="waiverOption" :id-prefix="`waiver-suggestions-${row.counsellorId}`" :disabled="busyId === row.counsellorId" :errors="waiverErrors" :reason-max="waiverReasonMax" />
+                        </template>
+                    </AdminRecognitionRow>
                 </AdminTable>
             </section>
 
@@ -287,11 +432,23 @@ const eventColumns = [
                         :can-approve="otherActions(row).approve"
                         :can-skip="otherActions(row).skip"
                         :confirming="confirmingFor(row)"
-                        :busy="busyId === row.counsellorId"
-                        @ask="(action) => confirming = { counsellorId: row.counsellorId, action }"
+                        :busy="busyId === row.counsellorId || waiverSaving !== null"
+                        :confirm-disabled="waiverInvalid"
+                        :waiver="waiverFor(row)"
+                        :waiver-confirming="waiverConfirmingFor(row)"
+                        :waiver-busy="waiverBusyId !== null && waiverBusyId === waiverFor(row)?.id"
+                        :column-count="rowColumns.length"
+                        @ask="(action) => ask(row, action)"
                         @confirm="(action) => confirmAction(row, action, false)"
                         @cancel="confirming = null"
-                    />
+                        @waiver-ask="(kind) => confirmingWaiver = { id: waiverFor(row).id, kind }"
+                        @waiver-confirm="(kind) => actOnWaiver(row, kind)"
+                        @waiver-cancel="confirmingWaiver = null"
+                    >
+                        <template v-if="canManage && !waiverFor(row)" #approve-options>
+                            <AdminRecognitionWaiverOption v-model="waiverOption" :id-prefix="`waiver-others-${row.counsellorId}`" :disabled="busyId === row.counsellorId" :errors="waiverErrors" :reason-max="waiverReasonMax" />
+                        </template>
+                    </AdminRecognitionRow>
                 </AdminTable>
             </section>
 
@@ -307,15 +464,17 @@ const eventColumns = [
                     <InputError class="mt-2" :message="searchError" />
 
                     <ul v-if="searchResults.length" class="mt-2 divide-y divide-gray-100 border border-gray-200 rounded-md bg-white">
-                        <li v-for="counsellor in searchResults" :key="counsellor.id" class="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                        <li v-for="counsellor in searchResults" :key="counsellor.id" class="flex flex-wrap items-center justify-between gap-3 px-3 py-2 text-sm">
                             <span><span class="font-medium text-gray-900">{{ counsellor.name }}</span> <span class="text-gray-500">@{{ counsellor.username }}</span></span>
-                            <template v-if="adding?.id === counsellor.id">
-                                <span class="flex gap-2">
-                                    <PrimaryButton :disabled="busyId === counsellor.id" @click="confirmAdd">confirm add</PrimaryButton>
+                            <SecondaryButton v-if="adding?.id !== counsellor.id" :disabled="atCap" @click="askToAdd(counsellor)">add</SecondaryButton>
+                            <div v-else class="basis-full rounded-md border border-gray-200 bg-gray-50 p-3">
+                                <p class="font-medium text-gray-900">Add {{ counsellor.name }} for {{ monthLabel }}</p>
+                                <AdminRecognitionWaiverOption :ref="(el) => addOption = el" v-model="waiverOption" class="mt-2" :id-prefix="`waiver-add-${counsellor.id}`" :disabled="busyId === counsellor.id" :errors="waiverErrors" :reason-max="waiverReasonMax" />
+                                <span class="mt-3 flex gap-2">
+                                    <PrimaryButton :disabled="busyId === counsellor.id || waiverSaving !== null || waiverInvalid" @click="confirmAdd">confirm add</PrimaryButton>
                                     <SecondaryButton :disabled="busyId === counsellor.id" @click="adding = null">cancel</SecondaryButton>
                                 </span>
-                            </template>
-                            <SecondaryButton v-else :disabled="atCap" @click="askToAdd(counsellor)">add</SecondaryButton>
+                            </div>
                         </li>
                     </ul>
                     <p v-else-if="search.trim().length >= 2 && !searching && !searchError" class="mt-2 text-sm text-gray-500">No counsellor who can be recognised matches.</p>

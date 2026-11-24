@@ -1,7 +1,7 @@
 // TT-7.10b/SCRUM-468: resources/js/Support/commissionFree.js -- run with `npm run test:js`.
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { commissionFreeNoticeText, formatUtc } from '../../resources/js/Support/commissionFree.js'
+import { commissionFreeNoticeText, formatUtc, utcInputValue, waiverStatusPill } from '../../resources/js/Support/commissionFree.js'
 
 describe('commission-free notice', () => {
     it('shows both ends in UTC, labelled GMT', () => {
@@ -44,5 +44,24 @@ describe('commission-free notice', () => {
         assert.equal(commissionFreeNoticeText(null), null)
         assert.equal(formatUtc(null), '')
         assert.equal(formatUtc('not a date'), '')
+    })
+})
+
+// TT-7.11e2/SCRUM-477
+describe('waiver status pill', () => {
+    it('labels each status, with a fallback', () => {
+        assert.deepEqual(waiverStatusPill('upcoming'), { label: 'upcoming', tone: 'blue' })
+        assert.deepEqual(waiverStatusPill('active'), { label: 'active', tone: 'green' })
+        assert.deepEqual(waiverStatusPill('ended'), { label: 'ended', tone: 'gray' })
+        assert.deepEqual(waiverStatusPill('cancelled'), { label: 'cancelled', tone: 'amber' })
+        assert.deepEqual(waiverStatusPill('odd'), { label: 'odd', tone: 'gray' })
+        assert.equal(waiverStatusPill(null).label, 'unknown')
+    })
+})
+
+describe('UTC input value', () => {
+    it('writes a datetime-local value in UTC, zero-padded', () => {
+        assert.equal(utcInputValue(new Date('2027-01-05T03:07:00Z')), '2027-01-05T03:07')
+        assert.equal(utcInputValue(new Date('2026-12-31T23:59:59+01:00')), '2026-12-31T22:59')
     })
 })
