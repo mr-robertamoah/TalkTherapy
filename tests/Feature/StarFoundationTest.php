@@ -129,13 +129,14 @@ test('a bulk revoke removes the rule\'s stars for that thing and nothing else', 
     sfdAward($counsellor, 'session_held:a', starreable: $thing);
     sfdAward($other, 'session_held:a', starreable: $thing);
     sfdAward($counsellor, 'session_held:c', starreable: $elsewhere);
-    AwardCounsellorStarAction::new()->execute($counsellor, StarSourceEnum::postInteraction, $thing, 'post_interaction:a');
+    // SCRUM-472: another rule's star on the same thing (not post_interaction, whose cap needs a Post).
+    AwardCounsellorStarAction::new()->execute($counsellor, StarSourceEnum::postPublished, $thing, 'post_published:a');
     $legacy = sfdLegacyStar($counsellor);
     $legacy->starreable()->associate($thing)->save();
 
     expect(RevokeCounsellorStarsAction::new()->forStarreable(StarSourceEnum::sessionHeld, $thing))->toBe(2)
         ->and(Star::whereNotNull('award_key')->pluck('award_key')->sort()->values()->all())
-        ->toBe(['post_interaction:a', 'session_held:c'])
+        ->toBe(['post_published:a', 'session_held:c'])
         ->and($legacy->fresh())->not->toBeNull();
 });
 

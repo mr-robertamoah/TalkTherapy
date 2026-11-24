@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Enums\StarSourceEnum;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
+use App\Models\Post;
 use App\Models\Session;
 use App\Models\Star;
 use App\Models\User;
@@ -15,8 +16,9 @@ use Illuminate\Support\Carbon;
 // TT-7.11b/SCRUM-471: the daily star caps (the user's decision). Per counsellor per UTC day: at most N stars from
 // each rule (held sessions, help chats, held discussions, posts), at most N session stars -- held sessions and
 // help chats together -- with the same client (the star's starredby), and at most N session stars per group. The numbers are SettingsService's
-// (config('recognition.cap') unless a super admin set them). Post-interaction stars have their own limits (SCRUM-472).
-// Called by AwardCounsellorStarAction with the counsellor's row locked, so two awards can't both slip under a cap.
+// (config('recognition.cap') unless a super admin set them). SCRUM-472: post-interaction stars have their own limits --
+// at most N a day per counsellor, and at most N ever per post (a revoked one frees a place, but nobody turned away
+// earlier gets it back). Called by AwardCounsellorStarAction with the counsellor's row locked, so two awards can't both slip under a cap.
 final class StarCapPolicy
 {
     private const CAP_KEYS = [
@@ -24,6 +26,7 @@ final class StarCapPolicy
         'help_chat_held' => 'help_chat',
         'discussion_held' => 'discussion',
         'post_published' => 'post',
+        'post_interaction' => 'interaction_per_day',
     ];
 
     private const PER_CLIENT_SOURCES = [StarSourceEnum::sessionHeld, StarSourceEnum::helpChatHeld];
@@ -40,6 +43,16 @@ final class StarCapPolicy
 
         if (self::today($counsellor)->where('source', $source->value)->count() >= $caps[$capKey]) {
             return false;
+        }
+
+        if ($source === StarSourceEnum::postInteraction) {
+            return $starreable instanceof Post && Star::query()
+                ->where('starred_type', $counsellor->getMorphClass())
+                ->where('starred_id', $counsellor->getKey())
+                ->where('source', $source->value)
+                ->where('starreable_type', $starreable->getMorphClass())
+                ->where('starreable_id', $starreable->getKey())
+                ->count() < $caps['interaction_per_post'];
         }
 
         // SCRUM-471 (security re-check): a group session has no single client, so its stand-in is the group -- at most

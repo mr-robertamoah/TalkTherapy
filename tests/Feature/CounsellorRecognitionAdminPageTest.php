@@ -97,6 +97,7 @@ function rapCaps(array $overrides = []): array
 {
     return array_merge([
         'session' => 8, 'help_chat' => 5, 'discussion' => 2, 'post' => 3, 'session_per_client' => 1, 'session_per_group' => 1,
+        'interaction_per_post' => 10, 'interaction_per_day' => 20,
     ], $overrides);
 }
 
@@ -122,7 +123,7 @@ test('any admin opens the page for last month by default, with the suggestions, 
             ->has('recognition.unattributedOpenReportsNote')
             ->where('events', [])
             ->where('caps', rapCaps())
-            ->where('capsMax', rapCaps(['session' => 100, 'help_chat' => 100, 'discussion' => 100, 'post' => 100, 'session_per_client' => 10, 'session_per_group' => 10]))
+            ->where('capsMax', rapCaps(['session' => 100, 'help_chat' => 100, 'discussion' => 100, 'post' => 100, 'session_per_client' => 10, 'session_per_group' => 10, 'interaction_per_post' => 100, 'interaction_per_day' => 100]))
             ->has('adminNavigation'));
 
     $super = rapAdmin();
@@ -267,7 +268,7 @@ test('a super admin saves the daily star caps, and StarCapPolicy uses them', fun
         ->assertInertia(fn ($page) => $page->where('caps.post', 4));
 });
 
-test('every cap must be a whole number from 0 to its maximum, all six at once, and an invalid form saves none', function (array $caps, string $error) {
+test('every cap must be a whole number from 0 to its maximum, all of them at once, and an invalid form saves none', function (array $caps, string $error) {
     $this->actingAs(rapAdmin())->postJson(route('admin.settings.recognition-caps.update'), ['caps' => $caps])
         ->assertUnprocessable()
         ->assertJsonValidationErrors($error);
@@ -281,6 +282,10 @@ test('every cap must be a whole number from 0 to its maximum, all six at once, a
     'a fraction' => [rapCaps(['discussion' => 1.5]), 'caps.discussion'],
     'text' => [rapCaps(['help_chat' => 'five']), 'caps.help_chat'],
     'missing one' => [array_diff_key(rapCaps(), ['session_per_group' => true]), 'caps.session_per_group'],
+    // SCRUM-472
+    'per post over 100' => [rapCaps(['interaction_per_post' => 101]), 'caps.interaction_per_post'],
+    'interactions a day negative' => [rapCaps(['interaction_per_day' => -1]), 'caps.interaction_per_day'],
+    'missing an interaction cap' => [array_diff_key(rapCaps(), ['interaction_per_day' => true]), 'caps.interaction_per_day'],
     'an unknown key' => [rapCaps(['interaction' => 3]), 'caps'],
 ]);
 

@@ -5,9 +5,9 @@ namespace App\Http\Requests;
 use App\Services\SettingsService;
 use Illuminate\Foundation\Http\FormRequest;
 
-// TT-7.11d2/SCRUM-474: the daily star caps (StarCapPolicy), all six at once -- whole numbers from 0 to their maximum
-// (maxima()). Super administrators only: a 403 before validation, like every other change on the recognition page
-// (unlike the platform-fee form's thin authorize()); UpdateSettingAction checks again.
+// TT-7.11d2/SCRUM-474: the star caps (StarCapPolicy), all at once -- whole numbers from 0 to their maximum (maxima();
+// SCRUM-472's two interaction caps go to 100). Super administrators only: a 403 before validation, like every other
+// change on the recognition page (unlike the platform-fee form's thin authorize()); UpdateSettingAction checks again.
 class UpdateRecognitionCapsRequest extends FormRequest
 {
     public const MAX = 100;
