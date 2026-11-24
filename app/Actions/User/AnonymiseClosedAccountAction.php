@@ -4,6 +4,7 @@ namespace App\Actions\User;
 
 use App\Actions\Action;
 use App\Actions\File\DeleteAttachedFilesAction;
+use App\Actions\Star\RevokeStarsGivenByUserAction;
 use App\Enums\RequestStatusEnum;
 use App\Enums\RequestTypeEnum;
 use App\Enums\SafetyFlagNoticeStateEnum;
@@ -179,6 +180,8 @@ class AnonymiseClosedAccountAction extends Action
             }
             $user->tokens()->delete();
             $user->journalEntries()->delete();
+            // SCRUM-472: already done when the account was closed (User::booted); again here, for accounts closed before.
+            RevokeStarsGivenByUserAction::new()->onAccountClosed($user);
             OutcomeCheckIn::query()->where('client_user_id', $user->id)->update(['answers' => null, 'total_score' => null, 'band' => null]);
             Contact::query()->where('addedby_type', $user->getMorphClass())->where('addedby_id', $user->id)
                 ->update(['name' => null, 'email' => null]);
