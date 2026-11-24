@@ -10,6 +10,7 @@ use App\Actions\Comment\EnsureCommentableExistsAction;
 use App\Actions\Comment\EnsureCommentDataIsValidAction;
 use App\Actions\Comment\EnsureCommentExistsAction;
 use App\Actions\Guardianship\EnsureMinorHasActiveGuardianAction;
+use App\Actions\Post\SyncPostInteractionStarAction;
 use App\DTOs\CreateCommentDTO;
 use App\Enums\PaginationEnum;
 use App\Http\Resources\CommentResource;
@@ -34,7 +35,12 @@ class CommentService extends Service
 
         EnsureCommentDataIsValidAction::new()->execute($createCommentDTO);
 
-        return CreateCommentAction::new()->execute($createCommentDTO);
+        $comment = CreateCommentAction::new()->execute($createCommentDTO);
+
+        // TT-7.11c/SCRUM-472: a comment (anonymous or not) on a counsellor's post may earn them a star. Never blocks it.
+        SyncPostInteractionStarAction::afterCommit($commentable, $createCommentDTO->user);
+
+        return $comment;
     }
 
     public function deleteComment(CreateCommentDTO $createCommentDTO)
@@ -45,7 +51,12 @@ class CommentService extends Service
 
         EnsureCanUpdateCommentAction::new()->execute($createCommentDTO);
 
-        return DeleteCommentAction::new()->execute($createCommentDTO);
+        $deleted = DeleteCommentAction::new()->execute($createCommentDTO);
+
+        // SCRUM-472: the star stays while the user still has a like or a comment on the post.
+        SyncPostInteractionStarAction::afterCommit($createCommentDTO->comment->commentable, $createCommentDTO->user);
+
+        return $deleted;
     }
 
     public function getComments(CreateCommentDTO $createCommentDTO)
