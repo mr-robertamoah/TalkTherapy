@@ -5,7 +5,7 @@
 ### SCRUM-30: a verified badge, or a warning, wherever a counsellor is shown
 
 - A badge on the counsellor profile (`/counsellor/{id}`), counsellor cards (`CounsellorComponent`),
-  starred and home counsellor cards (`StarredCounsellorComponent`), the client's counsellor picker
+  starred and home counsellor cards (`StarredCounsellorComponent`, now `CounsellorCard`), the client's counsellor picker
   and the admin counsellor pop-up. It reads **Verified**, **Not verified yet** or **Verification
   ended**. Everyone sees it, signed out too.
 - The public only ever gets the state. A revoked verification reads as "Verification ended" to

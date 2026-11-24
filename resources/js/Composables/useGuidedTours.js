@@ -58,7 +58,13 @@ export default function useGuidedTours() {
                 { 
                     id: 2,
                     name: 'Counsellors', 
-                    description: 'The two counsellor sections show you which counsellors when active in the previous month as well as their performance in the current month.',
+                    description: 'These sections show the latest Counsellors of the month, chosen by the TalkTherapy team, and some counsellors you could reach out to.',
+                    messages: [
+                        {
+                            condition: CONDITION_NAMES.isUser,
+                            message: 'Since you are logged in, you also see the counsellors leading this month.',
+                        },
+                    ],
                     position: 2,
                     elementId: 'home-counsellors-id',
                     scroll: true,

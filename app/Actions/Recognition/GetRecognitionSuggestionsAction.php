@@ -74,8 +74,10 @@ class GetRecognitionSuggestionsAction extends Action
         $from = self::monthStart($month);
         $counts = CountCounsellorStarsAction::new()->execute(null, $from, $from->addMonth());
 
+        // Every open report is read here: the admin page's unattributed count is about all of them.
         $reports = GetCounsellorIdsWithOpenReportsAction::new()->execute(
-            array_values(array_unique(array_merge($counts->keys()->all(), $alsoCheckIds)))
+            array_values(array_unique(array_merge($counts->keys()->all(), $alsoCheckIds))),
+            countUnattributed: true,
         );
         $eligible = GetRecognitionEligibleCounsellorIdsAction::new()->execute($counts->keys()->all(), $reports['counsellorIds']);
 

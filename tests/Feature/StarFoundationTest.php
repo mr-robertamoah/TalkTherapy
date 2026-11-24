@@ -206,33 +206,6 @@ test('a stars_count_from that is not Y-m-d is ignored with one warning', functio
     Log::shouldHaveReceived('warning')->once();
 })->with(['not a date', '2026-13-01', '2026-02-30', '2026-12-01 10:00', '01/12/2026', 5]);
 
-test('the profile star counts are what they were before', function () {
-    Carbon::setTestNow('2026-12-15 12:00');
-    $a = sfdCounsellor();
-    $b = sfdCounsellor();
-    foreach ([$a, $b] as $c) {
-        sfdLegacyStar($c, '2026-12-02');
-        sfdLegacyStar($c, '2026-10-02');
-        sfdLegacyStar($c->user, '2026-12-03');
-        sfdLegacyStar($c->user, '2026-09-03');
-    }
-    sfdAward($a, 'a1', '2026-12-04');
-    sfdAward($a, 'a2', '2026-11-04');
-    sfdLegacyStar(User::factory()->create(), '2026-12-03');
-
-    foreach ([$a, $b] as $c) {
-        $c = $c->fresh();
-        // The accessors' definitions before SCRUM-470.
-        $overall = Star::query()->whereStarredCounsellor($c)->count();
-        $month = Star::query()->whereStarredCounsellor($c)->whereWithinCurrentMonth()->count();
-
-        expect($c->overallStarsCount)->toBe($overall)
-            ->and($c->currentMonthStarsCount)->toBe($month);
-    }
-    expect($a->fresh()->overallStarsCount)->toBe(6)
-        ->and(sfdCounsellor()->overallStarsCount)->toBe(0);
-});
-
 test('the migrations roll back and run again', function () {
     $migration = include database_path('migrations/2026_12_13_100000_add_source_and_award_key_to_stars_table.php');
     // SCRUM-471's index on source and starreable, which has to go first.

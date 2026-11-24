@@ -178,7 +178,7 @@ test('only counsellors eligible now are suggested', function () {
         ->and($result['unattributedOpenReports'])->toBe(2)
         ->and($result['unattributedOpenReportsNote'])->toBe(GetCounsellorIdsWithOpenReportsAction::UNATTRIBUTED_NOTE);
 
-    expect(GetCounsellorIdsWithOpenReportsAction::new()->execute([$reportedByData->id, $reportedByHelp->id, $ambiguous->id, $resolved->id]))
+    expect(GetCounsellorIdsWithOpenReportsAction::new()->execute([$reportedByData->id, $reportedByHelp->id, $ambiguous->id, $resolved->id], countUnattributed: true))
         ->toBe([
             'counsellorIds' => [$reportedByData->id, $reportedByHelp->id],
             'flaggableCounsellorIds' => [$reportedByData->id],

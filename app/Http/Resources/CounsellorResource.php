@@ -33,8 +33,6 @@ class CounsellorResource extends JsonResource
             'emailVerified' => (bool) $this->email_verified_at,
             // SCRUM-30/31: the public state for anyone; more for the counsellor and administrators.
             'verification' => CounsellorVerification::projection($this->resource, $request->user()),
-            'overallStarsCount' => $this->overallStarsCount,
-            'currentMonthStarsCount' => $this->currentMonthStarsCount,
             // TODO therapies
             'cases' => $this->when($this->cases, TherapyCaseResource::collection($this->cases), []),
             'religions' => $this->when($this->religions, TherapyCaseResource::collection($this->religions), []),

@@ -30,7 +30,8 @@ import UpdateCounsellorImages from '@/Components/UpdateCounsellorImages.vue';
 import DangerButton from '@/Components/DangerButton.vue';
 import RequirementStatus from '@/Components/RequirementStatus.vue';
 import LicenseAuthoritySection from './LicenseAuthoritySection.vue';
-import StarBadge from '@/Components/StarBadge.vue';
+import RecognitionBadge from '@/Components/RecognitionBadge.vue';
+import OwnRecognitionsCard from '@/Components/OwnRecognitionsCard.vue';
 import StyledLink from '@/Components/StyledLink.vue';
 import CreateTherapyButton from '@/Components/CreateTherapyButton.vue';
 import TestimonialSection from '@/Components/TestimonialSection.vue';
@@ -65,6 +66,16 @@ const props = defineProps({
     },
     payoutOverview: {
         default: null
+    },
+    // SCRUM-476: "Counsellor of the month" months this viewer may see (GetVisibleRecognitionsAction).
+    recognitionBadges: {
+        type: Array,
+        default: () => []
+    },
+    // SCRUM-476: the counsellor's own recognitions with their consent -- sent to the counsellor only.
+    recognitions: {
+        type: Array,
+        default: () => []
     },
     errors: null
 })
@@ -417,14 +428,6 @@ function closeModal() {
                         <div class="absolute -bottom-16 left-4 z-20">
                             <Avatar :src="counsellor?.avatar ?? ''" :size="120" class="ring-4 ring-white shadow-lg" :alt="'counsellor avatar'"/>
                         </div>
-                        
-                        <!-- Stars badge positioned at bottom right of cover -->
-                        <div class="absolute -bottom-12 right-4 sm:right-8 z-20">
-                            <StarBadge class="bg-white rounded-lg p-3 shadow-lg border border-gray-200"
-                                :overall="counsellor?.overallStarsCount"
-                                :month="counsellor?.currentMonthStarsCount" 
-                            />
-                        </div>
                     </div>
                 </div>
             </div>
@@ -445,6 +448,10 @@ function closeModal() {
                         <div class="mb-3 flex justify-center">
                             <CounsellorVerificationBadge :verification="counsellor.verification" size="md" />
                         </div>
+                        <!-- SCRUM-476: the month only, never stars. -->
+                        <div v-if="recognitionBadges.length" class="mb-3 flex flex-wrap justify-center gap-2">
+                            <RecognitionBadge v-for="month in recognitionBadges" :key="month" :month="month" />
+                        </div>
                         <div class="w-16 h-1 bg-blue-600 mx-auto mb-4"></div>
                         <div
                             v-if="counsellor.profession"
@@ -453,6 +460,15 @@ function closeModal() {
                         <div v-else class="text-gray-500 text-sm">No profession added</div>
                     </div>
                 </div>
+            </div>
+
+            <!-- SCRUM-476: the counsellor's own recognitions and featuring consent. -->
+            <div v-if="isCounsellor && recognitions.length" class="w-full sm:w-[90%] md:w-[75%] lg:w-[60%] mx-auto sm:px-6 lg:px-8 mt-8 relative">
+                <OwnRecognitionsCard
+                    :recognitions="recognitions"
+                    @done="(message) => setSuccessAlertData({ message })"
+                    @failed="(message) => setFailedAlertData({ message })"
+                />
             </div>
 
             <div class="w-full sm:w-[90%] md:w-[75%] lg:w-[60%] mx-auto sm:px-6 lg:px-8 mt-8 relative">

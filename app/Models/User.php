@@ -747,11 +747,6 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return $this->morphMany(Request::class, 'for');
     }
 
-    public function starred()
-    {
-        return $this->morphMany(Star::class, 'starredby');
-    }
-
     public function counsellor()
     {
         return $this->hasOne(Counsellor::class);
@@ -808,11 +803,6 @@ class User extends Authenticatable implements MustVerifyEmailContract
     public function isSuspendedAsCounsellor(): bool
     {
         return (bool) $this->activeSuspension(SuspensionScopeEnum::counsellor);
-    }
-
-    public function stars()
-    {
-        return $this->morphMany(Star::class, 'starred');
     }
 
     public function isNotVerifiedCounsellor()

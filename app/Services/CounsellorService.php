@@ -21,6 +21,8 @@ use App\Actions\Counsellor\VerifyEmailAction;
 use App\Actions\CounsellorVerification\EnsureCounsellorCanRequestVerificationAction;
 use App\Actions\EnsureNameStaysRetrievableAction;
 use App\Actions\Payout\GetCounsellorPayoutOverviewAction;
+use App\Actions\Recognition\GetRecognitionSuggestionsAction;
+use App\Actions\Star\CountCounsellorStarsAction;
 use App\Actions\Suspension\EnsureCanDeleteOwnAccountWhileSuspendedAction;
 use App\DTOs\CheckNameRetrievabilityDTO;
 use App\DTOs\CreateCounsellorDTO;
@@ -32,17 +34,31 @@ use App\DTOs\UpdateCounsellorDTO;
 use App\DTOs\VerifyCounsellorDTO;
 use App\Enums\ConstantsEnum;
 use App\Enums\PaginationEnum;
+use App\Enums\RequestTypeEnum;
 use App\Http\Resources\AdminCounsellorResource;
 use App\Http\Resources\AdminCounsellorStatsResource;
+use App\Http\Resources\OwnCounsellorRecognitionResource;
 use App\Models\Counsellor;
 use App\Models\LicensingAuthority;
 use App\Models\User;
 use App\Notifications\VerifyCounsellorEmailNotification;
 use App\Support\PreferenceMatch;
 use App\Support\PreferenceRanking;
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 
 class CounsellorService extends Service
 {
+    public const LEADING_LIMIT = 5;
+
+    // How many ranked counsellors Leading considers (some may be hidden by a report), and how long the ranking is cached.
+    public const LEADING_CANDIDATES = 50;
+
+    public const LEADING_CACHE_SECONDS = 300;
+
+    public const LEADING_CACHE_KEY = 'home.leading.';
+
     public function verifyEmail(UpdateCounsellorDTO $updateCounsellorDTO)
     {
         EnsureCounsellorExistsAction::new()->execute($updateCounsellorDTO);
@@ -96,6 +112,13 @@ class CounsellorService extends Service
             // profile view (see CounsellorController::show()'s own gate) -- private financial
             // data, never exposed on another viewer's request for this same page.
             'payoutOverview' => GetCounsellorPayoutOverviewAction::new()->execute($counsellor),
+            // TT-7.11f/SCRUM-476: every approved recognition of theirs, whatever its consent and whether or not it is
+            // shown right now, for the consent controls. Nothing says why one isn't shown.
+            'recognitions' => OwnCounsellorRecognitionResource::collection($counsellor->recognitions()
+                ->approved()
+                ->with(['consentRequests' => fn ($query) => $query->wherePending()->where('type', RequestTypeEnum::counsellorRecognition->value)->latest('id')])
+                ->orderByDesc('month')
+                ->get())->resolve(),
         ];
 
         return $data;
@@ -222,40 +245,50 @@ class CounsellorService extends Service
         return new AdminCounsellorStatsResource($getCounsellorStatsForAdminDTO->counsellor);
     }
 
-    public function getLeadingCounsellorsForCurrentMonth()
+    // TT-7.11f/SCRUM-476: Home's "Leading (current month)", step 1 -- who could lead: counsellors ranked on the new-rule
+    // stars they earned this UTC month (CountCounsellorStarsAction; legacy stars never count; most stars, then the
+    // earliest first star, then the lowest id -- GetRecognitionSuggestionsAction::rank()), the first LEADING_CANDIDATES.
+    // The ranking is cached for LEADING_CACHE_SECONDS (security M2: it groups the whole month's stars); who is
+    // recognisable now (verified, not suspended, not deleted) is checked live on every request. Open reports are left
+    // to step 2, so Home reads them once for the showcase and Leading together (GetHomeCounsellorsAction).
+    /** @return array<int, int> */
+    public function getLeadingCandidateIds(): array
     {
-        $query = User::query();
+        $month = CarbonImmutable::now('UTC')->startOfMonth();
 
-        $query
-            // StarredCounsellorResource reads ->avatar and ->cover on the counsellor -- both
-            // MorphToMany relations need an explicit eager load (see GetOrganizationCounsellorsAction).
-            ->with(['stars', 'counsellor.avatarFile', 'counsellor.coverFile'])
-            ->withCount(['stars' => function ($q) {
-                $q->whereWithinCurrentMonth();
-            }])
-            ->whereHas('counsellor', fn ($q) => $q->whereNotSuspended());
+        $ranked = Cache::remember(self::LEADING_CACHE_KEY.$month->format('Y-m'), self::LEADING_CACHE_SECONDS, fn () => GetRecognitionSuggestionsAction::rank(
+            CountCounsellorStarsAction::new()->execute(null, $month, $month->addMonth())
+        )->keys()->take(self::LEADING_CANDIDATES)->all());
 
-        $query->orderBy('stars_count', 'desc');
-        $query->limit(5);
+        if ($ranked === []) {
+            return [];
+        }
 
-        return $query->get();
+        $recognisable = Counsellor::query()->whereIn('id', $ranked)->whereRecognisableNow()->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+        return array_values(array_intersect($ranked, $recognisable));
     }
 
-    public function getBestCounsellorsForPreviousMonth()
+    // Step 2: the first LEADING_LIMIT of $candidateIds (in order) not in $hiddenIds
+    // (GetVisibleRecognitionsAction::publiclyHiddenIds() -- the same reports that hide a recognition), as cards. Their
+    // counts are never sent, and only signed-in users get the list (HomeController).
+    public function getLeadingCounsellors(array $candidateIds, array $hiddenIds): Collection
     {
-        $query = User::query();
+        $ids = array_slice(array_values(array_diff($candidateIds, $hiddenIds)), 0, self::LEADING_LIMIT);
 
-        $query
-            ->with(['stars', 'counsellor.avatarFile', 'counsellor.coverFile'])
-            ->withCount(['stars' => function ($q) {
-                $q->whereWithinPreviousMonth();
-            }])
-            ->whereHas('counsellor', fn ($q) => $q->whereNotSuspended());
+        if ($ids === []) {
+            return collect();
+        }
 
-        $query->orderBy('stars_count', 'desc');
-        $query->limit(5);
+        // CounsellorCardResource reads ->avatar and ->cover (MorphToMany relations: eager-loaded, see
+        // GetOrganizationCounsellorsAction), and getName() may fall back to the user's name.
+        $counsellors = Counsellor::query()
+            ->with(['user', 'avatarFile', 'coverFile'])
+            ->whereIn('id', $ids)
+            ->get()
+            ->keyBy('id');
 
-        return $query->get();
+        return collect($ids)->map(fn (int $id) => $counsellors->get($id))->filter()->values();
     }
 
     // SCRUM-113: ranked by the viewer's saved preferences, in a seeded order for the visit.
@@ -270,8 +303,9 @@ class CounsellorService extends Service
         });
 
         $query->whereNotSuspended();
-        // StarredCounsellorResource reads ->avatar, ->cover and ->stars -- see the eager-load comments above.
-        $query->with(['avatarFile', 'coverFile', 'stars']);
+        // CounsellorCardResource reads ->avatar and ->cover. TT-7.11f/SCRUM-476: no star rows any more -- it sends no
+        // counts, so every star of every counsellor on the page is no longer loaded.
+        $query->with(['avatarFile', 'coverFile']);
 
         PreferenceRanking::apply($query, PreferenceMatch::forUser($user), $seed);
 

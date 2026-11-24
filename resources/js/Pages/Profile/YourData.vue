@@ -11,6 +11,7 @@ import PrimaryButton from '@/Components/PrimaryButton.vue'
 import SecondaryButton from '@/Components/SecondaryButton.vue'
 import TextInput from '@/Components/TextInput.vue'
 import YourDataSection from './Partials/YourDataSection.vue'
+import { consentSummary } from '@/Support/recognitionConsent.js'
 
 const props = defineProps({
     data: { type: Object, required: true },
@@ -469,12 +470,25 @@ const counsellor = computed(() => props.data.counsellor)
                                 v-if="counsellor.verification === 'verified' && counsellor.verificationExpiresAt"> until {{ date(counsellor.verificationExpiresAt) }}</template>.
                         </li>
                         <li>{{ plural(counsellor.clients, 'person', 'people') }} you have counselled in individual therapies.</li>
+                        <!-- SCRUM-476 -->
+                        <li v-if="counsellor.recognitions?.length">
+                            Counsellor of the month:
+                            <ul class="ml-5 list-disc">
+                                <li v-for="recognition in counsellor.recognitions" :key="recognition.month">
+                                    {{ recognition.monthLabel }}: {{ consentSummary(recognition.consent) || recognition.consent }}
+                                </li>
+                            </ul>
+                        </li>
                     </ul>
                     <template #why>To show your profile to people looking for help, and to verify you.</template>
                     <template #kept>
                         Your profile is removed {{ retentionDays.counsellorProfile }} days after you delete it. Your verification history is kept permanently.
                     </template>
-                    <template #who>Everyone can see your profile. Your verification history is seen only by administrators.</template>
+                    <template #who>
+                        Everyone can see your profile. Your verification history is seen only by administrators. A
+                        recognition is shown on your profile and Home only while you agree to be featured (signed-in
+                        people also see one you haven't answered yet).
+                    </template>
                 </YourDataSection>
 
                 <div class="bg-white shadow-sm border border-gray-200 rounded-lg p-6 text-sm text-gray-700">

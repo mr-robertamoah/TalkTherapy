@@ -392,7 +392,7 @@ test('the number of queries doesn\'t grow with what the person holds', function 
 
     expect($a)->toBe($b)
         ->and($c)->toBe($d)
-        ->and($d)->toBeLessThanOrEqual(14);
+        ->and($d)->toBeLessThanOrEqual(15); // SCRUM-476: + the counsellor's recognitions.
 });
 
 test('the demo accounts seed once, with something in every category', function () {
