@@ -290,6 +290,8 @@ class DatabaseSeeder extends Seeder
         $this->call(CommissionFreePeriodSeeder::class);
         // SCRUM-473: last month's new-rule stars on the six demo counsellors, and sarah_johnson recognised (consent pending).
         $this->call(RecognitionSeeder::class);
+        // SCRUM-472: likes and a comment on lisa_anderson's counsellor post that earn her stars (post_fan_* accounts).
+        $this->call(PostInteractionStarSeeder::class);
     }
 
     // SCRUM-32 (TT-4.3a): counsellors' safety flags. Passwords: "password". The feature is off by default:

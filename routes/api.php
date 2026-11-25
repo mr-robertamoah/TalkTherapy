@@ -214,11 +214,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/posts/{postId}', [PostController::class, 'updatePost'])->name('api.posts.update');
     Route::delete('/posts/{postId}', [PostController::class, 'deletePost'])->name('api.posts.delete');
 
-    Route::post('/comments', [CommentController::class, 'createComment'])->name('api.comments.create');
-    Route::delete('/comments/{commentId}', [CommentController::class, 'deleteComment'])->name('api.comments.delete');
+    // SCRUM-472 (security review M2): each of these syncs a post-interaction star, so each is throttled.
+    Route::post('/comments', [CommentController::class, 'createComment'])->name('api.comments.create')->middleware('throttle:30,1,api.comments.create');
+    Route::delete('/comments/{commentId}', [CommentController::class, 'deleteComment'])->name('api.comments.delete')->middleware('throttle:30,1,api.comments.delete');
 
-    Route::post('/likes', [LikeController::class, 'like'])->name('api.likes.create');
-    Route::post('/likes/delete', [LikeController::class, 'dislike'])->name('api.likes.delete');
+    Route::post('/likes', [LikeController::class, 'like'])->name('api.likes.create')->middleware('throttle:30,1,api.likes.create');
+    Route::post('/likes/delete', [LikeController::class, 'dislike'])->name('api.likes.delete')->middleware('throttle:30,1,api.likes.delete');
 
     Route::post('/therapies/{therapyId}/assist', [TherapyController::class, 'sendAssistanceRequest'])->name('therapies.assist')->middleware('throttle:10,1,therapies.assist');
     Route::get('/therapies', [TherapyController::class, 'show'])->name('api.therapies');

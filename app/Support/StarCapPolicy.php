@@ -5,6 +5,8 @@ namespace App\Support;
 use App\Enums\StarSourceEnum;
 use App\Models\Counsellor;
 use App\Models\GroupTherapy;
+use App\Models\Post;
+use App\Models\PostInteractionAward;
 use App\Models\Session;
 use App\Models\Star;
 use App\Models\User;
@@ -14,9 +16,13 @@ use Illuminate\Support\Carbon;
 
 // TT-7.11b/SCRUM-471: the daily star caps (the user's decision). Per counsellor per UTC day: at most N stars from
 // each rule (held sessions, help chats, held discussions, posts), at most N session stars -- held sessions and
-// help chats together -- with the same client (the star's starredby), and at most N session stars per group. The numbers are SettingsService's
-// (config('recognition.cap') unless a super admin set them). Post-interaction stars have their own limits (SCRUM-472).
-// Called by AwardCounsellorStarAction with the counsellor's row locked, so two awards can't both slip under a cap.
+// help chats together -- with the same client (the star's starredby), and at most N session stars per group. The
+// numbers are SettingsService's (config('recognition.cap') unless a super admin set them). Called by
+// AwardCounsellorStarAction with the counsellor's row locked, so two awards can't both slip under a cap.
+//
+// SCRUM-472: post-interaction stars have their own limits, counted on post_interaction_awards (every award ever made,
+// kept when its star is revoked), so unliking and liking again never frees a place: at most N a UTC day per counsellor,
+// at most N a UTC day from one client to one counsellor, and at most N ever per post.
 final class StarCapPolicy
 {
     private const CAP_KEYS = [
@@ -30,6 +36,10 @@ final class StarCapPolicy
 
     public static function allows(Counsellor $counsellor, StarSourceEnum $source, ?User $client, ?Model $starreable = null): bool
     {
+        if ($source === StarSourceEnum::postInteraction) {
+            return self::allowsInteraction($counsellor, $client, $starreable);
+        }
+
         $capKey = self::CAP_KEYS[$source->value] ?? null;
 
         if ($capKey === null) {
@@ -66,16 +76,42 @@ final class StarCapPolicy
             ->count() < $caps['session_per_client'];
     }
 
+    private static function allowsInteraction(Counsellor $counsellor, ?User $client, ?Model $post): bool
+    {
+        if (! $post instanceof Post || ! $client) {
+            return false;
+        }
+
+        $caps = SettingsService::new()->getRecognitionCaps();
+        [$from, $to] = self::todayBounds();
+        $today = fn () => PostInteractionAward::query()
+            ->where('counsellor_id', $counsellor->getKey())
+            ->where('awarded_at', '>=', $from)
+            ->where('awarded_at', '<', $to);
+
+        return $today()->count() < $caps['interaction_per_day']
+            && $today()->where('user_id', $client->getKey())->count() < $caps['interaction_per_client']
+            && PostInteractionAward::query()->where('post_id', $post->getKey())->count() < $caps['interaction_per_post'];
+    }
+
+    // The current UTC day's bounds, in the app's timezone (what created_at and awarded_at are stored in).
+    private static function todayBounds(): array
+    {
+        $from = Carbon::now('UTC')->startOfDay()->setTimezone(config('app.timezone'));
+
+        return [$from, $from->copy()->addDay()];
+    }
+
     // The counsellor's stars from the current UTC day. created_at is stored in the app's timezone, so the day's bounds
     // are converted to it.
     private static function today(Counsellor $counsellor)
     {
-        $from = Carbon::now('UTC')->startOfDay()->setTimezone(config('app.timezone'));
+        [$from, $to] = self::todayBounds();
 
         return Star::query()
             ->where('starred_type', $counsellor->getMorphClass())
             ->where('starred_id', $counsellor->getKey())
             ->where('created_at', '>=', $from)
-            ->where('created_at', '<', $from->copy()->addDay());
+            ->where('created_at', '<', $to);
     }
 }

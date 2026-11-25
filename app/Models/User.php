@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Actions\Star\RevokeStarsGivenByUserAction;
 use App\Enums\ConstantsEnum;
 use App\Enums\FileTagEnum;
 use App\Enums\NotificationCategoryEnum;
@@ -287,6 +288,10 @@ class User extends Authenticatable implements MustVerifyEmailContract
         // cascade) -- nothing needs it while the account waits to be anonymised, and there is no restore.
         static::deleting(function (User $user) {
             $user->journalEntries()->delete();
+
+            // SCRUM-472 (security review L2): the stars they gave by liking and commenting go, and their name comes off
+            // every other star they gave.
+            RevokeStarsGivenByUserAction::new()->onAccountClosed($user);
 
             // SCRUM-452: and lets go of its Google account at once, so that Google account can sign up afresh (the id is
             // unique) and never signs in to a closed account. A soft delete saves only deleted_at, hence its own update.

@@ -496,6 +496,7 @@ test('the default session cap is 8 a day', function () {
     expect(nsrStars(StarSourceEnum::sessionHeld, $counsellor)->count())->toBe(8)
         ->and(SettingsService::new()->getSettingsForAdmin()['recognitionCaps'])->toBe([
             'session' => 8, 'help_chat' => 5, 'discussion' => 2, 'post' => 3, 'session_per_client' => 1, 'session_per_group' => 1,
+            'interaction_per_post' => 10, 'interaction_per_day' => 20, 'interaction_per_client' => 1,
         ]);
 });
 

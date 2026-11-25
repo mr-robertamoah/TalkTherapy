@@ -19,7 +19,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { default as _ } from 'lodash'
 
 // TT-7.11d2/SCRUM-474: counsellor recognition for a month (Admin/Recognition). Every administrator sees the
-// suggestions, the month's audit and the daily star limits; only a super administrator (canManage) approves, skips,
+// suggestions, the month's audit and the star limits; only a super administrator (canManage) approves, skips,
 // adds or changes a limit -- the server refuses anyone else (403) whatever this page shows.
 //
 // TT-7.11e2/SCRUM-477: approving (or adding) can also give the counsellor a commission-free period for the next month,
@@ -295,14 +295,14 @@ function confirmAdd() {
     })
 }
 
-// ---- Daily star limits ----
+// ---- Star limits ----
 
 const capsForm = useForm({ caps: { ...props.caps } })
 
 function saveCaps() {
     capsForm.post(route('admin.settings.recognition-caps.update'), {
         preserveScroll: true,
-        onSuccess: () => setSuccessAlertData({ message: 'Daily star limits saved.' }),
+        onSuccess: () => setSuccessAlertData({ message: 'Star limits saved.' }),
         onError: (errors) => {
             if (errors.alert) setFailedAlertData({ message: errors.alert })
         },
@@ -497,11 +497,11 @@ const eventColumns = [
                 </AdminTable>
             </section>
 
-            <!-- Daily star limits -->
+            <!-- Star limits -->
             <section aria-labelledby="caps-heading" class="bg-white border border-gray-200 shadow-sm rounded-lg p-6">
-                <h2 id="caps-heading" class="text-lg font-medium text-gray-900">Daily star limits</h2>
+                <h2 id="caps-heading" class="text-lg font-medium text-gray-900">Star limits</h2>
                 <p class="mt-1 text-sm text-gray-600">
-                    The most stars a counsellor can earn in a UTC day from each source.
+                    The most stars a counsellor can earn in a UTC day from each source, and from any one post's likes and comments.
                     <template v-if="!canManage">Only a super administrator can change them.</template>
                 </p>
 
@@ -525,7 +525,7 @@ const eventColumns = [
                         </div>
                     </div>
                     <div class="mt-4 flex items-center justify-between gap-4">
-                        <p class="text-xs text-gray-500">Whole numbers from 0 to {{ capsMax.session }} ({{ capsMax.session_per_client }} for the per-client and per-group limits). 0 stops that source earning stars.</p>
+                        <p class="text-xs text-gray-500">Whole numbers from 0 to {{ capsMax.session }} ({{ capsMax.session_per_client }} for the per-client and per-group limits, likes and comments per client included). 0 stops that source earning stars.</p>
                         <PrimaryButton :class="{ 'opacity-25': capsForm.processing }" :disabled="capsForm.processing">save limits</PrimaryButton>
                     </div>
                 </form>

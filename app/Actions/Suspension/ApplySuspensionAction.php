@@ -4,6 +4,7 @@ namespace App\Actions\Suspension;
 
 use App\Actions\Action;
 use App\Actions\Guardianship\RemoveGuardianFromWardAction;
+use App\Actions\Star\RevokeStarsGivenByUserAction;
 use App\Actions\Video\EndVideoSessionAction;
 use App\Actions\Video\RemovePersonFromLiveCallsAction;
 use App\Enums\SuspensionScopeEnum;
@@ -125,6 +126,13 @@ class ApplySuspensionAction extends Action
         BestEffort::attempt(
             fn () => RemovePersonFromLiveCallsAction::new()->execute($suspension->user, RemovePersonFromLiveCallsAction::SUSPENSION, $suspension->id),
             'suspension-live-call-removal',
+            ['suspension' => $suspension->id],
+        );
+
+        // SCRUM-472 (security review L1): this month's stars they gave counsellors by liking and commenting go.
+        BestEffort::attempt(
+            fn () => RevokeStarsGivenByUserAction::new()->onSuspension($suspension->user),
+            'suspension-interaction-stars',
             ['suspension' => $suspension->id],
         );
     }

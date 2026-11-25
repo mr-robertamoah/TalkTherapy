@@ -7,6 +7,7 @@ use App\Actions\Like\DeleteLikeAction;
 use App\Actions\Like\EnsureCanCreateLikeAction;
 use App\Actions\Like\EnsureLikeableExistsAction;
 use App\Actions\Like\EnsureLikeExistsAction;
+use App\Actions\Post\SyncPostInteractionStarAction;
 use App\DTOs\CreateLikeDTO;
 use App\Exceptions\LikeException;
 use App\Models\Therapy;
@@ -19,7 +20,12 @@ class LikeService extends Service
 
         EnsureLikeableExistsAction::new()->execute($createLikeDTO);
 
-        return CreateLikeAction::new()->execute($createLikeDTO);
+        $like = CreateLikeAction::new()->execute($createLikeDTO);
+
+        // TT-7.11c/SCRUM-472: a like on a counsellor's post may earn them a star. Never blocks the like.
+        SyncPostInteractionStarAction::afterCommit($createLikeDTO->likeable, $createLikeDTO->user);
+
+        return $like;
     }
 
     public function dislike(CreateLikeDTO $createLikeDTO)
@@ -34,7 +40,12 @@ class LikeService extends Service
 
         EnsureLikeExistsAction::new()->execute($createLikeDTO);
 
-        return DeleteLikeAction::new()->execute($createLikeDTO);
+        $like = DeleteLikeAction::new()->execute($createLikeDTO);
+
+        // SCRUM-472: the star stays while the user still has a like or a comment on the post.
+        SyncPostInteractionStarAction::afterCommit($createLikeDTO->likeable, $createLikeDTO->user);
+
+        return $like;
     }
 
     public function getLikes(CreateLikeDTO $createLikeDTO)

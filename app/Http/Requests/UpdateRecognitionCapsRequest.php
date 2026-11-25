@@ -5,9 +5,10 @@ namespace App\Http\Requests;
 use App\Services\SettingsService;
 use Illuminate\Foundation\Http\FormRequest;
 
-// TT-7.11d2/SCRUM-474: the daily star caps (StarCapPolicy), all six at once -- whole numbers from 0 to their maximum
-// (maxima()). Super administrators only: a 403 before validation, like every other change on the recognition page
-// (unlike the platform-fee form's thin authorize()); UpdateSettingAction checks again.
+// TT-7.11d2/SCRUM-474: the star caps (StarCapPolicy), all at once -- whole numbers from 0 to their maximum (maxima();
+// SCRUM-472's per-post and per-day interaction caps go to 100, its per-client one to 10). Super administrators only:
+// a 403 before validation, like every other change on the recognition page (unlike the platform-fee form's thin
+// authorize()); UpdateSettingAction checks again.
 class UpdateRecognitionCapsRequest extends FormRequest
 {
     public const MAX = 100;
@@ -15,7 +16,7 @@ class UpdateRecognitionCapsRequest extends FormRequest
     // Security review L2: the caps that stop one client or one group farming a counsellor's stars stay small.
     public const MAX_PER_SOURCE = 10;
 
-    private const PER_SOURCE = ['session_per_client', 'session_per_group'];
+    private const PER_SOURCE = ['session_per_client', 'session_per_group', 'interaction_per_client'];
 
     // Each cap's name => the most it may be set to.
     public static function maxima(): array

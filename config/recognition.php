@@ -15,15 +15,17 @@ return [
         'session_per_client' => 1,
         // SCRUM-471 (security re-check): a group has no single client, so group-session stars are capped per group.
         'session_per_group' => 1,
+        // SCRUM-472: stars from clients' likes and comments on a counsellor's posts -- at most this many per post (ever),
+        // per counsellor per UTC day, and from one client to one counsellor per UTC day.
+        'interaction_per_post' => 10,
+        'interaction_per_day' => 20,
+        'interaction_per_client' => 1,
     ],
 
     // SCRUM-471: a help chat earns a star only if it lasted at least this long.
     'help_chat_min_minutes' => 5,
 
-    // Interaction stars (from verified-email clients): at most this many per post, and per counsellor per day...
-    'interaction_per_post' => 10,
-    'interaction_per_day' => 20,
-    // ...and only from accounts at least this many days old.
+    // SCRUM-472: interaction stars come only from accounts at least this many days old (their caps are in 'cap').
     'interaction_min_account_age_days' => 7,
 
     // Optional floor (a date, e.g. 2026-12-01) from which new-rule stars count. New-rule stars only exist from the

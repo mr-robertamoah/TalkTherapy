@@ -53,10 +53,10 @@ describe('event labels', () => {
 })
 
 describe('star cap fields', () => {
-    it('covers the six caps the server stores', () => {
+    it('covers the nine caps the server stores', () => {
         assert.deepEqual(
             STAR_CAP_FIELDS.map((field) => field.key),
-            ['session', 'help_chat', 'discussion', 'post', 'session_per_client', 'session_per_group'],
+            ['session', 'help_chat', 'discussion', 'post', 'session_per_client', 'session_per_group', 'interaction_per_day', 'interaction_per_client', 'interaction_per_post'],
         )
     })
 })
