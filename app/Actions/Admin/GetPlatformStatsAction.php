@@ -18,6 +18,7 @@ use App\Models\CounsellorPayout;
 use App\Models\GroupTherapy;
 use App\Models\Organization;
 use App\Models\OrganizationInvoice;
+use App\Models\OrganizationInvoiceLine;
 use App\Models\Refund;
 use App\Models\Report;
 use App\Models\Request;
@@ -29,6 +30,7 @@ use App\Models\User;
 use App\Models\VideoSession;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -44,8 +46,12 @@ use Illuminate\Support\Facades\DB;
 // against the whole previous week or month. A row falls in a period by when it was created (the
 // payment, payout, refund and invoice tables keep no separate "completed at"), except sessions,
 // by when they were due to start, and video calls, by when they started.
+//
+// SCRUM-469: the commission given up under fee waivers (commissionWaived) -- see waivedCommission().
 class GetPlatformStatsAction extends Action
 {
+    // One payload shared by every administrator: anything role-specific must be filtered after Cache::remember, or be
+    // cached under its own key.
     public const CACHE_KEY = 'admin-platform-stats';
 
     private const TTL_SECONDS = 900;
@@ -159,7 +165,76 @@ class GetPlatformStatsAction extends Action
                 'refundsPaid' => $this->perCurrency($in(Refund::query()->where('status', RefundStatusEnum::success->value))),
                 'invoicesSettled' => $this->perCurrency($in(OrganizationInvoice::query()->where('status', OrganizationInvoiceStatusEnum::settled->value))),
             ],
+            'commissionWaived' => $this->waivedCommission($in),
         ];
+    }
+
+    // SCRUM-469: the platform fee not taken because a fee waiver was in force, per currency (minor units), in total and
+    // split by the waiver's scope: platform-wide (no counsellor), one counsellor's own (SCRUM-475), or unattributed --
+    // so total = platformWide + perCounsellor + unattributed. Two grouped queries per period, whatever the number of
+    // rows.
+    //
+    // Where a waived amount is stored, and why nothing is counted twice:
+    // - Personal payments: only on the counsellor earning.
+    // - Organisation card charges: on the transaction's `breakdown` lines when the charge is made, then copied onto one
+    //   earning per line when the charge succeeds (GenerateCounsellorEarningsAction::generateFromBreakdown). The
+    //   breakdown is never summed: an earning exists exactly when the charge succeeded, and a charge still pending,
+    //   failed or abandoned took no money, so its breakdown counts for nothing (as its fee isn't revenue). The one gap,
+    //   a successful charge whose line was skipped because the counsellor is gone entirely, is logged there and left
+    //   out here too, as its fee is left out of platformFees.
+    // - Retainer invoices: on the invoice line when the session is held, then copied onto an earning (with
+    //   organization_invoice_line_id) when the invoice settles (generateForSettledInvoice). So these are counted from
+    //   the line only -- dated by when the line was recorded, so an invoice settling later doesn't move the amount to
+    //   another period -- and earnings with an invoice line are skipped.
+    //
+    // What counts, as for the fee figures: earnings that aren't reversed (a refunded organisation charge reverses
+    // them), and invoice lines unless their invoice failed (no money collected) or the line's earning was reversed. A
+    // line on an open or pending invoice counts: the work was billed with the fee waived.
+    //
+    // Unattributed: a waived amount stored with no waiver id. GenerateCounsellorEarningsAction writes these: when an
+    // organisation charge's amount exceeds its breakdown and every line was waived, the surplus goes on the first line
+    // as a fee taken and its waiver id is dropped while its waived amount stays (generateFromBreakdown); and a stored
+    // waiver that no longer exists is recorded without its id (storedWaiver).
+    private function waivedCommission(Closure $in): array
+    {
+        $earnings = $in(CounsellorEarning::query(), 'counsellor_earnings.created_at')
+            ->whereNull('counsellor_earnings.organization_invoice_line_id')
+            ->where('counsellor_earnings.status', '!=', CounsellorEarningStatusEnum::reversed->value)
+            ->where('counsellor_earnings.waived_fee_amount', '>', 0)
+            ->leftJoin('platform_fee_waivers', 'platform_fee_waivers.id', '=', 'counsellor_earnings.platform_fee_waiver_id');
+
+        $lines = $in(OrganizationInvoiceLine::query(), 'organization_invoice_lines.created_at')
+            ->join('organization_invoices', 'organization_invoices.id', '=', 'organization_invoice_lines.organization_invoice_id')
+            ->where('organization_invoices.status', '!=', OrganizationInvoiceStatusEnum::failed->value)
+            ->whereNotExists(fn ($query) => $query->selectRaw('1')
+                ->from('counsellor_earnings')
+                ->whereColumn('counsellor_earnings.organization_invoice_line_id', 'organization_invoice_lines.id')
+                ->where('counsellor_earnings.status', CounsellorEarningStatusEnum::reversed->value))
+            ->where('organization_invoice_lines.waived_fee_amount', '>', 0)
+            ->leftJoin('platform_fee_waivers', 'platform_fee_waivers.id', '=', 'organization_invoice_lines.platform_fee_waiver_id');
+
+        $scope = "case when platform_fee_waivers.id is null then 'unattributed' when platform_fee_waivers.counsellor_id is null then 'platformWide' else 'perCounsellor' end";
+        $result = ['total' => [], 'platformWide' => [], 'perCounsellor' => [], 'unattributed' => []];
+
+        foreach ([[$earnings, 'counsellor_earnings'], [$lines, 'organization_invoice_lines']] as [$query, $table]) {
+            $rows = $query->toBase()
+                ->selectRaw("{$table}.currency as currency, {$scope} as scope, sum({$table}.waived_fee_amount) as total")
+                ->groupBy("{$table}.currency")
+                ->groupByRaw($scope)
+                ->get();
+
+            foreach ($rows as $row) {
+                foreach (['total', $row->scope] as $key) {
+                    $result[$key][$row->currency] = ($result[$key][$row->currency] ?? 0) + (int) $row->total;
+                }
+            }
+        }
+
+        return array_map(function (array $totals) {
+            ksort($totals);
+
+            return $totals;
+        }, $result);
     }
 
     // Accounts in use: soft-deleted (closed) and anonymised ones left out.

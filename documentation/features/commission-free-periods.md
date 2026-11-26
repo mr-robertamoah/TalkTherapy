@@ -127,6 +127,30 @@ appears only while a period is running or starts within 30 days, showing only it
 - Design decisions (cancelled vs ended, the 30-day horizon, validation limits, the delete guard) are in
   `documentation/decision-log.md`, "SCRUM-468 — commission-free periods: admin, labels, notices".
 
+## Commission given up, in the platform stats (SCRUM-469)
+
+The admin overview (`/administrator`, any administrator) has a **"Commission given up (fee waivers)"** card under the
+Money table, following the page's period buttons (this week / this month / all time, with the change against the
+previous week or month). Per currency it shows the total platform fee not taken because a waiver was in force, split
+into **Platform-wide** periods and **Per-counsellor** ones (SCRUM-475), plus an **Unattributed** line, only when
+non-zero, for waived amounts stored without their waiver (see the decision log). It comes from `GetPlatformStatsAction`
+(`periods.*.current|previous.commissionWaived` = `{total, platformWide, perCounsellor, unattributed}`, minor units per
+currency),
+cached for 15 minutes like the rest of the figures.
+
+What counts: earnings that aren't reversed and retainer invoice lines unless the invoice failed or the line's earning
+was reversed -- so a retainer session counts once billed, before the invoice is paid, unlike the Platform fees
+row; each waived amount once (an organisation charge's breakdown and a settled invoice line both copy their
+waiver onto the earning, so neither is summed twice -- see the decision log, "SCRUM-469"). A retainer line counts in
+the period it was recorded, even if its invoice settles later.
+
+**Test data / try it:** log in as `suspension_demo_normal_admin` (or the super admin `mr_robertamoah`), open
+http://localhost:8000/administrator and click **All time**: the card shows **GHS 15.00**
+in total (the GHS 10.00 and GHS 5.00 waived on `commission_free_demo_counsellor`'s seeded earnings), all of it
+Platform-wide, Per-counsellor GHS 0.00. The seeded money is dated about seven to eight weeks back, so "This week"
+shows "No commission given up in this period."; "This month" may show it as the change against last month. If the
+figure looks stale, it is the 15-minute cache (`docker compose exec -u www-data php php artisan cache:clear`).
+
 ## One counsellor's own periods (SCRUM-475, backend)
 
 A super admin can give one counsellor a commission-free period of their own -- optionally for an approved recognition

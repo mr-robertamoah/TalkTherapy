@@ -753,6 +753,10 @@ Waived money, made during the ended period, so the labels can be seen:
 | `commission_free_demo_counsellor` | `password` | Dr. CommissionFree DemoCounsellor. Three pending GHS earnings: from `payout_demo_client`, GHS 100.00 with **no fee** ("Commission-free · GHS 10.00 waived") and GHS 50.00 with the usual GHS 5.00 fee; and GHS 50.00 with no fee (GHS 5.00 waived) from the organisation charge below. Visit their own profile (`/counsellor/{id}`), "Payouts". |
 | `org_demo_admin` | `password` | `/organizations/1/reconciliation`, "Financed Sessions": a "Therapy with Dr. CommissionFree DemoCounsellor" row of GHS 50.00 dated inside the ended period, Platform Fee GHS 0.00 with **"Waived · GHS 5.00 waived"**. It is the seeder's own "Commission-Free Demo Org Therapy" (client `org_demo_payperuse_member`, counsellor `commission_free_demo_counsellor`); no other demo charge or balance changes. |
 
+SCRUM-469: the same waived money (GHS 10.00 + GHS 5.00) is what the admin overview's "Commission given up (fee
+waivers)" card shows -- as any administrator, `/administrator`, **All time**: GHS 15.00, all Platform-wide. No seeded
+waived money falls under a per-counsellor period, so Per-counsellor reads GHS 0.00.
+
 ## Counsellor recognition (SCRUM-473, `RecognitionSeeder`)
 
 Local and testing only. New-rule stars for the **previous month (UTC, relative to the run)** on the six demo

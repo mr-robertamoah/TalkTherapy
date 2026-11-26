@@ -61,6 +61,21 @@ const moneyColumns = computed(() => [
     ...currencies.value.map((code) => ({ label: code })),
 ])
 
+// SCRUM-469: the platform fee not taken because a fee waiver was in force -- per currency, with the platform-wide /
+// per-counsellor split, and any waived amount stored without its waiver as Unattributed (shown only when there is some).
+const waivedCurrencies = computed(() => {
+    const codes = new Set([
+        ...Object.keys(current.value.commissionWaived?.total ?? {}),
+        ...Object.keys(previous.value?.commissionWaived?.total ?? {}),
+    ])
+
+    return [...codes].sort()
+})
+
+function waived(which, code, stats = current.value) {
+    return stats?.commissionWaived?.[which]?.[code] ?? 0
+}
+
 function href(item) {
     return route(item.route, item.params ?? {})
 }
@@ -215,6 +230,37 @@ const asOf = computed(() => props.stats.asOf ? new Date(props.stats.asOf).toLoca
                         </AdminCell>
                     </AdminRow>
                 </AdminTable>
+            </div>
+
+            <div class="bg-white shadow-sm border border-gray-200 rounded-lg p-4 sm:p-6">
+                <h3 class="text-sm font-semibold text-gray-900">Commission given up (fee waivers), {{ period.label.toLowerCase() }}</h3>
+                <p class="text-xs text-gray-500">
+                    The platform fee not taken during commission-free periods, per currency. Retainer sessions count once
+                    billed, before the invoice is paid (unlike the Platform fees row); reversed earnings and failed invoices
+                    are left out.
+                </p>
+                <p v-if="waivedCurrencies.length === 0" class="mt-3 text-sm text-gray-600">No commission given up in this period.</p>
+                <div v-else class="mt-3 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                    <div v-for="code in waivedCurrencies" :key="code" class="rounded-md border border-gray-200 p-3">
+                        <div class="text-xs font-medium text-gray-500">{{ code }}</div>
+                        <div class="text-lg font-semibold text-gray-900">{{ money(waived('total', code)) }}</div>
+                        <div v-if="previous" class="text-xs text-gray-600">{{ change(waived('total', code), waived('total', code, previous), money) }}</div>
+                        <dl class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                            <div>
+                                <dt class="text-gray-500">Platform-wide</dt>
+                                <dd class="font-semibold text-gray-900">{{ money(waived('platformWide', code)) }}</dd>
+                            </div>
+                            <div>
+                                <dt class="text-gray-500">Per-counsellor</dt>
+                                <dd class="font-semibold text-gray-900">{{ money(waived('perCounsellor', code)) }}</dd>
+                            </div>
+                            <div v-if="waived('unattributed', code)">
+                                <dt class="text-gray-500">Unattributed</dt>
+                                <dd class="font-semibold text-gray-900">{{ money(waived('unattributed', code)) }}</dd>
+                            </div>
+                        </dl>
+                    </div>
+                </div>
             </div>
         </section>
     </div>
