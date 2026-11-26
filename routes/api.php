@@ -155,7 +155,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/administrator/how-tos/{howToId}', [HowToController::class, 'deleteHowTo'])->name('admin.how-tos.delete');
     });
 
-    Route::get('/requests/counsellors', [CounsellorController::class, 'getRequestCounsellors'])->name('counsellors.request.get');
+    Route::get('/requests/counsellors', [CounsellorController::class, 'getRequestCounsellors'])->name('counsellors.request.get')->middleware('throttle:60,1,counsellors.request.get');
 
     Route::post('/alerts', [AlertController::class, 'waitingForAlert'])->name('alert.wait');
 

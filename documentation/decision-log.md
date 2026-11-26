@@ -14318,3 +14318,48 @@ gives that counsellor one star, key `post_interaction:{post}:{user}`, `starredby
     unlike or the comment delete and leaves the stars; the four throttles; the suspension sweep (both scopes, this
     month only); account closure and anonymisation sweeps; an anonymised account in the qualification dataset; the
     "stops qualifying" test goes through the comment route only.
+
+## SCRUM-478 — directory order and unique likes (2026-11-26)
+
+Two follow-ups from SCRUM-464's reviews, in one bugfix.
+
+- **Directory order (the user's decision, 2026-11-26: "Recognised, then A-Z"):** the counsellor directory
+  (`GET /api/counsellors`) and the request picker (`GET /api/requests/counsellors`, verified only) both go through
+  `CounsellorService::getCounsellors()`, which used to `withCount('stars')->orderBy('stars_count')` -- ascending, on
+  legacy stars, and anyone paging through could read off relative star standing, which SCRUM-464 says is never
+  public. Now:
+  1. the counsellors this viewer sees in Home's "Counsellors of the month" showcase, in the showcase's own order
+     (approval order). Who that is comes from `GetVisibleRecognitionsAction::new()->execute($viewer)` -- no second
+     visibility rule: a guest gets accepted consent only, a signed-in user also pending (the counsellor also their own
+     declined/withdrawn, though a counsellor never lists themselves here), and nobody who isn't recognisable now or is
+     hidden by an open report;
+  2. everyone else A-Z by the name `Counsellor::getName()` shows: first the start of that name (the counsellor `name`
+     when set, else the account's first name, else last name, else other names -- `constructName()` does fall back
+     to other names), then last name, then other names, all case-insensitive (`LOWER(COALESCE(NULLIF(...)))` over
+     correlated subselects on `users`, so `counsellors.*` and `paginate()` are untouched). An anonymised account
+     (`users.anonymised_at`) with no counsellor name shows "Deleted user": those go after everyone else, and the
+     subselects read NULL for an anonymised account, so its erased columns never take part;
+  3. `counsellors.id`, so pages never shuffle.
+  The recognised boost is a bound `CASE counsellors.id WHEN ? THEN ? ... END` (no MySQL-only `FIELD()`; tests run on
+  SQLite), skipped when nobody is recognised. `withCount('stars')` is gone: nothing read `stars_count` from this
+  query. **Judgment call:** showcase order rather than name order for the recognised block, so the directory agrees
+  with Home. The ids come from `GetVisibleRecognitionsAction::showcaseCounsellorIds()` -- the same `candidates()` and
+  `withoutHidden()` (monthly cap included) as the showcase, minus the card eager loads (now optional on
+  `candidates()`, on by default, so Home is unchanged). Cost: a few small queries per directory or picker request
+  (the recognitions, the open-report check), bounded by `recognition.per_month`, not by the page. The picker
+  (`counsellors.request.get`) now has `throttle:60,1,counsellors.request.get`, like `api.counsellors`.
+  **Known difference:** MySQL's `_ci` collation and SQLite's binary comparison (after `LOWER()`) may order accented
+  names slightly differently; production is MySQL.
+- **Unique likes:** migration `2026_12_18_100000_add_unique_index_to_likes_table` deletes duplicate likes, keeping
+  the **earliest** (lowest id) per `(user_id, likeable_type, likeable_id)` -- the derived-table form, which MySQL
+  needs to delete from a table its subquery reads, and SQLite accepts -- then adds `likes_user_likeable_unique` on
+  those columns. Rows with a NULL likeable are left alone (NULLs never collide in a unique index). The existing
+  non-unique likeable morph index stays; `down()` drops only the new index (deleted duplicates aren't restored).
+  `CreateLikeAction` now inserts the like in one statement with its likeable set (it used to insert, then update),
+  and a `UniqueConstraintViolationException` -- a concurrent request won the race after the up-front check -- is the
+  same 422 "You already like this." as the check. That throws before `LikeService` queues
+  `SyncPostInteractionStarAction`, so a refused like syncs nothing. SCRUM-472's test that wrote a pre-check duplicate
+  now asserts there is only ever one row.
+- **Deploy note:** the migration runs inside `scripts/deploy.sh`'s maintenance mode (`artisan down` before
+  `migrate --force`), like every other. The dedupe deletion is irreversible (`down()` only drops the index) -- rely
+  on the pre-promotion database backup if the deleted rows are ever wanted. Likes with a NULL likeable are left alone.

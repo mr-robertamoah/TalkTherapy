@@ -255,6 +255,22 @@ that could be about the counsellors on them.
 The "Counsellors" row and `GET /api/counsellors/random` no longer send star counts, and no longer load every star row
 of every counsellor on the page.
 
+### The counsellor directory and request picker order (SCRUM-478)
+
+`GET /api/counsellors` (the directory search) and `GET /api/requests/counsellors` (the "find a counsellor" picker,
+verified counsellors only) list, for the viewer asking:
+
+1. the counsellors they would see in "Counsellors of the month" right now, in the showcase's order (the same
+   `GetVisibleRecognitionsAction` rule: a guest only those who agreed to be featured, a signed-in user also pending
+   ones; nobody suspended, unverified or hidden by an open report);
+2. everyone else A-Z by the name shown on their card (counsellor name, else first and last name), ignoring case;
+3. then by id, so paging is stable.
+
+Stars play no part. To see it with the Test data below: signed out, `GET /api/counsellors` starts with
+`michael_chen` (accepted; `james_wilson` is hidden by his open report, `suspended_counsellor_demo` is suspended, so
+both are just in A-Z order or absent); signed in as `maria_garcia`, `sarah_johnson` (pending) comes first, then
+`michael_chen`, then everyone else A-Z.
+
 ### The profile
 
 - **The badge:** under the name on `/counsellor/{id}`, one **"Counsellor of the month, <Month Year>"** badge per

@@ -22,6 +22,7 @@ use App\Actions\CounsellorVerification\EnsureCounsellorCanRequestVerificationAct
 use App\Actions\EnsureNameStaysRetrievableAction;
 use App\Actions\Payout\GetCounsellorPayoutOverviewAction;
 use App\Actions\Recognition\GetRecognitionSuggestionsAction;
+use App\Actions\Recognition\GetVisibleRecognitionsAction;
 use App\Actions\Star\CountCounsellorStarsAction;
 use App\Actions\Suspension\EnsureCanDeleteOwnAccountWhileSuspendedAction;
 use App\DTOs\CheckNameRetrievabilityDTO;
@@ -45,6 +46,7 @@ use App\Notifications\VerifyCounsellorEmailNotification;
 use App\Support\PreferenceMatch;
 use App\Support\PreferenceRanking;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 
@@ -92,13 +94,47 @@ class CounsellorService extends Service
         $query->when($user, fn ($q) => $q->whereNotUser($user));
         // SCRUM-359: a suspended counsellor isn't offered to anyone.
         $query->whereNotSuspended();
-        $query->withCount('stars');
-        $query->orderBy('stars_count');
+        // SCRUM-478: never by stars (that leaked relative star counts, ascending at that).
+        $this->orderForDirectory($query, $user);
         // CounsellorMiniResource reads ->avatar; see GetOrganizationCounsellorsAction's comment
         // for why this MorphToMany needs an explicit eager load, unlike the old FK belongsTo.
         $query->with('avatarFile');
 
         return $query->paginate(PaginationEnum::pagination->value);
+    }
+
+    // SCRUM-478 (the user's decision, 2026-11-26): the counsellors this viewer sees in Home's "Counsellors of the month"
+    // showcase first, in the showcase's own order -- GetVisibleRecognitionsAction decides who, nothing here does -- then
+    // everyone else A-Z by the name Counsellor::getName() shows (their counsellor name, else the account's first and last
+    // name), case-insensitively, then by id so pages never shuffle. Portable SQL: no MySQL-only FIELD().
+    //
+    // Name keys: the displayed name's start (counsellor name, else first name, else last name, else other names -- as
+    // constructName() builds it), then last name, then other names. An anonymised account shows "Deleted user"
+    // unless the counsellor name is set: those go after everyone, and its erased columns are never read.
+    private function orderForDirectory(Builder $query, ?User $viewer): void
+    {
+        $recognisedIds = GetVisibleRecognitionsAction::new()->showcaseCounsellorIds($viewer);
+
+        if ($recognisedIds) {
+            $bindings = [];
+            foreach ($recognisedIds as $position => $id) {
+                array_push($bindings, $id, $position);
+            }
+            $bindings[] = count($recognisedIds);
+
+            $cases = implode(' ', array_fill(0, count($recognisedIds), 'WHEN ? THEN ?'));
+            $query->orderByRaw("CASE counsellors.id {$cases} ELSE ? END", $bindings);
+        }
+
+        // NULL for an anonymised account, so its erased columns never take part.
+        $user = fn (string $column) => "(SELECT users.{$column} FROM users WHERE users.id = counsellors.user_id AND users.anonymised_at IS NULL)";
+        $anonymised = '(SELECT users.anonymised_at FROM users WHERE users.id = counsellors.user_id)';
+
+        $query->orderByRaw("CASE WHEN NULLIF(counsellors.name, '') IS NULL AND {$anonymised} IS NOT NULL THEN 1 ELSE 0 END")
+            ->orderByRaw("LOWER(COALESCE(NULLIF(counsellors.name, ''), NULLIF({$user('firstName')}, ''), NULLIF({$user('lastName')}, ''), {$user('otherNames')}))")
+            ->orderByRaw("LOWER({$user('lastName')})")
+            ->orderByRaw("LOWER({$user('otherNames')})")
+            ->orderBy('counsellors.id');
     }
 
     public function getCounsellorData(Counsellor $counsellor): array

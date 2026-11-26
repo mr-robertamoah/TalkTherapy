@@ -41,9 +41,23 @@ class GetVisibleRecognitionsAction extends Action
         return $this->withoutHidden($candidates, self::publiclyHiddenIds($candidates->pluck('counsellor_id')->all()), ! $for);
     }
 
-    // Every row the rule allows, open reports aside.
+    // SCRUM-478: the counsellors of the showcase execute($viewer) returns, in its order -- the same rule, without the
+    // card eager loads (the counsellor directory orders by it).
+    /** @return array<int, int> */
+    public function showcaseCounsellorIds(?User $viewer): array
+    {
+        $candidates = $this->candidates($viewer, withCards: false);
+
+        return $this->withoutHidden($candidates, self::publiclyHiddenIds($candidates->pluck('counsellor_id')->all()))
+            ->map(fn (CounsellorRecognition $recognition) => (int) $recognition->counsellor_id)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    // Every row the rule allows, open reports aside. $withCards: the showcase's eager loads (showcase only).
     /** @return Collection<int, CounsellorRecognition> */
-    public function candidates(?User $viewer, ?Counsellor $for = null): Collection
+    public function candidates(?User $viewer, ?Counsellor $for = null, bool $withCards = true): Collection
     {
         return CounsellorRecognition::query()
             ->approved()
@@ -54,7 +68,8 @@ class GetVisibleRecognitionsAction extends Action
                 ->where('month', fn (QueryBuilder $latest) => $latest
                     ->from('counsellor_recognitions')
                     ->selectRaw('max(month)')
-                    ->where('decision', CounsellorRecognitionDecisionEnum::approved->value))
+                    ->where('decision', CounsellorRecognitionDecisionEnum::approved->value)))
+            ->when(! $for && $withCards, fn (Builder $query) => $query
                 ->with([
                     'counsellor.user',
                     'counsellor.avatarFile',
