@@ -178,7 +178,7 @@ test('a like and a comment from the same client are one star', function () {
     expect(pisStars($post)->count())->toBe(1);
 });
 
-test('a second like by the same person is refused; duplicate rows from before still count once', function () {
+test('a second like by the same person is refused and earns nothing more', function () {
     $post = pisPost(pisCounsellor());
     $client = pisClient();
 
@@ -187,15 +187,9 @@ test('a second like by the same person is refused; duplicate rows from before st
         ->assertStatus(422)
         ->assertJsonFragment(['message' => CreateLikeAction::ALREADY_LIKED]);
 
-    // A duplicate written before the check existed.
-    $duplicate = $client->likes()->create();
-    $duplicate->likeable()->associate($post)->save();
-
-    expect(Like::query()->where('user_id', $client->id)->count())->toBe(2)
+    // SCRUM-478: duplicates from before the check are gone (deduplicated, then a unique index) -- see LikeUniquenessTest.
+    expect(Like::query()->where('user_id', $client->id)->count())->toBe(1)
         ->and(pisStars($post)->count())->toBe(1);
-
-    pisUnlike($this, $client, $post);
-    expect(pisStars($post)->count())->toBe(1);
 
     pisUnlike($this, $client, $post);
     expect(pisStars($post)->count())->toBe(0);

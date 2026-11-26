@@ -67,3 +67,16 @@ test('the api.counsellors rate limit is tracked per ip, not shared globally', fu
         ->getJson(route('api.counsellors', ['name' => 'a']));
     expect($response->getStatusCode())->not->toBe(429);
 });
+
+// SCRUM-478: the request picker runs the same directory query (and the showcase lookup), so it gets the same limit.
+test('rapid counsellors.request.get picker requests beyond the per-minute limit are throttled', function () {
+    $this->actingAs(User::factory()->create());
+
+    for ($i = 0; $i < 60; $i++) {
+        $response = $this->getJson(route('counsellors.request.get', ['name' => 'a']));
+        expect($response->getStatusCode())->not->toBe(429);
+    }
+
+    $this->getJson(route('counsellors.request.get', ['name' => 'a']))
+        ->assertStatus(429);
+});
