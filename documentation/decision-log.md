@@ -14363,3 +14363,45 @@ Two follow-ups from SCRUM-464's reviews, in one bugfix.
 - **Deploy note:** the migration runs inside `scripts/deploy.sh`'s maintenance mode (`artisan down` before
   `migrate --force`), like every other. The dedupe deletion is irreversible (`down()` only drops the index) -- rely
   on the pre-promotion database backup if the deleted rows are ever wanted. Likes with a NULL likeable are left alone.
+
+## SCRUM-469 — commission given up in platform stats (TT-7.10c, 2026-11-26)
+
+- **Where waived amounts live:** a personal payment's waived fee is only on its counsellor earning. An organisation
+  card charge stores it on the transaction's `breakdown` lines when the charge is made, and
+  `GenerateCounsellorEarningsAction::generateFromBreakdown` copies it onto one earning per line when the charge
+  succeeds. A retainer invoice line stores it when the session is held, and `generateForSettledInvoice` copies it onto
+  an earning (with `organization_invoice_line_id`) when the invoice settles.
+- **No double counting:** `GetPlatformStatsAction` (`commissionWaived`) sums (1) earnings **without**
+  `organization_invoice_line_id` and (2) invoice lines, never the transaction breakdown. A breakdown has an earning
+  exactly when its charge succeeded; a pending, failed or abandoned charge took no money, so its breakdown counts for
+  nothing (its fee isn't revenue either). **Judgment call:** an invoice line is counted from the line, dated by when it
+  was recorded, rather than switching to its earning once the invoice settles -- otherwise settlement would move the
+  amount into a later week or month and change past periods' figures. The one gap left out, a successful charge whose
+  line wrote no earning because the counsellor is gone entirely (already logged), is also missing from `platformFees`.
+- **What counts (consistent with the fee figures):** earnings not `REVERSED` (a refunded organisation charge reverses
+  them); invoice lines unless the invoice is `FAILED` or the line's earning was reversed. A line on an `OPEN` or
+  `PENDING` invoice counts -- the work was billed with the fee waived -- whereas `platformFees` only sees it once
+  settled. Accepted: it is the fee given up, not money collected.
+- **Split:** by the waiver row's `counsellor_id` (null = platform-wide, else per-counsellor, SCRUM-475), plus an
+  explicit `unattributed` map for a waived amount stored with no waiver id, so `total = platformWide + perCounsellor +
+  unattributed`. That does happen: `GenerateCounsellorEarningsAction::generateFromBreakdown` puts a charge's surplus
+  over its breakdown on the first line as a fee taken and, when every line was waived, drops that line's waiver id
+  while keeping its waived amount; and `storedWaiver` records a waiver that no longer exists without its id. The card
+  shows an "Unattributed" line only when it is non-zero.
+- **Past periods mostly stay put:** dating invoice lines by their own `created_at` stops settlement from moving them,
+  but an `OPEN` invoice that later `FAILS` drops its lines from the periods they were counted in, and a later reversal
+  drops an earning the same way -- as with the existing fee figures.
+- **Per-counsellor figure can identify one counsellor:** in a period where only one counsellor had a waiver of their
+  own, the per-counsellor total is that counsellor's waived fee. Accepted: every administrator already sees
+  per-counsellor earnings (and their waived amounts) in the payout overview, and these stats are admin-only.
+- **Cost:** two grouped queries per period (ten in all), inside the existing 15-minute cache. The invoice-line query
+  filters on `organization_invoice_lines.created_at`, which has no index; add one if retainer volume grows.
+- **Cache:** the cached payload is the same for every administrator (a comment on `GetPlatformStatsAction::CACHE_KEY`
+  now says so): anything role-specific must be filtered after `Cache::remember` or cached under its own key.
+- **Audit half:** verified already done by SCRUM-475 -- `platform_fee_waiver_events` (append-only model and database
+  triggers), written by `PlatformFeeWaiverService` for create / end / delete in both scopes, the deleted event keeping
+  the dates, reason and recognition id; covered by `CounsellorFeeWaiverTest` (both scopes, triggers, refused changes
+  write nothing). Nothing added.
+- **Seed data:** not extended. `CommissionFreePeriodSeeder` already has GHS 15.00 waived under the platform-wide
+  ended period (visible under "All time"); no seeded waived money sits under a per-counsellor period, so that column
+  reads 0.00 locally.
