@@ -14405,3 +14405,65 @@ Two follow-ups from SCRUM-464's reviews, in one bugfix.
 - **Seed data:** not extended. `CommissionFreePeriodSeeder` already has GHS 15.00 waived under the platform-wide
   ended period (visible under "All time"); no seeded waived money sits under a per-counsellor period, so that column
   reads 0.00 locally.
+
+---
+
+## SCRUM-53 — multilingual support (2026-11-27)
+
+User decisions (2026-11-27), and the judgment calls of the first slice (SCRUM-479, TT-9.3a):
+
+- **Languages:** English first, then Twi (Asante) and French. Twi's app code is `tw`; the browser's Intl APIs get
+  `ak` (config `locales.supported.tw.intl`), since `tw` has no Intl data. A browser set to Twi sends `ak`, so the
+  suggestion matches either tag.
+- **English is the default, always.** The browser's language is only ever *suggested* (`suggestedLocale`, a one-time
+  offer in a later slice), never applied. English is always enabled, whatever `ENABLED_LOCALES` says.
+- **Choosing:** a per-account "Display language" setting and a guest switcher (later slices) both use `POST /locale`.
+  The choice lives in a real `users.locale` column (never `users.settings`, which the preferences merge rewrites) and
+  in a one-year `tt_locale` cookie (encrypted, SameSite Lax) -- a cookie, not the session, so a guest's choice
+  reaches the request before anything reads the session's user and carries into the account they then register or
+  sign in to. On registering or signing in (every path fires `Login`: password, two-factor, Google, and "remember me"),
+  an account with no language takes the cookie's; an account with one keeps it and the cookie is set to it.
+- **Signing out forgets the cookie (review fix):** `Logout` and `CurrentDeviceLogout` (a session ended by
+  `EndStaleSessions`) queue `Cookie::forget('tt_locale')`. Why: mental-health privacy on shared devices -- the next
+  person on that browser starts in English, and one account's language (which can say something about who used it)
+  never carries into another account's sign-in. A guest's choice made while signed out still carries into the next
+  sign-in, as above.
+- **Precedence:** account > cookie > English, and only enabled values are ever applied (a language switched off later
+  is ignored, not an error). `SetLocale` runs after `EndStaleSessions` on web and api and reads the user that already
+  resolved, so it adds no query.
+- **Suggestion (review fix):** only when the browser's *top-ranked* language (after sorting by quality) is an enabled
+  non-English one. English ranked above it -- any `en-*` -- means no suggestion (the user's "English first"), as does
+  any language not on offer ranking first: `en-GB, fr;q=0.9` and `de, fr;q=0.8` suggest nothing, `fr, en;q=0.8`
+  suggests French. Nothing is suggested once a language has been chosen -- on the account or, for a guest, in the
+  cookie (including choosing English).
+- **Naming:** "locale" everywhere, never "languages" -- the `Language` model is the languages counsellors speak and
+  stays separate.
+- **Gates:** safety text stays English until a fluent counsellor has reviewed it (`safety_reviewed`, enforced in code
+  in a later slice); legal pages are English-only (`legal_reviewed`); admin pages stay English. Only English is
+  reviewed today. **TT-9.3b's loader gate (ignore `safety.*` / `legal.*` unless reviewed) must land before any
+  non-English locale is enabled** -- enabling tw/fr is TT-9.3h's step. Until then `ENABLED_LOCALES` unset means English
+  only (a Pest test pins this). No boot-time warning for an unreviewed enabled locale: it would log on every request in
+  development; the default and the TT-9.3h checklist are the guard.
+- **`<html lang>`:** the locale's Intl tag where the app code isn't one (Twi pages are `lang="ak"`), else the code.
+- **Broadcasts carry no prose:** the rule for every slice -- a websocket event sends ids, kinds and values, and the
+  page words them in the reader's language (one broadcast reaches readers in different languages); no user-visible
+  sentence is composed server-side for a broadcast.
+- **Notifications and mail:** `User` implements `HasLocalePreference` (`preferredLocale()`: the enabled choice, else
+  null), so queued notifications go out in the recipient's language, not the sender's.
+- **Missing keys:** logged as a warning once per key and language per request or job, outside production. Not logged:
+  the validator's own optional lookups (`validation.custom.*`, `.attributes.*`, `.values.*`), and, in English, text
+  used as its own key (`Lang::get('Hello!')` -- English is the source language). Only `file.key` keys are checked in
+  English. **Limitation:** Laravel only reports a key once the English fallback lacks it too, so a `file.key` English
+  has but French or Twi lacks falls back to English silently and is not logged. Per-language completeness is
+  TT-9.3b's parity test (Node + Pest), not this hook.
+- **Your Data / closing an account:** `locale` is in "What we hold about you" and the copy (`summary.account.locale`);
+  anonymisation clears it (`User::ANONYMISED_ATTRIBUTES`). The privacy page's "preferences" wording already covers it
+  and legal pages weren't changed.
+- **Library:** chosen in the TT-9.3b spike (SCRUM-480) -- laravel-vue-i18n preferred (reads Laravel's `lang/` files),
+  vue-i18n v11 the fallback. No translations are shared in Inertia props (`locale`, `supportedLocales`,
+  `suggestedLocale` only).
+- **Slicing:** SCRUM-479–486 (TT-9.3a–h): a backend foundation (this); b frontend i18n foundation and library spike;
+  c shared formatting (`format.js`); d guest/auth pages and emails; e layouts and shared components; f directory,
+  request picker and public profile; g profile settings, switchers and the one-time offer; h the Twi and French
+  translations (blocked on them). Later stages are ticketed when they are picked up. See
+  `documentation/implementation_plan.md` TT-9.3a–h.

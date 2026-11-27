@@ -160,6 +160,8 @@ class GetYourDataAction extends Action
             'gender' => $row->gender,
             'country' => $row->country,
             'hasAvatar' => (bool) $row->has_avatar,
+            // SCRUM-479: the language they chose to see the app in (null: never chose -- English).
+            'locale' => $row->locale,
         ];
     }
 

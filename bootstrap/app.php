@@ -10,6 +10,7 @@ use App\Http\Middleware\EnsureTwoFactorIsEnabled;
 use App\Http\Middleware\EnsureUserIsAdmin;
 use App\Http\Middleware\HandleInertiaRequestsV2;
 use App\Http\Middleware\RequireTwoFactorForAdmins;
+use App\Http\Middleware\SetLocale;
 use App\Http\Middleware\StoreVisitationMiddleware;
 use App\Support\AppHost;
 use App\Support\FailureResponse;
@@ -41,6 +42,8 @@ return Application::configure(basePath: dirname(__DIR__))
             // SCRUM-34b: a session ends when its account's password or two-factor state changes elsewhere. Before
             // anything reads the signed-in user.
             EndStaleSessions::class,
+            // SCRUM-479: the request's language, from the user EndStaleSessions has already resolved (and let stay).
+            SetLocale::class,
             HandleInertiaRequestsV2::class,
             AddLinkHeadersForPreloadedAssets::class,
             // SCRUM-359: after the session has started, so the signed-in user resolves.
@@ -54,6 +57,8 @@ return Application::configure(basePath: dirname(__DIR__))
             EnsureFrontendRequestsAreStateful::class,
             // SCRUM-34b: the same for the app's own API calls (they share the browser session).
             EndStaleSessions::class,
+            // SCRUM-479: the same for the app's JSON calls (their messages and validation errors).
+            SetLocale::class,
             // \Illuminate\Routing\Middleware\ThrottleRequests::class.':api',
             SubstituteBindings::class,
             // SCRUM-359: after EnsureFrontendRequestsAreStateful has started the session.

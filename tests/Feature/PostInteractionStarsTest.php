@@ -681,7 +681,8 @@ test('who liked or commented is never sent: no starredby in the post, counsellor
     $home = pisInertiaProps($this, route('home'), $client);
     $homePost = $home['post']['data'] ?? $home['post'];
     expect(array_keys($home))->toBe([
-        'errors', 'auth', 'supportedCurrencies', 'videoProvider', 'features', 'passwordPolicy', 'failureAlert',
+        // SCRUM-479: the page's language, the enabled ones and the browser's suggestion -- nothing about anyone else.
+        'errors', 'auth', 'supportedCurrencies', 'locale', 'supportedLocales', 'suggestedLocale', 'videoProvider', 'features', 'passwordPolicy', 'failureAlert',
         'verificationStatus', 'twoFactorRequirement', 'adminNavigation', 'counsellorCreationStep', 'recentTherapies',
         'recentGroupTherapies', 'recognisedCounsellors', 'leadingCounsellors', 'post', 'alert', 'paymentRequired',
         'paymentRequiredTherapyId', 'paymentRequiredGroupTherapyId', 'paymentRequiredMessage',
