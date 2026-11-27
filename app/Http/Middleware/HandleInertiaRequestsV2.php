@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use App\Http\Resources\UserResource;
 use App\Support\AdminNavigation;
 use App\Support\InertiaHistory;
+use App\Support\Locales;
 use App\Support\PasswordRules;
 use App\Support\TwoFactorRequirement;
 use Closure;
@@ -76,6 +77,12 @@ class HandleInertiaRequestsV2 extends Middleware
             // source of truth -- a currency added/removed via SUPPORTED_CURRENCIES reaches every
             // currency picker without a frontend code change.
             'supportedCurrencies' => config('currencies.supported'),
+            // SCRUM-479 (TT-9.3a): the language this page is in (SetLocale), the ones on offer (enabled only, each named
+            // in itself), and the one the browser asks for when nothing has been chosen -- only ever offered, never
+            // applied. No translations: those reach the page with its scripts, not in every response.
+            'locale' => app()->getLocale(),
+            'supportedLocales' => Locales::options(),
+            'suggestedLocale' => $request->attributes->get(SetLocale::SUGGESTED),
             // TT-3.1c/SCRUM-276: which VideoProviderInterface adapter is active, so the frontend
             // knows which provider SDK to dynamically import on join -- a deployment-level value,
             // not per-therapy/session, so it's shared globally like supportedCurrencies above

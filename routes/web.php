@@ -29,6 +29,7 @@ use App\Http\Controllers\HomeController;
 use App\Http\Controllers\JournalController;
 use App\Http\Controllers\JournalExportController;
 use App\Http\Controllers\LinkController;
+use App\Http\Controllers\LocaleController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OrganizationAdminController;
 use App\Http\Controllers\OrganizationController;
@@ -113,6 +114,9 @@ Route::get('/posts/{postId}', [PostController::class, 'getPost'])->name('posts.g
 
 // SCRUM-33: the "I need help now" dialog's emergency numbers -- for everyone, signed in or not.
 Route::get('/help/emergency-numbers', [HelpController::class, 'emergencyNumbers'])->name('help.emergency_numbers')->middleware('throttle:60,1,help.emergency_numbers');
+
+// SCRUM-479: choosing the language the app is shown in -- for everyone, signed in or not.
+Route::post('/locale', [LocaleController::class, 'update'])->name('locale.update')->middleware('throttle:20,1,locale.update');
 
 // SCRUM-399: a counsellor's devices for urgent help web push (JSON, their own only). Removing this device is
 // open to a suspended account too.

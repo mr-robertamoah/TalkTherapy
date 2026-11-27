@@ -10,12 +10,14 @@ use App\Enums\SuspensionScopeEnum;
 use App\Events\SessionCheckRequestedEvent;
 use App\Notifications\ConfirmNewEmailNotification;
 use App\Notifications\VerifyEmailNotification;
+use App\Support\Locales;
 use App\Traits\HasGuardedDatabaseNotifications;
 use App\Traits\HasTaggedFiles;
 use Carbon\Carbon;
 use Illuminate\Auth\MustVerifyEmail;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
+use Illuminate\Contracts\Translation\HasLocalePreference;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -29,7 +31,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\HasApiTokens;
 
-class User extends Authenticatable implements MustVerifyEmailContract
+class User extends Authenticatable implements HasLocalePreference, MustVerifyEmailContract
 {
     use HasApiTokens, HasFactory, HasTaggedFiles, MustVerifyEmail, Notifiable, SoftDeletes;
     use HasGuardedDatabaseNotifications {
@@ -53,6 +55,8 @@ class User extends Authenticatable implements MustVerifyEmailContract
         'last_verified_email_at',
         // SCRUM-452: already cleared when the account was closed (User::booted); again here, in case.
         'google_id', 'google_linked_at',
+        // SCRUM-479
+        'locale',
     ];
 
     /**
@@ -105,6 +109,9 @@ class User extends Authenticatable implements MustVerifyEmailContract
         // by the sign-in flow only).
         'google_id',
         'google_linked_at',
+        // SCRUM-479: the chosen language reaches the person's own pages as the shared `locale` prop, nowhere else (and
+        // it's never mass assignable -- POST /locale and the sign-in carry-over set it with forceFill).
+        'locale',
     ];
 
     /**
@@ -163,6 +170,13 @@ class User extends Authenticatable implements MustVerifyEmailContract
         return [
             $this->email => $this->name,
         ];
+    }
+
+    // SCRUM-479: the language their notifications and mail are written in (queued ones too: Laravel takes it when they
+    // are sent) -- only an enabled one; otherwise the app's default, English.
+    public function preferredLocale(): ?string
+    {
+        return Locales::isEnabled($this->locale) ? $this->locale : null;
     }
 
     public function routeNotificationForBroadcast()

@@ -4,13 +4,20 @@ namespace App\Providers;
 
 use App\Contracts\PushSender;
 use App\Listeners\FailHealthCheckOnPendingMigrations;
+use App\Models\User;
 use App\Notifications\TwoFactorResetRequestedNotification;
 use App\Services\AppService;
 use App\Support\AppHost;
+use App\Support\Locales;
 use App\Support\MinishlinkPushSender;
+use App\Support\MissingTranslationKeys;
 use App\Support\PasswordRules;
 use App\Support\PwnedPasswordVerifier;
 use App\Support\TrustedProxies;
+use Illuminate\Auth\Events\CurrentDeviceLogout;
+use Illuminate\Auth\Events\Login;
+use Illuminate\Auth\Events\Logout;
+use Illuminate\Auth\Events\Registered;
 use Illuminate\Contracts\Validation\UncompromisedVerifier;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Foundation\Events\DiagnosingHealth;
@@ -21,6 +28,7 @@ use Illuminate\Mail\Markdown;
 use Illuminate\Notifications\Events\NotificationSent;
 use Illuminate\Queue\Events\JobFailed;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Lang;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\ServiceProvider;
@@ -43,6 +51,9 @@ class AppServiceProvider extends ServiceProvider
             $app[HttpFactory::class],
             config('auth.password_policy.uncompromised_timeout'),
         ));
+
+        // SCRUM-479: scoped -- each request or queued job logs a missing translation key afresh.
+        $this->app->scoped(MissingTranslationKeys::class);
     }
 
     /**
@@ -114,5 +125,27 @@ class AppServiceProvider extends ServiceProvider
         // SCRUM-109: makes the /up health check (configured in bootstrap/app.php) visibly fail
         // if the deploy pipeline's `migrate --force` step was ever skipped or failed silently.
         Event::listen(DiagnosingHealth::class, FailHealthCheckOnPendingMigrations::class);
+
+        // SCRUM-479 (TT-9.3a): a language picked before registering or signing in (the tt_locale cookie) is kept by an
+        // account that has none yet; an account that has one keeps it, and this browser is set to it. Every sign-in
+        // path fires Login (Auth::login: password, two-factor, Google -- SCRUM-452), and registration fires Registered.
+        Event::listen([Registered::class, Login::class], function (Registered|Login $event) {
+            if ($event->user instanceof User) {
+                Locales::carryOver($event->user, request());
+            }
+        });
+        // And signing out forgets this browser's choice (shared devices) -- a sign-out, and a session ended because the
+        // account changed elsewhere (EndStaleSessions: CurrentDeviceLogout).
+        Event::listen([Logout::class, CurrentDeviceLogout::class], fn () => Locales::forget());
+
+        // SCRUM-479: a key with no translation is found while developing and testing, not by a reader. Never in
+        // production (a log line per page view for a known gap).
+        if (! $this->app->isProduction()) {
+            Lang::handleMissingKeysUsing(function (string $key, array $replace, ?string $locale) {
+                $this->app->make(MissingTranslationKeys::class)->report($key, $locale);
+
+                return null;
+            });
+        }
     }
 }
